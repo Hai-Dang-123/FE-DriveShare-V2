@@ -1,0 +1,51 @@
+import api from '@/config/api'
+
+const driverWorkSessionService = {
+  async getHistory(filter: { FromDate?: string | null; ToDate?: string | null; PageIndex?: number; PageSize?: number }) {
+    try {
+      const params: any = {
+        pageIndex: filter.PageIndex ?? 1,
+        pageSize: filter.PageSize ?? 10,
+      }
+      if (filter.FromDate) params.fromDate = filter.FromDate
+      if (filter.ToDate) params.toDate = filter.ToDate
+
+      const res = await api.get('api/DriverWorkSession/history', { params })
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  }
+,
+  async start(dto: { TripId: string } | any) {
+    try {
+      const res = await api.post('api/DriverWorkSession/start', dto)
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  },
+  async end(dto: { TripId?: string; DriverWorkSessionId?: string } | any) {
+    try {
+      const res = await api.put('api/DriverWorkSession/end', dto)
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  }
+,
+  async checkEligibility() {
+    try {
+      const res = await api.get('api/DriverWorkSession/check-eligibility')
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  }
+}
+
+export default driverWorkSessionService
