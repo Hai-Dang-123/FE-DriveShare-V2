@@ -61,6 +61,7 @@ const StatusBadge = ({ status }: { status: string }) => {
     const config: any = {
         CREATED: { color: '#3B82F6', bg: '#EFF6FF', label: 'Mới tạo' },
         PENDING: { color: '#F59E0B', bg: '#FFFBEB', label: 'Đang xử lý' },
+        AWAITING_OWNER_CONTRACT: { color: '#D97706', bg: '#FEF3C7', label: 'Chờ ký hợp đồng' },
         AWAITING_DRIVER: { color: '#8B5CF6', bg: '#F5F3FF', label: 'Tìm tài xế' },
         IN_PROGRESS: { color: '#10B981', bg: '#ECFDF5', label: 'Đang chạy' },
         COMPLETED: { color: '#059669', bg: '#D1FAE5', label: 'Hoàn thành' },
@@ -978,6 +979,15 @@ const TripDetailScreen: React.FC = () => {
                     </View>
                 </View>
             </Modal>
+
+            {/* Bottom confirm bar for awaiting owner contract signature */}
+            {trip.status === 'AWAITING_OWNER_CONTRACT' ? (
+                <View style={styles.bottomBar}>
+                    <TouchableOpacity style={[styles.confirmBtn, signing && { opacity: 0.7 }]} onPress={handleSignContract} disabled={signing}>
+                        {signing ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmBtnText}>Ký xác nhận hợp đồng</Text>}
+                    </TouchableOpacity>
+                </View>
+            ) : null}
 
             {/* Bottom confirm bar for pending driver assignment */}
             {trip.status === 'PENDING_DRIVER_ASSIGNMENT' ? (
