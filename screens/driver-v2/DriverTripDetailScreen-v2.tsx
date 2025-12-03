@@ -100,6 +100,8 @@ interface TripDetailData {
   compensations: any[];
   issues: any[];
   driverContracts?: DriverContractInfo[];
+  tripVehicleHandoverRecordId?: string | null;
+  tripVehicleReturnRecordId?: string | null;
 }
 interface VehicleInfo {
   vehicleId: string;
@@ -151,6 +153,7 @@ interface DriverInfo {
   type: "PRIMARY" | "SECONDARY";
   assignmentStatus: string;
   paymentStatus: string;
+  phoneNumber?: string;
 }
 interface ContactInfo {
   tripContactId: string;
@@ -172,6 +175,20 @@ interface DeliveryTermInfo {
   deliveryRecordTermId: string;
   content: string;
   displayOrder: number;
+}
+interface VehicleHandoverRecordInfo {
+  tripVehicleHandoverRecordId: string;
+  type: "HANDOVER" | "RETURN";
+  status: string;
+  createAt: string;
+  handoverSignatureUrl?: string;
+  receiverSignatureUrl?: string;
+  terms: VehicleHandoverTermInfo[];
+}
+interface VehicleHandoverTermInfo {
+  content: string;
+  isChecked: boolean;
+  deviation?: string;
 }
 type JourneyPhase = "TO_PICKUP" | "TO_DELIVERY" | "COMPLETED";
 type Position = [number, number];
@@ -275,6 +292,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
     null
   );
   const [deliverySigningInProgress, setDeliverySigningInProgress] =
+    useState(false);
+
+  // Vehicle handover/return modal state
+  const [showVehicleHandoverModal, setShowVehicleHandoverModal] =
+    useState(false);
+  const [activeVehicleHandoverRecord, setActiveVehicleHandoverRecord] =
+    useState<any>(null);
+  const [loadingVehicleHandoverRecord, setLoadingVehicleHandoverRecord] =
     useState(false);
 
   const handleSendContractOtp = async () => {
@@ -806,6 +831,29 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [signatureInProgress, setSignatureInProgress] = useState(false);
   const [pickupMarked, setPickupMarked] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // Vehicle handover states
+  const [showHandoverModal, setShowHandoverModal] = useState(false);
+  const [activeHandoverRecord, setActiveHandoverRecord] = useState<any | null>(
+    null
+  );
+  const [loadingHandoverRecord, setLoadingHandoverRecord] = useState(false);
+  // Edit checklist states
+  const [isEditingChecklist, setIsEditingChecklist] = useState(false);
+  const [editedTerms, setEditedTerms] = useState<any[]>([]);
+  const [savingChecklist, setSavingChecklist] = useState(false);
+  // OTP signing states for vehicle handover
+  const [showHandoverOtpModal, setShowHandoverOtpModal] = useState(false);
+  const [handoverOtpDigits, setHandoverOtpDigits] = useState<string[]>([
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+  ]);
+  const [handoverOtpLoading, setHandoverOtpLoading] = useState(false);
+  const [sendingHandoverOtp, setSendingHandoverOtp] = useState(false);
+  const handoverOtpInputRefs = useRef<Array<TextInput | null>>([]);
 
   const PICKUP_MARK_KEY = (id?: string) => `trip:${id}:pickupMarked`;
 
@@ -975,6 +1023,25 @@ const DriverTripDetailScreenV2: React.FC = () => {
         throw new Error(res?.message || "Lỗi tải chuyến");
 
       const data = res.result;
+
+      // Extract handover record IDs from handoverReadDTOs array
+      if (
+        (data as any).handoverReadDTOs &&
+        Array.isArray((data as any).handoverReadDTOs)
+      ) {
+        const handoverRecord = (data as any).handoverReadDTOs.find(
+          (r: any) => r && r.type === "HANDOVER"
+        );
+        const returnRecord = (data as any).handoverReadDTOs.find(
+          (r: any) => r && r.type === "RETURN"
+        );
+
+        (data as any).tripVehicleHandoverRecordId =
+          handoverRecord?.tripVehicleHandoverRecordId || null;
+        (data as any).tripVehicleReturnRecordId =
+          returnRecord?.tripVehicleHandoverRecordId || null;
+      }
+
       setTrip(data);
 
       if (data?.tripRoute?.routeData) {
@@ -1676,6 +1743,219 @@ const DriverTripDetailScreenV2: React.FC = () => {
     }
   };
 
+  const openVehicleHandoverModal = async (recordId?: string) => {
+    if (!recordId) return Alert.alert("Thông báo", "Không có biên bản");
+    setLoadingHandoverRecord(true);
+    try {
+      const res: any = await tripService.getVehicleHandoverRecord(recordId);
+      if (res?.isSuccess) {
+        const record = res.result;
+        console.log("📄 Driver loaded handover record FULL:", record);
+        console.log("📄 Driver signature fields:", {
+          type: record.type,
+          handoverSigned: record.handoverSigned,
+          handoverSignedAt: record.handoverSignedAt,
+          receiverSigned: record.receiverSigned,
+          receiverSignedAt: record.receiverSignedAt,
+          status: record.status,
+        });
+
+        // Map termResults to terms format with IDs
+        const mappedRecord = {
+          ...record,
+          terms: (record.termResults || []).map((t: any) => ({
+            tripVehicleHandoverTermResultId: t.tripVehicleHandoverTermResultId,
+            content: t.termContent,
+            isChecked: t.isPassed,
+            deviation: t.note || "",
+          })),
+        };
+        setActiveHandoverRecord(mappedRecord);
+        setEditedTerms(mappedRecord.terms); // Initialize edited terms
+        setShowHandoverModal(true);
+      } else {
+        Alert.alert("Lỗi", res?.message || "Không thể tải biên bản");
+      }
+    } catch (e: any) {
+      console.error("openVehicleHandoverModal failed", e);
+      Alert.alert("Lỗi", e?.message || "Không thể tải biên bản");
+    } finally {
+      setLoadingHandoverRecord(false);
+    }
+  };
+
+  const toggleEditChecklist = () => {
+    if (isEditingChecklist) {
+      // Cancel editing - reset to original
+      setEditedTerms(activeHandoverRecord?.terms || []);
+    }
+    setIsEditingChecklist(!isEditingChecklist);
+  };
+
+  const updateTermChecked = (index: number, checked: boolean) => {
+    const updated = [...editedTerms];
+    updated[index] = { ...updated[index], isChecked: checked };
+    setEditedTerms(updated);
+  };
+
+  const updateTermNote = (index: number, note: string) => {
+    const updated = [...editedTerms];
+    updated[index] = { ...updated[index], deviation: note };
+    setEditedTerms(updated);
+  };
+
+  const saveChecklist = async () => {
+    if (!activeHandoverRecord) return;
+
+    setSavingChecklist(true);
+    try {
+      const dto = {
+        RecordId: activeHandoverRecord.tripVehicleHandoverRecordId,
+        ChecklistItems: editedTerms.map((term: any) => ({
+          TripVehicleHandoverTermResultId: term.tripVehicleHandoverTermResultId,
+          IsPassed: term.isChecked,
+          Note: term.deviation || "",
+        })),
+      };
+
+      const res: any = await tripService.updateVehicleHandoverChecklist(dto);
+
+      if (res?.isSuccess) {
+        Alert.alert("Thành công", "Đã cập nhật checklist");
+        // Update active record with new data
+        setActiveHandoverRecord({
+          ...activeHandoverRecord,
+          terms: editedTerms,
+        });
+        setIsEditingChecklist(false);
+        // Refresh trip data
+        await fetchTripData();
+      } else {
+        Alert.alert("Lỗi", res?.message || "Không thể cập nhật checklist");
+      }
+    } catch (e: any) {
+      console.error("saveChecklist failed", e);
+      Alert.alert("Lỗi", e?.message || "Có lỗi khi lưu checklist");
+    } finally {
+      setSavingChecklist(false);
+    }
+  };
+
+  const openVehicleHandoverPdf = async (recordId?: string) => {
+    if (!recordId) return;
+    try {
+      const res: any = await tripService.getVehicleHandoverPdfLink(recordId);
+      if (res?.isSuccess && res.result) {
+        Linking.openURL(res.result);
+      } else {
+        Alert.alert("Thông báo", "Chưa có file PDF");
+      }
+    } catch (e: any) {
+      Alert.alert("Lỗi", "Không tải được PDF");
+    }
+  };
+
+  // OTP signing functions
+  const sendOtpForSigning = async () => {
+    console.log("🔵 Driver sendOtpForSigning called", {
+      recordId: activeHandoverRecord?.tripVehicleHandoverRecordId,
+      record: activeHandoverRecord,
+    });
+
+    if (!activeHandoverRecord?.tripVehicleHandoverRecordId) {
+      console.log("❌ No activeHandoverRecord.tripVehicleHandoverRecordId");
+      Alert.alert("Lỗi", "Không tìm thấy ID biên bản");
+      return;
+    }
+
+    setSendingHandoverOtp(true);
+    try {
+      console.log(
+        "📤 Sending OTP for record:",
+        activeHandoverRecord.tripVehicleHandoverRecordId
+      );
+      const res: any = await tripService.sendVehicleHandoverOtp(
+        activeHandoverRecord.tripVehicleHandoverRecordId
+      );
+      console.log("📥 OTP Response:", res);
+      if (res?.isSuccess) {
+        setShowHandoverOtpModal(true);
+        Alert.alert(
+          "Thành công",
+          res?.message || "Mã OTP đã được gửi đến email của bạn"
+        );
+      } else {
+        Alert.alert("Lỗi", res?.message || "Không thể gửi OTP");
+      }
+    } catch (e: any) {
+      Alert.alert("Lỗi", e?.message || "Có lỗi khi gửi OTP");
+    } finally {
+      setSendingHandoverOtp(false);
+    }
+  };
+
+  const submitOtpSignature = async () => {
+    const otpCode = handoverOtpDigits.join("");
+    console.log("🔐 Driver submitting OTP:", {
+      otpCode,
+      recordId: activeHandoverRecord?.tripVehicleHandoverRecordId,
+    });
+
+    if (otpCode.length !== 6) {
+      Alert.alert("Lỗi", "Vui lòng nhập đủ 6 số OTP");
+      return;
+    }
+    if (!activeHandoverRecord?.tripVehicleHandoverRecordId) return;
+
+    setHandoverOtpLoading(true);
+    try {
+      const dto = {
+        RecordId: activeHandoverRecord.tripVehicleHandoverRecordId,
+        Otp: otpCode,
+      };
+      console.log("📤 Driver sending sign request:", dto);
+
+      const res: any = await tripService.signVehicleHandoverRecord(dto);
+      console.log("✍️ Driver sign response:", JSON.stringify(res, null, 2));
+
+      if (res?.isSuccess) {
+        Alert.alert("Thành công", "Ký biên bản thành công!");
+        setShowHandoverOtpModal(false);
+        setHandoverOtpDigits(["", "", "", "", "", ""]);
+        // Reload record to show updated signature
+        await openVehicleHandoverModal(
+          activeHandoverRecord.tripVehicleHandoverRecordId
+        );
+        // Reload trip to get updated status
+        fetchTripData();
+      } else {
+        Alert.alert("Lỗi", res?.message || "Không thể ký biên bản");
+      }
+    } catch (e: any) {
+      Alert.alert("Lỗi", e?.message || "Có lỗi khi ký biên bản");
+    } finally {
+      setHandoverOtpLoading(false);
+    }
+  };
+
+  const handleHandoverOtpChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newDigits = [...handoverOtpDigits];
+    newDigits[index] = value;
+    setHandoverOtpDigits(newDigits);
+
+    // Auto-focus next input
+    if (value && index < 5) {
+      handoverOtpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleHandoverOtpKeyPress = (index: number, key: string) => {
+    if (key === "Backspace" && !handoverOtpDigits[index] && index > 0) {
+      handoverOtpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
   const confirmVehicleHandover = async () => {
     try {
       let confirmed = true;
@@ -1842,7 +2122,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       </View>
     );
 
-  const primaryDriver = trip.drivers?.find((d) => d.type === "PRIMARY");
+  const primaryDriver = trip.drivers?.find((d) => d && d.type === "PRIMARY");
 
   // helper: are we approaching the 4-hour continuous limit (15 minutes margin)?
   const approachingContinuousLimit = continuousSeconds >= 4 * 3600 - 15 * 60;
@@ -2051,6 +2331,84 @@ const DriverTripDetailScreenV2: React.FC = () => {
             label="Số kiện hàng"
             value={`${trip.packages?.length ?? 0}`}
           />
+        </View>
+
+        {/* CARD: Vehicle Handover Records */}
+        <View style={styles.card}>
+          <SectionHeader
+            icon={
+              <MaterialCommunityIcons
+                name="car-key"
+                size={20}
+                color="#059669"
+              />
+            }
+            title="Biên bản giao nhận xe"
+          />
+          {!trip.tripVehicleHandoverRecordId &&
+          !trip.tripVehicleReturnRecordId ? (
+            <Text style={styles.emptyText}>Chưa có biên bản giao nhận xe</Text>
+          ) : (
+            <View>
+              {/* Biên bản giao xe (HANDOVER) */}
+              {trip.tripVehicleHandoverRecordId && (
+                <TouchableOpacity
+                  style={styles.recordCard}
+                  onPress={() =>
+                    openVehicleHandoverModal(
+                      trip.tripVehicleHandoverRecordId || undefined
+                    )
+                  }
+                >
+                  <View style={styles.recordIcon}>
+                    <MaterialCommunityIcons
+                      name="car-arrow-right"
+                      size={22}
+                      color="#0EA5E9"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.recordType}>Biên bản giao xe</Text>
+                    <Text style={styles.recordSubtext}>Chủ xe → Tài xế</Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    size={20}
+                    color="#9CA3AF"
+                  />
+                </TouchableOpacity>
+              )}
+
+              {/* Biên bản nhận xe (RETURN) */}
+              {trip.tripVehicleReturnRecordId && (
+                <TouchableOpacity
+                  style={styles.recordCard}
+                  onPress={() =>
+                    openVehicleHandoverModal(
+                      trip.tripVehicleReturnRecordId || undefined
+                    )
+                  }
+                >
+                  <View style={styles.recordIcon}>
+                    <MaterialCommunityIcons
+                      name="car-arrow-left"
+                      size={22}
+                      color="#10B981"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.recordType}>Biên bản nhận xe</Text>
+                    <Text style={styles.recordSubtext}>Tài xế → Chủ xe</Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    size={20}
+                    color="#9CA3AF"
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Driver Contract (Updated to Match Owner Style) */}
@@ -3372,6 +3730,461 @@ const DriverTripDetailScreenV2: React.FC = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* --- VEHICLE HANDOVER RECORD MODAL (A4 STYLE) --- */}
+      {showHandoverModal && activeHandoverRecord && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.paperModal}>
+            <TouchableOpacity
+              style={styles.closeModalBtn}
+              onPress={() => {
+                setShowHandoverModal(false);
+                setActiveHandoverRecord(null);
+                setIsEditingChecklist(false);
+                setEditedTerms([]);
+              }}
+            >
+              <Ionicons name="close" size={20} color="#FFF" />
+            </TouchableOpacity>
+
+            <ScrollView
+              contentContainerStyle={styles.paperScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.a4Paper}>
+                <View style={styles.docHeader}>
+                  <View style={styles.docHeaderLeft}>
+                    <Image
+                      source={{
+                        uri: "https://res.cloudinary.com/dg0kkdixc/image/upload/v1733502849/icon-with-name_zfsm6c.png",
+                      }}
+                      style={styles.docLogo}
+                      resizeMode="contain"
+                    />
+                    <Text style={styles.docCompany}>
+                      CÔNG TY CỔ PHẦN{"\n"}DRIVESHARE LOGISTICS
+                    </Text>
+                  </View>
+                  <View style={styles.docHeaderRight}>
+                    <Text style={styles.docNumber}>
+                      Số:{" "}
+                      {activeHandoverRecord.tripVehicleHandoverRecordId?.slice(
+                        -6
+                      ) || "......"}
+                      /BB-XE
+                    </Text>
+                    <Text style={styles.docDate}>
+                      Ngày:{" "}
+                      {activeHandoverRecord.createAt
+                        ? new Date(
+                            activeHandoverRecord.createAt
+                          ).toLocaleDateString("vi-VN")
+                        : new Date().toLocaleDateString("vi-VN")}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.docTitle}>
+                  <Text style={styles.docTitleText}>
+                    {activeHandoverRecord.type === "HANDOVER"
+                      ? "BIÊN BẢN GIAO XE"
+                      : "BIÊN BẢN NHẬN XE"}
+                  </Text>
+                </View>
+
+                <View style={styles.docDivider} />
+
+                {/* Parties */}
+                <View style={styles.partiesContainer}>
+                  <View style={styles.partyBox}>
+                    <Text style={styles.partyLabel}>
+                      {activeHandoverRecord.type === "HANDOVER"
+                        ? "BÊN GIAO (Chủ xe):"
+                        : "BÊN GIAO (Tài xế):"}
+                    </Text>
+                    <Text style={styles.partyName}>
+                      {activeHandoverRecord.type === "HANDOVER"
+                        ? trip?.owner?.fullName || "---"
+                        : trip?.drivers?.[0]?.fullName || "---"}
+                    </Text>
+                    <Text style={styles.partyInfo}>
+                      SĐT:{" "}
+                      {activeHandoverRecord.type === "HANDOVER"
+                        ? trip?.owner?.phoneNumber || "---"
+                        : trip?.drivers?.[0]?.phoneNumber || "---"}
+                    </Text>
+                  </View>
+                  <View style={styles.verticalDivider} />
+                  <View style={styles.partyBox}>
+                    <Text style={styles.partyLabel}>
+                      {activeHandoverRecord.type === "HANDOVER"
+                        ? "BÊN NHẬN (Tài xế):"
+                        : "BÊN NHẬN (Chủ xe):"}
+                    </Text>
+                    <Text style={styles.partyName}>
+                      {activeHandoverRecord.type === "HANDOVER"
+                        ? trip?.drivers?.[0]?.fullName || "---"
+                        : trip?.owner?.fullName || "---"}
+                    </Text>
+                    <Text style={styles.partyInfo}>
+                      SĐT:{" "}
+                      {activeHandoverRecord.type === "HANDOVER"
+                        ? trip?.drivers?.[0]?.phoneNumber || "---"
+                        : trip?.owner?.phoneNumber || "---"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.docDivider} />
+
+                {/* Vehicle Info */}
+                <View style={styles.section}>
+                  <View style={styles.sectionHeaderBox}>
+                    <MaterialCommunityIcons
+                      name="car"
+                      size={18}
+                      color="#059669"
+                    />
+                    <Text style={styles.sectionHeaderText}>THÔNG TIN XE</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Biển số:</Text>
+                    <Text style={styles.infoValue}>
+                      {trip?.vehicle?.plateNumber || "---"}
+                    </Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Loại xe:</Text>
+                    <Text style={styles.infoValue}>
+                      {trip?.vehicle?.vehicleTypeName || "---"}
+                    </Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Model:</Text>
+                    <Text style={styles.infoValue}>
+                      {trip?.vehicle?.model || "---"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.docDivider} />
+
+                {/* Terms Checklist */}
+                <View style={styles.section}>
+                  <View style={styles.sectionHeaderBox}>
+                    <MaterialCommunityIcons
+                      name="clipboard-check-outline"
+                      size={18}
+                      color="#059669"
+                    />
+                    <Text style={styles.sectionHeaderText}>
+                      KIỂM TRA TÌNH TRẠNG XE
+                    </Text>
+                    <TouchableOpacity
+                      onPress={toggleEditChecklist}
+                      style={styles.editButton}
+                    >
+                      <MaterialCommunityIcons
+                        name={isEditingChecklist ? "close" : "pencil"}
+                        size={16}
+                        color={isEditingChecklist ? "#EF4444" : "#3B82F6"}
+                      />
+                      <Text
+                        style={[
+                          styles.editButtonText,
+                          isEditingChecklist && { color: "#EF4444" },
+                        ]}
+                      >
+                        {isEditingChecklist ? "Hủy" : "Sửa"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {(isEditingChecklist
+                    ? editedTerms
+                    : activeHandoverRecord.terms || []
+                  ).map((term: any, idx: number) => (
+                    <View key={idx} style={styles.termRow}>
+                      {isEditingChecklist ? (
+                        <TouchableOpacity
+                          style={[
+                            styles.termCheckbox,
+                            term.isChecked && styles.termCheckboxChecked,
+                          ]}
+                          onPress={() =>
+                            updateTermChecked(idx, !term.isChecked)
+                          }
+                        >
+                          {term.isChecked && (
+                            <MaterialCommunityIcons
+                              name="check"
+                              size={16}
+                              color="#FFF"
+                            />
+                          )}
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.termCheckbox}>
+                          {term.isChecked ? (
+                            <MaterialCommunityIcons
+                              name="check"
+                              size={16}
+                              color="#059669"
+                            />
+                          ) : (
+                            <MaterialCommunityIcons
+                              name="close"
+                              size={16}
+                              color="#EF4444"
+                            />
+                          )}
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.termContent}>{term.content}</Text>
+                        {isEditingChecklist ? (
+                          <TextInput
+                            style={styles.termNoteInput}
+                            placeholder="Nhập ghi chú (nếu có)"
+                            value={term.deviation || ""}
+                            onChangeText={(text) => updateTermNote(idx, text)}
+                            multiline
+                          />
+                        ) : term.deviation ? (
+                          <Text style={styles.termDeviation}>
+                            Ghi chú: {term.deviation}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.docDivider} />
+
+                {/* Signatures */}
+                <View style={styles.signaturesContainer}>
+                  <View style={styles.signBox}>
+                    <Text style={styles.signTitle}>
+                      {activeHandoverRecord.type === "HANDOVER"
+                        ? "CHỦ XE (Người giao)"
+                        : "TÀI XẾ (Người giao)"}
+                    </Text>
+                    <View style={styles.signArea}>
+                      {/* Display handover side signature */}
+                      {activeHandoverRecord.handoverSigned ? (
+                        <View style={{ alignItems: "center" }}>
+                          <Text
+                            style={{
+                              fontSize: 16,
+                              fontWeight: "bold",
+                              color: "#10B981",
+                            }}
+                          >
+                            ĐÃ KÝ
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: "#6B7280",
+                              marginTop: 4,
+                            }}
+                          >
+                            {new Date(
+                              activeHandoverRecord.handoverSignedAt
+                            ).toLocaleString("vi-VN")}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.unsignedText}>Chưa ký</Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.signBox}>
+                    <Text style={styles.signTitle}>
+                      {activeHandoverRecord.type === "HANDOVER"
+                        ? "TÀI XẾ (Người nhận)"
+                        : "CHỦ XE (Người nhận)"}
+                    </Text>
+                    <View style={styles.signArea}>
+                      {/* Display receiver side signature */}
+                      {activeHandoverRecord.receiverSigned ? (
+                        <View style={{ alignItems: "center" }}>
+                          <Text
+                            style={{
+                              fontSize: 16,
+                              fontWeight: "bold",
+                              color: "#DC2626",
+                            }}
+                          >
+                            ĐÃ KÝ
+                          </Text>
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: "#6B7280",
+                              marginTop: 4,
+                            }}
+                          >
+                            {new Date(
+                              activeHandoverRecord.receiverSignedAt
+                            ).toLocaleString("vi-VN")}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.unsignedText}>Chưa ký</Text>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+            <View style={styles.paperFooter}>
+              {isEditingChecklist ? (
+                <>
+                  <TouchableOpacity
+                    style={[
+                      styles.actionBtnSecondary,
+                      {
+                        flex: 1,
+                        backgroundColor: "#FEE2E2",
+                        borderColor: "#EF4444",
+                      },
+                    ]}
+                    onPress={toggleEditChecklist}
+                    disabled={savingChecklist}
+                  >
+                    <Text
+                      style={[styles.actionBtnTextSec, { color: "#EF4444" }]}
+                    >
+                      Hủy
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtnPrimary, { flex: 1 }]}
+                    onPress={saveChecklist}
+                    disabled={savingChecklist}
+                  >
+                    {savingChecklist ? (
+                      <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                      <Text style={styles.actionBtnTextPri}>Lưu</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TouchableOpacity
+                    style={styles.actionBtnSecondary}
+                    onPress={() =>
+                      openVehicleHandoverPdf(
+                        activeHandoverRecord?.tripVehicleHandoverRecordId
+                      )
+                    }
+                  >
+                    <MaterialCommunityIcons
+                      name="file-pdf-box"
+                      size={18}
+                      color="#374151"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.actionBtnTextSec}>Xem PDF</Text>
+                  </TouchableOpacity>
+
+                  {/* Check if current user (driver) hasn't signed yet */}
+                  {activeHandoverRecord &&
+                    (() => {
+                      // HANDOVER: Driver is receiver side, RETURN: Driver is handover side
+                      const needsSignature =
+                        activeHandoverRecord.type === "HANDOVER"
+                          ? !activeHandoverRecord.receiverSigned
+                          : !activeHandoverRecord.handoverSigned;
+
+                      if (needsSignature) {
+                        return (
+                          <TouchableOpacity
+                            style={[styles.actionBtnPrimary, { flex: 1 }]}
+                            onPress={sendOtpForSigning}
+                            disabled={sendingHandoverOtp}
+                          >
+                            {sendingHandoverOtp ? (
+                              <ActivityIndicator color="#FFF" size="small" />
+                            ) : (
+                              <Text style={styles.actionBtnTextPri}>
+                                Ký biên bản
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      }
+                      return null;
+                    })()}
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* OTP Modal for Vehicle Handover Signing */}
+      <Modal visible={showHandoverOtpModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.otpModalContainer}>
+            <Text style={styles.otpModalTitle}>Nhập mã OTP</Text>
+            <Text style={styles.otpModalSubtitle}>
+              Mã OTP đã được gửi đến số điện thoại của bạn
+            </Text>
+
+            <View style={styles.otpInputContainer}>
+              {handoverOtpDigits.map((digit, index) => (
+                <TextInput
+                  key={index}
+                  ref={(ref) => {
+                    if (ref) handoverOtpInputRefs.current[index] = ref;
+                  }}
+                  style={styles.otpInput}
+                  value={digit}
+                  onChangeText={(value) =>
+                    handleHandoverOtpChange(index, value)
+                  }
+                  onKeyPress={({ nativeEvent }) =>
+                    handleHandoverOtpKeyPress(index, nativeEvent.key)
+                  }
+                  keyboardType="number-pad"
+                  maxLength={1}
+                  selectTextOnFocus
+                />
+              ))}
+            </View>
+
+            <View style={styles.otpModalButtons}>
+              <TouchableOpacity
+                style={[styles.actionBtnSecondary, { flex: 1 }]}
+                onPress={() => {
+                  setShowHandoverOtpModal(false);
+                  setHandoverOtpDigits(["", "", "", "", "", ""]);
+                }}
+                disabled={handoverOtpLoading}
+              >
+                <Text style={styles.actionBtnTextSec}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionBtnPrimary, { flex: 1 }]}
+                onPress={submitOtpSignature}
+                disabled={
+                  handoverOtpLoading || handoverOtpDigits.join("").length !== 6
+                }
+              >
+                {handoverOtpLoading ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.actionBtnTextPri}>Xác nhận</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -3609,6 +4422,8 @@ const styles = StyleSheet.create({
   },
   recordType: { fontSize: 14, fontWeight: "600", color: "#1F2937" },
   recordDate: { fontSize: 12, color: "#6B7280" },
+  recordSubtext: { fontSize: 12, color: "#6B7280", marginTop: 2 },
+  emptyText: { fontSize: 13, color: "#9CA3AF", fontStyle: "italic" },
 
   // Navigation Fullscreen & Mini Bar (Same as before)
   navFullscreen: {
@@ -3991,6 +4806,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   actionBtnTextPri: { color: "#FFF", fontWeight: "600" },
+  paperFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    flexDirection: "row",
+    gap: 12,
+    backgroundColor: "#F9FAFB",
+  },
   // btnDisabled: { backgroundColor: '#9CA3AF', opacity: 0.7 },
 
   // OTP
@@ -4093,6 +4916,226 @@ const styles = StyleSheet.create({
     backgroundColor: "#ECFDF5",
     padding: 10,
     borderRadius: 8,
+  },
+  // Vehicle Handover Modal Styles
+  recordCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  docCompany: {
+    fontSize: 9,
+    fontWeight: "bold",
+    textAlign: "center",
+    color: "#1F2937",
+  },
+  docTitle: {
+    alignItems: "center",
+    marginVertical: 12,
+  },
+  docTitleText: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#111827",
+    textTransform: "uppercase",
+    textAlign: "center",
+  },
+  docDivider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 10,
+  },
+  docNumber: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#374151",
+  },
+  partiesContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginVertical: 12,
+  },
+  partyBox: {
+    flex: 1,
+    paddingHorizontal: 8,
+  },
+  partyName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  partyInfo: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  verticalDivider: {
+    width: 1,
+    backgroundColor: "#E5E7EB",
+    marginHorizontal: 8,
+  },
+  section: {
+    marginVertical: 8,
+  },
+  sectionHeaderBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 6,
+  },
+  sectionHeaderText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+    textTransform: "uppercase",
+  },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: "#6B7280",
+  },
+  infoValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  termRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  termCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+    backgroundColor: "#FFF",
+  },
+  termCheckboxChecked: {
+    backgroundColor: "#059669",
+    borderColor: "#059669",
+  },
+  termDeviation: {
+    fontSize: 12,
+    color: "#DC2626",
+    fontStyle: "italic",
+    marginTop: 4,
+  },
+  termNoteInput: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 6,
+    fontSize: 12,
+    color: "#374151",
+    backgroundColor: "#FFF",
+    minHeight: 40,
+  },
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: "auto",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "#EFF6FF",
+    gap: 4,
+  },
+  editButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#3B82F6",
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: "#10B981",
+    borderWidth: 0,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#EF4444",
+  },
+  signaturesContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 16,
+  },
+  signatureImage: {
+    width: "100%",
+    height: 80,
+  },
+
+  // OTP Modal styles
+  otpModalContainer: {
+    backgroundColor: "#FFF",
+    borderRadius: 16,
+    padding: 24,
+    width: "90%",
+    maxWidth: 400,
+  },
+  otpModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  otpModalSubtitle: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  otpInputContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 24,
+  },
+  otpModalButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  otpModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  otpCancelButton: {
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  otpCancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#374151",
+  },
+  otpSubmitButton: {
+    backgroundColor: "#3B82F6",
+  },
+  otpSubmitButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFF",
   },
 });
 
