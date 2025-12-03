@@ -1,17 +1,36 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { View, Text, Image, TouchableOpacity, StyleSheet, ImageBackground, Dimensions } from 'react-native'
-// import { BellIcon, Cog8ToothIcon } from '../../provider-v2/icons/InterfaceIcon' // Giữ nguyên import của bạn
-
-import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
+import { ekycService } from '@/services/ekycService'
 
 interface HeaderProps {
   owner: any | null | undefined
-  cccdVerified?: boolean
 }
 
 const { width } = Dimensions.get('window')
 
-const HeaderOwner: React.FC<HeaderProps> = ({ owner, cccdVerified }) => {
+const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
+  const router = useRouter()
+  const [isVerified, setIsVerified] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    checkVerifiedStatus()
+  }, [])
+
+  const checkVerifiedStatus = async () => {
+    try {
+      const response = await ekycService.checkVerifiedStatus()
+      if (response.isSuccess && response.result) {
+        setIsVerified(response.result.isVerified)
+      }
+    } catch (error) {
+      console.error('Failed to check verified status:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
   const o = owner as any
   // support payload that may be wrapped in `result`, or attached as `profile`, or be the profile directly
   const profile = o?.profile ?? o?.result ?? o ?? {}
@@ -28,6 +47,10 @@ const HeaderOwner: React.FC<HeaderProps> = ({ owner, cccdVerified }) => {
   const initials = name
     ? name.split(' ').map((s: string) => s[0]).slice(0, 2).join('').toUpperCase()
     : 'CX'
+
+  const handleVerifyCCCD = () => {
+    router.push('/owner/my-documents')
+  }
 
   return (
     <View style={styles.container}>
@@ -88,14 +111,18 @@ const HeaderOwner: React.FC<HeaderProps> = ({ owner, cccdVerified }) => {
                 <Text style={styles.profileContact}>{email} • {phone}</Text>
 
                 {/* Nút xác minh */}
-                {cccdVerified ? (
-                  <View style={styles.verifyBadge}>
-                    <Text style={styles.verifyText}>🛡️ Đã xác minh CCCD</Text>
-                  </View>
-                ) : (
-                  <View style={[styles.verifyBadge, { backgroundColor: '#EEF2FF', borderColor: '#BFDBFE' }]}>
-                    <Text style={[styles.verifyText, { color: '#2563EB' }]}>Chưa xác minh CCCD</Text>
-                  </View>
+                {!loading && (
+                  isVerified ? (
+                    <TouchableOpacity style={styles.verifyBadge} onPress={handleVerifyCCCD}>
+                      <MaterialCommunityIcons name="shield-check" size={16} color="#047857" />
+                      <Text style={styles.verifyText}>Đã xác minh</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={styles.unverifiedBadge} onPress={handleVerifyCCCD}>
+                      <MaterialCommunityIcons name="shield-alert" size={16} color="#2563EB" />
+                      <Text style={styles.unverifiedText}>Xác minh tài khoản</Text>
+                    </TouchableOpacity>
+                  )
                 )}
             </View>
         </View>
@@ -229,17 +256,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   verifyBadge: {
-    backgroundColor: '#FFF7ED', // Cam nhạt
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
     borderWidth: 1,
-    borderColor: '#FDBA74',
+    borderColor: '#34D399',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 22,
+    gap: 6,
   },
   verifyText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#C2410C', // Cam đậm
+    color: '#047857',
+  },
+  unverifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 22,
+    gap: 6,
+  },
+  unverifiedText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2563EB',
   },
 })
 

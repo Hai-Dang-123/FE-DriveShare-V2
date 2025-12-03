@@ -1,9 +1,13 @@
-import React from 'react'
-import { SafeAreaView, View, Text, StyleSheet, ScrollView, StatusBar } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { SafeAreaView, View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl } from 'react-native'
 import { useAuth } from '@/hooks/useAuth'
+import { useAuthStore } from '@/stores/authStore'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import HeaderOwner from './components/HeaderOwner'
 import OwnerManagementTabs from './components/OwnerManagementTabs'
 import WalletCard from '../../components/WalletCard'
+import userService from '@/services/userService'
+import walletService from '@/services/walletService'
 // Giả sử bạn có các icon này, nếu không có hãy dùng View placeholder như bên dưới
 // import { TruckIcon, UserGroupIcon, MapIcon, StarIcon } from '../provider-v2/icons/StatIcon' // Điều chỉnh import này theo project của bạn
 
@@ -11,14 +15,54 @@ import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-ico
 
 const OwnerHomeScreen: React.FC = () => {
   const { user, wallet, cccdVerified } = useAuth()
+  const [profile, setProfile] = useState<any>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
-  const profile = (user as any)?.profile ?? (user as any)?.result ?? (user as any) ?? {}
+  const loadData = async () => {
+    try {
+      // Load profile
+      const resp: any = await userService.getMyProfile()
+      const prof = resp?.result ?? resp
+      if (prof) {
+        setProfile(prof)
+        // Merge and persist
+        const existing = useAuthStore.getState().user
+        if (existing) {
+          const merged = { ...existing, profile: prof, userName: prof.fullName ?? existing.userName, email: prof.email ?? existing.email, phoneNumber: prof.phoneNumber ?? existing.phoneNumber, avatarUrl: prof.avatarUrl ?? existing.avatarUrl }
+          useAuthStore.setState({ user: merged })
+          await AsyncStorage.setItem('user', JSON.stringify(merged))
+        }
+      }
+
+      // Load wallet
+      const wresp: any = await walletService.getMyWallet()
+      const w = wresp?.result ?? wresp
+      if (w) {
+        useAuthStore.setState({ wallet: w })
+        await AsyncStorage.setItem('wallet', JSON.stringify(w))
+      }
+    } catch (e) {
+      console.warn('OwnerHome load failed', e)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }
+
+  const displayProfile = profile ?? (user as any)?.profile ?? (user as any)?.result ?? (user as any) ?? {}
   // Map fields from profile, show fallback text when missing
-  const totalVehicles = profile?.totalVehicles ?? profile?.totalVehicleCount ?? 'Chưa có dữ liệu'
-  const totalDrivers = profile?.totalDrivers ?? 'Chưa có dữ liệu'
-  const totalTrips = profile?.totalTripsCreated ?? profile?.totalTrips ?? 'Chưa có dữ liệu'
-  const rating = profile?.averageRating ?? 'Chưa có dữ liệu'
-  const companyName = profile?.companyName ?? 'Chưa có dữ liệu'
+  const totalVehicles = displayProfile?.totalVehicles ?? displayProfile?.totalVehicleCount ?? 'Chưa có dữ liệu'
+  const totalDrivers = displayProfile?.totalDrivers ?? 'Chưa có dữ liệu'
+  const totalTrips = displayProfile?.totalTripsCreated ?? displayProfile?.totalTrips ?? 'Chưa có dữ liệu'
+  const rating = displayProfile?.averageRating ?? 'Chưa có dữ liệu'
+  const companyName = displayProfile?.companyName ?? 'Chưa có dữ liệu'
 
   const balance = '150.500.000'
 
@@ -44,9 +88,9 @@ const OwnerHomeScreen: React.FC = () => {
     <View style={styles.mainContainer}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         {/* 1. Header (Background + Info Card) */}
-        <HeaderOwner owner={user} cccdVerified={cccdVerified} />
+        <HeaderOwner owner={user} />
 
         <View style={styles.bodyContent}>
 

@@ -131,4 +131,65 @@ export const authService = {
       throw e
     }
   },
+  registerDriver: async (payload: any) => {
+    try {
+      // If payload is FormData (contains file), send multipart request
+      if (typeof FormData !== 'undefined' && payload instanceof FormData) {
+        const res = await api.post('/api/Auth/register-driver', payload, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        return res.data
+      }
+      const res = await api.post('/api/Auth/register-driver', payload)
+      return res.data
+    } catch (e: any) {
+      console.error('authService.registerDriver failed', e)
+      if (e.response) console.error('response', e.response.data)
+      throw e
+    }
+  },
+  registerOwner: async (payload: any) => {
+    try {
+      if (typeof FormData !== 'undefined' && payload instanceof FormData) {
+        const res = await api.post('/api/auth/register-owner', payload, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        return res.data
+      }
+      const res = await api.post('/api/auth/register-owner', payload)
+      return res.data
+    } catch (e: any) {
+      console.error('authService.registerOwner failed', e)
+      if (e.response) console.error('response', e.response.data)
+      throw e
+    }
+  },
+  registerProvider: async (payload: any) => {
+    try {
+      if (typeof FormData !== 'undefined' && payload instanceof FormData) {
+        const res = await api.post('/api/auth/register-provider', payload, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        return res.data
+      }
+      const res = await api.post('/api/auth/register-provider', payload)
+      return res.data
+    } catch (e: any) {
+      console.error('authService.registerProvider failed', e)
+      if (e.response) console.error('response', e.response.data)
+      throw e
+    }
+  },
+  verifyEmail: async (userId: string, token: string): Promise<ResponseDTO<any>> => {
+    try {
+      const response = await api.get('/api/auth/verify-email', {
+        params: { userId, token },
+      })
+      return response.data
+    } catch (e: any) {
+      console.error('authService.verifyEmail failed', e)
+      if (e.response) console.error('response', e.response.data)
+      throw e
+    }
+  },
 }

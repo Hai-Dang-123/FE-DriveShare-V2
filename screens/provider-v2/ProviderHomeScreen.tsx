@@ -1,18 +1,23 @@
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   StatusBar,
+  RefreshControl
 } from 'react-native'
 import { Provider } from '@/models/types'
+import { useAuthStore } from '@/stores/authStore'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import HeaderProvider from './components/HeaderProvider'
 import Stats from './components/Stat'
 import ManagementTabs from './components/ManagementTab'
 import WalletCard from '../../components/WalletCard'
 import { useAuth } from '@/hooks/useAuth'
+import userService from '@/services/userService'
+import walletService from '@/services/walletService'
 
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 
@@ -22,7 +27,44 @@ interface ProviderHomePageProps {
 
 const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
   const { user, wallet, cccdVerified } = useAuth()
-  const providerData = (provider ?? user) as Provider | undefined | null
+  const [profile, setProfile] = useState<any>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const providerData = (provider ?? profile ?? user) as Provider | undefined | null
+
+  const loadData = async () => {
+    try {
+      const resp: any = await userService.getMyProfile()
+      const prof = resp?.result ?? resp
+      if (prof) {
+        setProfile(prof)
+        const existing = useAuthStore.getState().user
+        if (existing) {
+          const merged = { ...existing, profile: prof, userName: prof.fullName ?? existing.userName, email: prof.email ?? existing.email, phoneNumber: prof.phoneNumber ?? existing.phoneNumber, avatarUrl: prof.avatarUrl ?? existing.avatarUrl }
+          useAuthStore.setState({ user: merged })
+          await AsyncStorage.setItem('user', JSON.stringify(merged))
+        }
+      }
+
+      const wresp: any = await walletService.getMyWallet()
+      const w = wresp?.result ?? wresp
+      if (w) {
+        useAuthStore.setState({ wallet: w })
+        await AsyncStorage.setItem('wallet', JSON.stringify(w))
+      }
+    } catch (e) {
+      console.warn('ProviderHome load failed', e)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const onRefresh = async () => {
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }
 
   if (!providerData) {
     return (
@@ -33,15 +75,15 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
   }
 
   const p = providerData as any
-  const profile = p?.profile ?? p?.result ?? p ?? {}
-  const userName = profile.fullName ?? profile.userName ?? 'Nhà cung cấp'
-  const companyName = profile.companyName ?? profile.company ?? 'Không có'
-  const email = profile.email ?? 'Không có'
-  const phone = profile.phoneNumber ?? 'Không có'
-  const totalItems = profile.totalItems ?? profile.TotalItems ?? profile.totalItemCount ?? 0
-  const totalPackages = profile.totalPackages ?? profile.TotalPackages ?? profile.totalPackageCount ?? 0
-  const totalPackagePosts = profile.totalPackagePosts ?? profile.TotalPackagePosts ?? profile.totalPackagePostsCount ?? 0
-  const averageRating = profile.averageRating ?? profile.AverageRating ?? '-'
+  const displayProfile = p?.profile ?? p?.result ?? p ?? {}
+  const userName = displayProfile.fullName ?? displayProfile.userName ?? 'Nhà cung cấp'
+  const companyName = displayProfile.companyName ?? displayProfile.company ?? 'Không có'
+  const email = displayProfile.email ?? 'Không có'
+  const phone = displayProfile.phoneNumber ?? 'Không có'
+  const totalItems = displayProfile.totalItems ?? displayProfile.TotalItems ?? displayProfile.totalItemCount ?? 0
+  const totalPackages = displayProfile.totalPackages ?? displayProfile.TotalPackages ?? displayProfile.totalPackageCount ?? 0
+  const totalPackagePosts = displayProfile.totalPackagePosts ?? displayProfile.TotalPackagePosts ?? displayProfile.totalPackagePostsCount ?? 0
+  const averageRating = displayProfile.averageRating ?? displayProfile.AverageRating ?? '-'
 
   const onCreatePost = () => console.log('Tạo bài đăng')
   const onCreatePackage = () => console.log('Tạo gói')
@@ -49,8 +91,8 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <HeaderProvider provider={user} cccdVerified={cccdVerified} />
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+        <HeaderProvider provider={user} />
 
         <View style={styles.bodyContent}>
           <WalletCard wallet={wallet} />
