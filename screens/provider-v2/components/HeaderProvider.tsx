@@ -1,15 +1,36 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { View, Text, Image, TouchableOpacity, StyleSheet, ImageBackground, Dimensions } from 'react-native'
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
+import { ekycService } from '@/services/ekycService'
 
 interface HeaderProps {
   provider: any | null | undefined
-  cccdVerified?: boolean
 }
 
 const { width } = Dimensions.get('window')
 
-const HeaderProvider: React.FC<HeaderProps> = ({ provider, cccdVerified }) => {
+const HeaderProvider: React.FC<HeaderProps> = ({ provider }) => {
+  const router = useRouter()
+  const [isVerified, setIsVerified] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    checkVerifiedStatus()
+  }, [])
+
+  const checkVerifiedStatus = async () => {
+    try {
+      const response = await ekycService.checkVerifiedStatus()
+      if (response.isSuccess && response.result) {
+        setIsVerified(response.result.isVerified)
+      }
+    } catch (error) {
+      console.error('Failed to check verified status:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
   const p = provider as any
   const profile = p?.profile ?? p?.result ?? p ?? {}
 
@@ -23,6 +44,10 @@ const HeaderProvider: React.FC<HeaderProps> = ({ provider, cccdVerified }) => {
   const initials = name
     ? name.split(' ').map((s: string) => s[0]).slice(0, 2).join('').toUpperCase()
     : 'NP'
+
+  const handleVerifyCCCD = () => {
+    router.push('/provider-v2/my-documents')
+  }
 
   return (
     <View style={styles.container}>
@@ -73,14 +98,18 @@ const HeaderProvider: React.FC<HeaderProps> = ({ provider, cccdVerified }) => {
             <Text style={styles.profileCompany}>{company}</Text>
             <Text style={styles.profileContact}>{email} • {phone}</Text>
 
-            {cccdVerified ? (
-              <View style={styles.verifyBadge}>
-                <Text style={styles.verifyText}>🛡️ Đã xác minh CCCD</Text>
-              </View>
-            ) : (
-              <View style={[styles.verifyBadge, { backgroundColor: '#EEF2FF', borderColor: '#BFDBFE' }]}>
-                <Text style={[styles.verifyText, { color: '#2563EB' }]}>Chưa xác minh CCCD</Text>
-              </View>
+            {!loading && (
+              isVerified ? (
+                <TouchableOpacity style={styles.verifyBadge} onPress={handleVerifyCCCD}>
+                  <MaterialCommunityIcons name="shield-check" size={16} color="#047857" />
+                  <Text style={styles.verifyText}>Đã xác minh</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.unverifiedBadge} onPress={handleVerifyCCCD}>
+                  <MaterialCommunityIcons name="shield-alert" size={16} color="#2563EB" />
+                  <Text style={styles.unverifiedText}>Xác minh tài khoản</Text>
+                </TouchableOpacity>
+              )
             )}
           </View>
         </View>
@@ -206,17 +235,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   verifyBadge: {
-    backgroundColor: '#FFF7ED',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
     borderWidth: 1,
-    borderColor: '#FDBA74',
+    borderColor: '#34D399',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 22,
+    gap: 6,
   },
   verifyText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#C2410C',
+    color: '#047857',
+  },
+  unverifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 22,
+    gap: 6,
+  },
+  unverifiedText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2563EB',
   },
 })
 

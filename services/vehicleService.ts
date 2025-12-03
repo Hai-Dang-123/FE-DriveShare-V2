@@ -93,7 +93,7 @@ const vehicleService = {
       const features = getField('Features', 'features')
       if (Array.isArray(features)) features.forEach((f: any) => form.append('Features', String(f)))
 
-  const imagesRaw: any[] = payload.VehicleImages ?? payload.vehicleImages ?? payload.images ?? []
+      const imagesRaw: any[] = payload.VehicleImages ?? payload.vehicleImages ?? payload.images ?? []
 
       const dataUrlToBlob = async (dataUrl: string) => {
         try {
@@ -118,28 +118,35 @@ const vehicleService = {
 
       for (let i = 0; i < imagesRaw.length; i++) {
         const img = imagesRaw[i]
+        const imgPrefix = `VehicleImages[${i}]`
         let uri: string | undefined
         if (typeof img === 'string') uri = img
         else if (typeof img === 'object') uri = img.uri ?? img.vehicleImageURL ?? img.imageURL ?? img.url
         if (!uri) continue
 
+        // Append ImageType and Caption
+        const imageType = img.ImageType ?? img.imageType ?? 0
+        const caption = img.Caption ?? img.caption ?? ''
+        form.append(`${imgPrefix}.ImageType`, String(imageType))
+        if (caption) form.append(`${imgPrefix}.Caption`, caption)
+
         if (uri.startsWith('data:')) {
           try {
             const blob = await dataUrlToBlob(uri)
             // @ts-ignore
-            form.append('VehicleImages', blob, `vehicle-${Date.now()}-${i}.jpg`)
+            form.append(`${imgPrefix}.ImageFile`, blob, `vehicle-${Date.now()}-${i}.jpg`)
           } catch (e) {
             console.warn('Failed to convert dataUrl to blob for vehicle image', e)
           }
         } else if (uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('/')) {
           // @ts-ignore
-          form.append('VehicleImages', { uri, name: `vehicle-${Date.now()}-${i}.jpg`, type: 'image/jpeg' })
+          form.append(`${imgPrefix}.ImageFile`, { uri, name: `vehicle-${Date.now()}-${i}.jpg`, type: 'image/jpeg' })
         } else {
           try {
             const resp = await fetch(uri)
             const blob = await resp.blob()
             // @ts-ignore
-            form.append('VehicleImages', blob, `vehicle-${Date.now()}-${i}.jpg`)
+            form.append(`${imgPrefix}.ImageFile`, blob, `vehicle-${Date.now()}-${i}.jpg`)
           } catch (e) {
             console.warn('Unsupported vehicle image URI, skipping:', uri, e)
           }

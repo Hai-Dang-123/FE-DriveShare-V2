@@ -1,18 +1,46 @@
 
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { View, Text, Image, TouchableOpacity, StyleSheet, ImageBackground, Dimensions } from 'react-native'
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
+import { ekycService } from '@/services/ekycService'
 
 interface HeaderProps {
   driver: any
 }
 
 const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
-  const name = driver?.fullName || 'Nguyễn Văn B'
-  const license = driver?.licenseClass || 'Hạng FC'
-  const experience = driver?.experienceYears || 5
+  const router = useRouter()
+  const [isVerified, setIsVerified] = useState(false)
+  const [verificationMessage, setVerificationMessage] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    checkVerifiedStatus()
+  }, [])
+
+  const checkVerifiedStatus = async () => {
+    try {
+      const response = await ekycService.checkVerifiedStatus()
+      if (response.isSuccess) {
+        setIsVerified(response.result?.isVerified || false)
+        setVerificationMessage(response.message || '')
+      }
+    } catch (error) {
+      console.error('Failed to check verified status:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+  const name = driver?.fullName || 'N/A'
+  const license = driver?.licenseClass || 'Chưa cập nhật'
+  const experience = driver?.experienceYears || 0
   const avatar = driver?.avatarUrl
+
+  const handleVerifyCCCD = () => {
+    router.push('/driver/my-documents')
+  }
 
   return (
     <ImageBackground
@@ -54,11 +82,32 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
           <View style={styles.infoText}>
             <Text style={styles.name}>{name}</Text>
             <Text style={styles.subInfo}>Bằng lái {license} • {experience} năm kinh nghiệm</Text>
-            <View style={styles.ratingBadge}>
-               <MaterialCommunityIcons name="star" size={12} color="#F59E0B" />
-               <Text style={styles.ratingText}>4.9/5.0</Text>
+            <View style={styles.badgeRow}>
+              <View style={styles.ratingBadge}>
+                <MaterialCommunityIcons name="star" size={12} color="#F59E0B" />
+                <Text style={styles.ratingText}>4.9/5.0</Text>
+              </View>
             </View>
           </View>
+        </View>
+
+        {/* Verification Status (CCCD + GPLX for drivers) */}
+        <View style={styles.verifySection}>
+          {!loading && (
+            isVerified ? (
+              <TouchableOpacity style={styles.verifiedBadgeContainer} onPress={handleVerifyCCCD}>
+                <MaterialCommunityIcons name="shield-check" size={16} color="#10B981" />
+                <Text style={styles.verifiedText}>Đã xác minh đầy đủ</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyCCCD}>
+                <MaterialCommunityIcons name="shield-alert" size={16} color="#EF4444" />
+                <Text style={styles.verifyButtonText}>
+                  {verificationMessage || 'Xác minh CCCD & GPLX'}
+                </Text>
+              </TouchableOpacity>
+            )
+          )}
         </View>
       </View>
     </ImageBackground>
@@ -139,6 +188,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 6,
   },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -153,7 +207,41 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 12,
     fontWeight: '700',
-  }
+  },
+  verifySection: {
+    marginTop: 16,
+    paddingHorizontal: 20,
+  },
+  verifiedBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+    alignSelf: 'flex-start',
+  },
+  verifiedText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  verifyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+    alignSelf: 'flex-start',
+  },
+  verifyButtonText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '700',
+  },
 })
 
 export default HeaderDriver
