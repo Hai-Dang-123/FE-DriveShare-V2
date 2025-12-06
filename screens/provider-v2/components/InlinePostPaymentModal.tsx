@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Modal, SafeAreaView, View, Text, TouchableOpacity, ActivityIndicator, ScrollView, StyleSheet } from 'react-native'
-import postService from '@/services/postService'
+import postPackageService from '@/services/postPackageService'
 import walletService from '@/services/walletService'
 import { Linking } from 'react-native'
 import { useRouter } from 'expo-router'
@@ -41,7 +41,7 @@ const InlinePostPaymentModal: React.FC<Props> = ({ visible, postId, onClose, onD
 
   const fetchDetails = async () => {
     try {
-      const res: any = await postService.getPostPackageDetails(postId!)
+      const res: any = await postPackageService.getPostPackageDetails(postId!)
       setPost(res?.result ?? res)
     } catch (e) { console.warn(e) }
   }

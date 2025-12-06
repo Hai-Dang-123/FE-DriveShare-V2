@@ -42,6 +42,37 @@ export enum PostStatus {
   CANCELLED = "CANCELLED",
 }
 
+// --- VEHICLE STATUS ---
+export enum VehicleStatus {
+  ACTIVE = "ACTIVE",
+  IN_USE = "IN_USE",
+  INACTIVE = "INACTIVE",
+  DELETED = "DELETED",
+}
+
+// --- DOCUMENT TYPE ---
+export enum DocumentType {
+  CCCD = "CCCD",
+  DRIVER_LICENSE = "DRIVER_LICENSE",
+  VEHICLE_LICENSE = "VEHICLE_LICENSE",
+  CIVIL_INSURANCE = "CIVIL_INSURANCE", // BẢO HIỂM DÂN SỰ
+  PHYSICAL_INSURANCE = "PHYSICAL_INSURANCE", // BẢO HIỂM VẬT CHẤT
+}
+
+// --- VEHICLE IMAGE TYPE ---
+export enum VehicleImageType {
+  OTHER = "OTHER", // Ảnh khác
+  OVERVIEW = "OVERVIEW", // Ảnh toàn cảnh xe
+  LICENSE_PLATE = "LICENSE_PLATE", // Ảnh biển số xe
+}
+
+// --- DOCUMENT STATUS ---
+export enum DocumentStatus {
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  REJECTED = "REJECTED",
+}
+
 // --- INTERFACES CƠ BẢN ---
 export interface User {
   userId: string;
@@ -128,6 +159,19 @@ export interface VehicleImage {
   imageURL: string;
   caption?: string;
   createdAt?: string;
+  imageType?: VehicleImageType;
+}
+
+export interface VehicleDocumentDetail {
+  vehicleDocumentId: string;
+  documentType: DocumentType;
+  frontDocumentUrl?: string;
+  backDocumentUrl?: string;
+  expirationDate?: string;
+  status: DocumentStatus;
+  adminNotes?: string;
+  createdAt: string;
+  processedAt?: string;
 }
 
 export interface Vehicle {
@@ -139,10 +183,37 @@ export interface Vehicle {
   yearOfManufacture?: number;
   payloadInKg?: number;
   volumeInM3?: number;
-  status?: string;
+  status?: VehicleStatus;
   vehicleType?: VehicleType;
   owner?: { userId: string; fullName?: string; companyName?: string };
   imageUrls?: VehicleImage[];
+}
+
+export interface OwnerDetail {
+  userId: string;
+  fullName: string;
+  email: string;
+  phoneNumber?: string;
+  createdAt: string;
+  lastUpdatedAt: string;
+  status: UserStatus;
+  dateOfBirth?: string;
+  avatarUrl?: string;
+  isEmailVerified: boolean;
+  isPhoneVerified: boolean;
+  address?: string;
+  taxCode?: string;
+  businessAddress?: string;
+  companyName?: string;
+  averageRating?: number;
+}
+
+export interface VehicleDetail extends Vehicle {
+  vehicleId: string;
+  vehicleType: VehicleType;
+  owner: OwnerDetail;
+  imageUrls: VehicleImage[];
+  documents: VehicleDocumentDetail[];
 }
 
 // --- POST PACKAGE ---
@@ -352,6 +423,7 @@ export interface TripDetailFullDTOExtended extends TripDetailFullDTO {
   issues: TripDeliveryIssueDTO[];
   tripVehicleHandoverRecordId?: string;
   tripVehicleReturnRecordId?: string;
+  handoverReadDTOs?: any[]; // Array of vehicle handover records with status
 }
 
 // --- RESPONSE DTO CHUNG ---

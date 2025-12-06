@@ -23,8 +23,9 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
   const checkVerifiedStatus = async () => {
     try {
       const response = await ekycService.checkVerifiedStatus()
+      // Backend returns: { result: boolean, message: string }
       if (response.isSuccess) {
-        setIsVerified(response.result?.isVerified || false)
+        setIsVerified(response.result === true)
         setVerificationMessage(response.message || '')
       }
     } catch (error) {

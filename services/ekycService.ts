@@ -47,6 +47,8 @@ export interface MyDocumentsResponseDTO {
   driverDocuments?: DriverDocumentsDTO
 }
 
+// Note: Backend returns { result: boolean, message: string } at ResponseDTO level
+// So we actually receive ResponseDTO<boolean> with message in ResponseDTO.message
 export interface VerifiedStatusDTO {
   isVerified: boolean
   message: string
@@ -121,9 +123,9 @@ export const ekycService = {
     }
   },
 
-  checkVerifiedStatus: async (): Promise<ResponseDTO<VerifiedStatusDTO>> => {
+  checkVerifiedStatus: async (): Promise<ResponseDTO<boolean>> => {
     try {
-      const response = await api.get<ResponseDTO<VerifiedStatusDTO>>('/api/UserDocument/check-verified-status')
+      const response = await api.get<ResponseDTO<boolean>>('/api/UserDocument/check-verified-status')
       return response.data
     } catch (error: any) {
       console.error('ekycService.checkVerifiedStatus failed', error)

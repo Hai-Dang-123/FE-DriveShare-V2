@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Modal, SafeAreaView, View, Text, TouchableOpacity, ActivityIndicator, ScrollView, StyleSheet } from 'react-native'
-import postService from '@/services/postService'
+import postPackageService from '@/services/postPackageService'
 import contractTemplateService from '@/services/contractTemplateService'
 import { Linking } from 'react-native'
 
@@ -39,7 +39,7 @@ const InlinePostSignModal: React.FC<Props> = ({ visible, postId, onClose, onDone
 
   const fetchDetails = async () => {
     try {
-      const res: any = await postService.getPostPackageDetails(postId!)
+      const res: any = await postPackageService.getPostPackageDetails(postId!)
       setPost(res?.result ?? res)
     } catch (e) { console.warn(e) }
   }
@@ -55,7 +55,7 @@ const InlinePostSignModal: React.FC<Props> = ({ visible, postId, onClose, onDone
     if (!postId) return
     setLoading(true)
     try {
-      const upd: any = await postService.updatePostStatus(postId, 'AWAITING_PAYMENT')
+      const upd: any = await postPackageService.updatePostStatus(postId, 'AWAITING_PAYMENT')
       const ok = upd?.isSuccess ?? upd?.statusCode === 200
       if (!ok) throw new Error(upd?.message || 'Không thể cập nhật trạng thái')
       onDone?.()

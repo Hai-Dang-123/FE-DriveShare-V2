@@ -10,19 +10,16 @@ interface ItemCardProps {
   onDelete: () => void
   onPack: () => void
   deleting?: boolean
+  getStatusColor?: (status: string) => string
 }
 
-const statusStyles: Record<string, { text: string; bg: string }> = {
-  [ItemStatus.PENDING]: { text: '#92400E', bg: '#FEF3C7' },
-  [ItemStatus.IN_WAREHOUSE]: { text: '#1E40AF', bg: '#DBEAFE' },
-  [ItemStatus.PACKAGED]: { text: '#065F46', bg: '#D1FAE5' },
-  [ItemStatus.IN_USE]: { text: '#0F766E', bg: '#CCFBF1' },
-}
-
-const ItemCard: React.FC<ItemCardProps> = ({ item, onEdit, onDelete, onPack, deleting }) => {
+const ItemCard: React.FC<ItemCardProps> = ({ item, onEdit, onDelete, onPack, deleting, getStatusColor }) => {
   const images = (item as any).images ?? (item as any).ItemImages ?? []
   const imageUrl = images.length > 0 ? (images[0].itemImageURL ?? images[0].uri ?? images[0]) : 'https://via.placeholder.com/400'
   const status = item.status ?? ItemStatus.PENDING
+  
+  // Use custom status color if provided, otherwise use default
+  const statusColor = getStatusColor ? getStatusColor(status) : '#F59E0B'
 
   return (
     <View style={styles.cardContainer}>
@@ -35,7 +32,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onEdit, onDelete, onPack, del
         )}
 
         <View style={styles.ribbonContainer} pointerEvents="none">
-          <View style={[styles.ribbon, { backgroundColor: status === ItemStatus.PACKAGED ? '#10B981' : '#F59E0B' }]}>
+          <View style={[styles.ribbon, { backgroundColor: statusColor }]}>
             <Text style={styles.ribbonText}>{(status || '').replace('_', ' ')}</Text>
           </View>
         </View>

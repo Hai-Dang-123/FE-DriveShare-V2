@@ -13,12 +13,30 @@ export const useItems = (initialPage = 1, initialSize = 20) => {
   const [pageSize, setPageSize] = useState<number>(initialSize)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState<string>('')
+  const [sortBy, setSortBy] = useState<string>('itemname')
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('ASC')
+  const [statusFilter, setStatusFilter] = useState<string>('ALL')
 
-  const fetchPage = useCallback(async (p = page, size = pageSize) => {
+  const fetchPage = useCallback(async (
+    p = page, 
+    size = pageSize, 
+    searchQuery = search,
+    sort = sortBy,
+    order = sortOrder,
+    statusVal = statusFilter
+  ) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await itemService.getItemsByUserId(userId, p, size)
+      const res = await itemService.getItemsByUserId({
+        pageNumber: p,
+        pageSize: size,
+        search: searchQuery || undefined,
+        sortBy: sort,
+        sortOrder: order,
+        status: statusVal !== 'ALL' ? statusVal : undefined
+      })
       if (res && res.isSuccess && res.result) {
         // backend result shape may vary; try to read commonly used fields
         const result: any = res.result
@@ -89,7 +107,7 @@ export const useItems = (initialPage = 1, initialSize = 20) => {
       }
 
       const res = await itemService.createItem(createPayload as any)
-      if (res.isSuccess) await fetchPage(1, pageSize)
+      if (res.isSuccess) await fetchPage(1, pageSize, search, sortBy, sortOrder, statusFilter)
       return res
     } finally {
       setLoading(false)
@@ -100,7 +118,7 @@ export const useItems = (initialPage = 1, initialSize = 20) => {
     setLoading(true)
     try {
       const res = await itemService.updateItem(payload)
-      if (res.isSuccess) await fetchPage(page, pageSize)
+      if (res.isSuccess) await fetchPage(page, pageSize, search, sortBy, sortOrder, statusFilter)
       return res
     } finally {
       setLoading(false)
@@ -111,7 +129,7 @@ export const useItems = (initialPage = 1, initialSize = 20) => {
     setLoading(true)
     try {
       const res = await itemService.deleteItem(id)
-      if (res.isSuccess) await fetchPage(page, pageSize)
+      if (res.isSuccess) await fetchPage(page, pageSize, search, sortBy, sortOrder, statusFilter)
       return res
     } finally {
       setLoading(false)
@@ -125,6 +143,14 @@ export const useItems = (initialPage = 1, initialSize = 20) => {
     pageSize,
     loading,
     error,
+    search,
+    sortBy,
+    sortOrder,
+    statusFilter,
+    setSearch,
+    setSortBy,
+    setSortOrder,
+    setStatusFilter,
     fetchPage,
     setPage,
     setPageSize,

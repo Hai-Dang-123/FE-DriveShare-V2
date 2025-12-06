@@ -10,9 +10,10 @@ interface ItemListProps {
   onDelete: (itemId: string) => void
   onPack: (item: Item) => void
   deletingId?: string | null
+  getStatusColor?: (status: string) => string
 }
 
-const ItemList: React.FC<ItemListProps> = ({ items, onEdit, onDelete, onPack, deletingId }) => {
+const ItemList: React.FC<ItemListProps> = ({ items, onEdit, onDelete, onPack, deletingId, getStatusColor }) => {
   const renderEmptyComponent = () => (
     <View style={styles.emptyContainer}>
 <CubeIcon style={styles.emptyIcon} />
@@ -33,6 +34,7 @@ const ItemList: React.FC<ItemListProps> = ({ items, onEdit, onDelete, onPack, de
           onDelete={() => onDelete(item.id)}
           onPack={() => onPack(item)}
           deleting={Boolean(deletingId && deletingId === item.id)}
+          getStatusColor={getStatusColor}
         />
       )}
       keyExtractor={(item) => item.id}

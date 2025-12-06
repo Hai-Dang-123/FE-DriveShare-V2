@@ -12,6 +12,7 @@ import DrivingHoursCard from './components/DrivingHoursCard'
 import userService from '@/services/userService'
 import driverWorkSessionService from '@/services/driverWorkSessionService'
 import walletService from '@/services/walletService'
+import { ekycService } from '@/services/ekycService'
 
 const DriverHomeScreen: React.FC = () => {
   const { user, wallet } = useAuth()
@@ -69,6 +70,28 @@ const DriverHomeScreen: React.FC = () => {
         }
       } catch (e) {
         console.warn('wallet fetch failed', e)
+      }
+
+      // 2.5) Check verified status
+      try {
+        const verifyResp: any = await ekycService.checkVerifiedStatus()
+        // Backend returns: { result: boolean, message: string }
+        if (mountedRef.current) {
+          const isVerified = verifyResp?.result === true
+          const message = verifyResp?.message || ''
+          
+          const statusData = {
+            isVerified,
+            message
+          }
+          useAuthStore.setState({ 
+            isVerified: statusData.isVerified,
+            verificationMessage: statusData.message
+          })
+          await AsyncStorage.setItem('verificationStatus', JSON.stringify(statusData))
+        }
+      } catch (e) {
+        console.warn('checkVerifiedStatus failed', e)
       }
 
       // 3) Fetch driver history: daily and weekly

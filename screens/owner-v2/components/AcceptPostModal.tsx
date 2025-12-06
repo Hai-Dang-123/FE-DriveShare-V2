@@ -44,7 +44,7 @@ const AcceptPostModal: React.FC<Props> = ({ isOpen, post, onClose, onSuccess }) 
   const loadVehicles = async () => {
     setLoadingVehicles(true)
     try {
-      const res: any = await vehicleService.getMyVehicles(1, 100)
+      const res: any = await vehicleService.getMyVehicles({ pageNumber: 1, pageSize: 100 })
       const payload = res?.result ?? res
       const items = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
       // map to Vehicle interface lightly

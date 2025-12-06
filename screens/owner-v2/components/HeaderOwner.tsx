@@ -22,8 +22,9 @@ const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
   const checkVerifiedStatus = async () => {
     try {
       const response = await ekycService.checkVerifiedStatus()
-      if (response.isSuccess && response.result) {
-        setIsVerified(response.result.isVerified)
+      // Backend returns: { result: boolean, message: string }
+      if (response.isSuccess) {
+        setIsVerified(response.result === true)
       }
     } catch (error) {
       console.error('Failed to check verified status:', error)

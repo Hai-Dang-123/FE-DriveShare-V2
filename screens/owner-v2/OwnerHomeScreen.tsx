@@ -8,13 +8,11 @@ import OwnerManagementTabs from './components/OwnerManagementTabs'
 import WalletCard from '../../components/WalletCard'
 import userService from '@/services/userService'
 import walletService from '@/services/walletService'
-// Giả sử bạn có các icon này, nếu không có hãy dùng View placeholder như bên dưới
-// import { TruckIcon, UserGroupIcon, MapIcon, StarIcon } from '../provider-v2/icons/StatIcon' // Điều chỉnh import này theo project của bạn
-
+import { ekycService } from '@/services/ekycService'
 import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
 
 const OwnerHomeScreen: React.FC = () => {
-  const { user, wallet, cccdVerified } = useAuth()
+  const { user, wallet } = useAuth()
   const [profile, setProfile] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -40,6 +38,26 @@ const OwnerHomeScreen: React.FC = () => {
       if (w) {
         useAuthStore.setState({ wallet: w })
         await AsyncStorage.setItem('wallet', JSON.stringify(w))
+      }
+
+      // Check verified status
+      try {
+        const verifyResp: any = await ekycService.checkVerifiedStatus()
+        // Backend returns: { result: boolean, message: string }
+        const isVerified = verifyResp?.result === true
+        const message = verifyResp?.message || ''
+        
+        const statusData = {
+          isVerified,
+          message
+        }
+        useAuthStore.setState({ 
+          isVerified: statusData.isVerified,
+          verificationMessage: statusData.message
+        })
+        await AsyncStorage.setItem('verificationStatus', JSON.stringify(statusData))
+      } catch (e) {
+        console.warn('checkVerifiedStatus failed', e)
       }
     } catch (e) {
       console.warn('OwnerHome load failed', e)

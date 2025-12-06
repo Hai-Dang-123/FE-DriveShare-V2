@@ -33,16 +33,59 @@ const COLORS = {
   red: '#EF4444', // red-500
 }
 
+// Status color mapping
+const STATUS_COLORS: Record<string, string> = {
+  ALL: '#4F46E5',
+  PENDING: '#F59E0B', // orange
+  IN_USE: '#10B981', // green
+  IN_PROGRESS: '#3B82F6', // blue
+  COMPLETED: '#6B7280', // gray
+  DELETED: '#EF4444', // red
+}
+
+// Status label mapping
+const getStatusLabel = (status: string): string => {
+  const labels: Record<string, string> = {
+    ALL: 'Tất cả',
+    PENDING: 'Chờ xử lý',
+    IN_USE: 'Đang dùng',
+    IN_PROGRESS: 'Đang vận chuyển',
+    COMPLETED: 'Hoàn thành',
+    DELETED: 'Đã xóa',
+  }
+  return labels[status] || status
+}
+
+// Get status color
+const getStatusColor = (status: string): string => {
+  return STATUS_COLORS[status] || '#9CA3AF'
+}
+
 const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
   onBack,
 }) => {
-  const { items, loading, error, createItem, updateItem, deleteItem, fetchPage } =
-    useItems(1, 20)
+  const { 
+    items, 
+    loading, 
+    error, 
+    search,
+    sortBy,
+    sortOrder,
+    statusFilter,
+    setSearch,
+    setSortBy,
+    setSortOrder,
+    setStatusFilter,
+    createItem, 
+    updateItem, 
+    deleteItem, 
+    fetchPage 
+  } = useItems(1, 20)
   const [isItemModalOpen, setItemModalOpen] = useState(false)
   const [isPackageModalOpen, setPackageModalOpen] = useState(false)
+  const [isSortModalOpen, setIsSortModalOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<Item | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [search, setSearch] = useState<string>('')
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>(
     { visible: false, message: '', type: 'success' },
   )
@@ -72,7 +115,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
           const res = await deleteItem(itemId)
           if (res?.isSuccess) {
             showToast('Xóa sản phẩm thành công', 'success')
-            fetchPage(1, 20)
+            fetchPage(1, 20, search, sortBy, sortOrder)
           } else {
             showToast(res?.message || 'Xóa không thành công', 'error')
           }
@@ -99,7 +142,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
               const res = await deleteItem(itemId)
               if (res?.isSuccess) {
                 showToast('Xóa sản phẩm thành công', 'success')
-                fetchPage(1, 20)
+                fetchPage(1, 20, search, sortBy, sortOrder, statusFilter)
               } else {
                 showToast(res?.message || 'Xóa không thành công', 'error')
               }
@@ -124,14 +167,29 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
     setItemModalOpen(true)
   }
 
-  const filteredItems = useMemo(() => {
-    if (!search) return items
-    const q = search.trim().toLowerCase()
-    return items.filter((it) => (it.itemName || '').toString().toLowerCase().includes(q))
-  }, [items, search])
+  const handleSearchChange = (text: string) => {
+    setSearch(text)
+    // Debounce search - trigger fetch after user stops typing
+    const timer = setTimeout(() => {
+      fetchPage(1, 20, text, sortBy, sortOrder, statusFilter)
+    }, 500)
+    return () => clearTimeout(timer)
+  }
 
   const onOpenSort = () => {
-    Alert.alert('Sắp xếp / Lọc', 'Chức năng sắp xếp/lọc sẽ được thêm sau (mock).')
+    setIsSortModalOpen(true)
+  }
+
+  const handleApplySort = (field: string, order: 'ASC' | 'DESC') => {
+    setSortBy(field)
+    setSortOrder(order)
+    setIsSortModalOpen(false)
+    fetchPage(1, 20, search, field, order, statusFilter)
+  }
+
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(status)
+    fetchPage(1, 20, search, sortBy, sortOrder, status)
   }
 
   const handleSaveItem = async (itemToSave: any) => {
@@ -176,7 +234,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
     }
     setItemModalOpen(false)
     setSelectedItem(null)
-    fetchPage(1, 20)
+    fetchPage(1, 20, search, sortBy, sortOrder)
   }
 
   const handleCreatePackage = (
@@ -207,7 +265,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
           //   const updatedItem = { ...selectedItem, status: ItemStatus.PACKAGED }
           //   updateItem(updatedItem)
           // }
-          fetchPage(1, 20)
+          fetchPage(1, 20, search, sortBy, sortOrder)
         } else {
           showToast(res?.message || 'Tạo gói không thành công', 'error')
         }
@@ -245,10 +303,10 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
       )
     }
 
-    if (filteredItems.length === 0) {
+    if (items.length === 0) {
       return (
         <View style={styles.centeredContainer}>
-<Text style={styles.statusText}>Bạn chưa có sản phẩm nào.</Text>
+<Text style={styles.statusText}>{search ? 'Không tìm thấy sản phẩm nào.' : 'Bạn chưa có sản phẩm nào.'}</Text>
 <TouchableOpacity
             style={styles.primaryButton}
             onPress={handleAddNewItem}
@@ -261,11 +319,12 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
 
     return (
       <ItemList
-        items={filteredItems}
+        items={items}
         onEdit={handleEditItem}
         onDelete={handleDeleteItem}
         onPack={handlePackItem}
         deletingId={deletingId}
+        getStatusColor={getStatusColor}
       />
     )
   }
@@ -299,7 +358,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
           <Feather name="search" size={16} color="#9CA3AF" style={{ marginLeft: 10 }} />
           <TextInput
             value={search}
-            onChangeText={setSearch}
+            onChangeText={handleSearchChange}
             placeholder="Tìm nhanh sản phẩm..."
             placeholderTextColor="#9CA3AF"
             style={styles.searchInput}
@@ -310,9 +369,95 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
           <Ionicons name="options-outline" size={22} color="#374151" />
         </TouchableOpacity>
       </View>
+
+      {/* Status Filter Chips */}
+      <View style={styles.statusFilterRow}>
+        {['ALL', 'PENDING', 'IN_USE', 'IN_PROGRESS', 'COMPLETED'].map((status) => (
+          <TouchableOpacity
+            key={status}
+            style={[
+              styles.statusChip,
+              statusFilter === status && styles.statusChipActive,
+              { backgroundColor: statusFilter === status ? getStatusColor(status) : '#F3F4F6' }
+            ]}
+            onPress={() => handleStatusFilter(status)}
+          >
+            <Text style={[
+              styles.statusChipText,
+              statusFilter === status && styles.statusChipTextActive
+            ]}>
+              {getStatusLabel(status)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 <View style={styles.bodyContainer}>{renderContent()}</View>
 <ItemFormModal visible={isItemModalOpen} onClose={() => setItemModalOpen(false)} onSave={handleSaveItem} item={selectedItem} />
 <PackageFormModal visible={isPackageModalOpen} onClose={() => setPackageModalOpen(false)} onCreate={handleCreatePackage} item={selectedItem} />
+
+      {/* Sort Modal */}
+      {isSortModalOpen && (
+        <View style={styles.sortModalBackdrop}>
+          <View style={styles.sortModal}>
+            <Text style={styles.sortModalTitle}>Sắp xếp theo</Text>
+            
+            <TouchableOpacity 
+              style={[styles.sortOption, sortBy === 'itemname' && sortOrder === 'ASC' && styles.sortOptionActive]}
+              onPress={() => handleApplySort('itemname', 'ASC')}
+            >
+              <Text style={styles.sortOptionText}>Tên sản phẩm (A-Z)</Text>
+              {sortBy === 'itemname' && sortOrder === 'ASC' && <Feather name="check" size={20} color={COLORS.primary} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sortOption, sortBy === 'itemname' && sortOrder === 'DESC' && styles.sortOptionActive]}
+              onPress={() => handleApplySort('itemname', 'DESC')}
+            >
+              <Text style={styles.sortOptionText}>Tên sản phẩm (Z-A)</Text>
+              {sortBy === 'itemname' && sortOrder === 'DESC' && <Feather name="check" size={20} color={COLORS.primary} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sortOption, sortBy === 'declaredvalue' && sortOrder === 'ASC' && styles.sortOptionActive]}
+              onPress={() => handleApplySort('declaredvalue', 'ASC')}
+            >
+              <Text style={styles.sortOptionText}>Giá trị (Thấp đến cao)</Text>
+              {sortBy === 'declaredvalue' && sortOrder === 'ASC' && <Feather name="check" size={20} color={COLORS.primary} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sortOption, sortBy === 'declaredvalue' && sortOrder === 'DESC' && styles.sortOptionActive]}
+              onPress={() => handleApplySort('declaredvalue', 'DESC')}
+            >
+              <Text style={styles.sortOptionText}>Giá trị (Cao đến thấp)</Text>
+              {sortBy === 'declaredvalue' && sortOrder === 'DESC' && <Feather name="check" size={20} color={COLORS.primary} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sortOption, sortBy === 'status' && sortOrder === 'ASC' && styles.sortOptionActive]}
+              onPress={() => handleApplySort('status', 'ASC')}
+            >
+              <Text style={styles.sortOptionText}>Trạng thái (A-Z)</Text>
+              {sortBy === 'status' && sortOrder === 'ASC' && <Feather name="check" size={20} color={COLORS.primary} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sortOption, sortBy === 'status' && sortOrder === 'DESC' && styles.sortOptionActive]}
+              onPress={() => handleApplySort('status', 'DESC')}
+            >
+              <Text style={styles.sortOptionText}>Trạng thái (Z-A)</Text>
+              {sortBy === 'status' && sortOrder === 'DESC' && <Feather name="check" size={20} color={COLORS.primary} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sortCancelBtn}
+              onPress={() => setIsSortModalOpen(false)}
+            >
+              <Text style={styles.sortCancelText}>Đóng</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {toast.visible && (
         <View style={[styles.toast, toast.type === 'success' ? styles.toastSuccess : styles.toastError]}>
@@ -383,6 +528,37 @@ const styles = StyleSheet.create({
   searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 12, height: 40 },
   searchInput: { flex: 1, paddingHorizontal: 10, color: '#111827' },
   filterButton: { marginLeft: 12, width: 44, height: 40, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  
+  // Status filter chips
+  statusFilterRow: { 
+    flexDirection: 'row', 
+    paddingHorizontal: 16, 
+    paddingVertical: 8, 
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  statusChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  statusChipActive: {
+    borderColor: 'transparent',
+  },
+  statusChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  statusChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+
   toast: {
     position: 'absolute',
     left: 16,
@@ -468,6 +644,68 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Sort Modal
+  sortModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  sortModal: {
+    width: '85%',
+    maxWidth: 400,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  sortModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.black,
+    marginBottom: 16,
+  },
+  sortOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: COLORS.lightGray,
+  },
+  sortOptionActive: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  sortOptionText: {
+    fontSize: 15,
+    color: COLORS.black,
+  },
+  sortCancelBtn: {
+    marginTop: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.separator,
+  },
+  sortCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.gray,
   },
 })
 

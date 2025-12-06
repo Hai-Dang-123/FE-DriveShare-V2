@@ -1,244 +1,4 @@
-// import React from 'react'
-// import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native'
-// import { Package, PackageStatus } from '../../../models/types'
-// // Giả định các icon này là component React Native (nhận 'style' prop)
-// import {
-//   PencilSquareIcon,
-//   TrashIcon,
-//   PaperAirplaneIcon,
-// } from '../icons/ActionIcons'
 
-// interface PackageCardProps {
-//   pkg: Package
-//   onEdit: () => void
-//   onDelete: () => void
-//   onPost: () => void
-// }
-
-// // 1. Chuyển đổi statusStyles sang giá trị style của React Native
-// const statusStyles = {
-//   [PackageStatus.PENDING]: { text: '#92400E', bg: '#FEF3C7' },
-//   [PackageStatus.OPEN]: { text: '#065F46', bg: '#D1FAE5' },
-//   [PackageStatus.CLOSED]: { text: '#374151', bg: '#E5E7EB' },
-//   [PackageStatus.DELETED]: { text: '#991B1B', bg: '#FEE2E2' },
-// }
-
-// const PackageCard: React.FC<PackageCardProps> = ({
-//   pkg,
-//   onEdit,
-//   onDelete,
-//   onPost,
-// }) => {
-//   const {
-//     title,
-//     description,
-//     quantity,
-//     unit,
-//     weightKg,
-//     volumeM3,
-//     images = [], // Đảm bảo images là mảng
-//     status,
-//   } = pkg
-//   const statusStyle = statusStyles[status] || statusStyles[PackageStatus.PENDING]
-//   const imageUrl =
-//     images.length > 0
-//       ? images[0].packageImageURL
-//       : 'https://via.placeholder.com/400'
-
-//   const isPostable = status === PackageStatus.PENDING
-
-//   return (
-//     // 2. Dùng <View> và gán style
-//     <View style={styles.cardContainer}>
-//       {/* 3. Dùng <Image> */}
-//       <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
-// <View style={styles.contentContainer}>
-// <View style={styles.header}>
-// <Text style={styles.title} numberOfLines={2}>
-//             {title}
-//           </Text>
-// <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-// <Text style={[styles.statusText, { color: statusStyle.text }]}>
-//               {status}
-//             </Text>
-// </View>
-// </View>
-// <Text style={styles.description} numberOfLines={3}>
-//           {description || 'Không có mô tả'}
-//         </Text>
-
-//         {/* 4. Stats được thiết kế lại (thay cho grid 3 cột) */}
-//         <View style={styles.statsContainer}>
-// <StatItem label="Số lượng" value={`${quantity} ${unit}(s)`} />
-// <StatItem label="Cân nặng" value={`${weightKg} kg`} />
-// <StatItem label="Thể tích" value={`${volumeM3} m³`} />
-// </View>
-// <View style={styles.footer}>
-// <View style={styles.iconGroup}>
-// <TouchableOpacity onPress={onEdit} style={styles.iconButton}>
-// <PencilSquareIcon style={styles.icon as any} />
-// </TouchableOpacity>
-// <TouchableOpacity onPress={onDelete} style={styles.iconButton}>
-//               {/* flatten style array to a plain object so SVG <svg> receives an object on web */}
-//               <TrashIcon style={StyleSheet.flatten([styles.icon, styles.iconDelete]) as any} />
-// </TouchableOpacity>
-// </View>
-
-//           {/* <TouchableOpacity
-//             onPress={onPost}
-//             disabled={!isPostable}
-//             style={[
-//               styles.postButton,
-//               !isPostable && styles.postButtonDisabled,
-//             ]}
-//           >
-// <PaperAirplaneIcon style={styles.postButtonIcon as any} />
-// <Text style={styles.postButtonText}>Đăng tin</Text>
-// </TouchableOpacity> */}
-//         </View>
-// </View>
-// </View>
-//   )
-// }
-
-// // Component phụ cho các ô stat
-// const StatItem: React.FC<{ label: string; value: string }> = ({
-//   label,
-//   value,
-// }) => (
-//   <View style={styles.statItem}>
-// <Text style={styles.statValue}>{value}</Text>
-// <Text style={styles.statLabel}>{label}</Text>
-// </View>
-// )
-
-// // 5. Toàn bộ StyleSheet
-// const styles = StyleSheet.create({
-//   cardContainer: {
-//     backgroundColor: '#FFFFFF',
-//     borderRadius: 16,
-//     shadowColor: '#000',
-//     shadowOffset: { width: 0, height: 4 },
-//     shadowOpacity: 0.1,
-//     shadowRadius: 10,
-//     elevation: 7,
-//     overflow: 'hidden',
-//     margin: 8,
-//     flex: 1, // Cần thiết cho FlatList numColumns
-//   },
-//   image: {
-//     width: '100%',
-//     height: 192, // h-48
-//     backgroundColor: '#F3F4F6',
-//   },
-//   contentContainer: {
-//     padding: 16, // p-4
-//     flex: 1, // flex-grow (giúp đẩy footer xuống)
-//   },
-//   header: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'flex-start',
-//     marginBottom: 8,
-//   },
-//   title: {
-//     flex: 1,
-//     marginRight: 8,
-//     fontSize: 18,
-//     fontWeight: '700',
-//     color: '#111827',
-//   },
-//   statusBadge: {
-//     paddingHorizontal: 8,
-//     paddingVertical: 4,
-//     borderRadius: 9999,
-//   },
-//   statusText: {
-//     fontSize: 12,
-//     fontWeight: '600',
-//     textTransform: 'capitalize',
-//   },
-//   description: {
-//     flex: 1, // Đẩy stats và footer xuống
-//     fontSize: 14,
-//     color: '#6B7280',
-//     marginBottom: 16,
-//   },
-//   // Stats
-//   statsContainer: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     marginBottom: 16,
-//     backgroundColor: '#F9FAFB',
-//     borderRadius: 8,
-//     padding: 12,
-//     borderWidth: 1,
-//     borderColor: '#E5E7EB'
-//   },
-//   statItem: {
-//     alignItems: 'center',
-//     flex: 1,
-//   },
-//   statValue: {
-//     fontSize: 14,
-//     fontWeight: '700',
-//     color: '#111827',
-//   },
-//   statLabel: {
-//     fontSize: 12,
-//     color: '#6B7280',
-//     marginTop: 2,
-//   },
-//   // Footer
-//   footer: {
-//     borderTopWidth: 1,
-//     borderColor: '#E5E7EB',
-//     paddingTop: 16,
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'center',
-//   },
-//   iconGroup: {
-//     flexDirection: 'row',
-//     gap: 8,
-//   },
-//   iconButton: {
-//     padding: 8,
-//     borderRadius: 9999,
-//   },
-//   icon: {
-//     width: 20,
-//     height: 20,
-//     color: '#4B5563',
-//   },
-//   iconDelete: {
-//     color: '#EF4444',
-//   },
-//   postButton: {
-//     flexDirection: 'row',
-//     alignItems: 'center',
-//     gap: 8,
-//     backgroundColor: '#4F46E5', // bg-indigo-600
-//     paddingHorizontal: 12,
-//     paddingVertical: 8,
-//     borderRadius: 8,
-//     elevation: 2,
-//   },
-//   postButtonDisabled: {
-//     backgroundColor: '#9CA3AF', // bg-gray-400
-//   },
-//   postButtonIcon: {
-//     width: 20,
-//     height: 20,
-//     color: '#FFFFFF',
-//   },
-//   postButtonText: {
-//     color: '#FFFFFF',
-//     fontWeight: '600',
-//   },
-// })
-
-// export default PackageCard
 
 import React from 'react'
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native'
@@ -250,10 +10,11 @@ interface PackageCardProps {
   onEdit: () => void
   onDelete: () => void
   onPost: () => void
+  getStatusColor?: (status: string) => string
 }
 
-// Màu sắc trạng thái
-const getStatusColor = (status: string) => {
+// Default status colors (fallback if not provided)
+const defaultGetStatusColor = (status: string) => {
   switch (status) {
     case PackageStatus.OPEN: return '#10B981' // Xanh lá
     case PackageStatus.CLOSED: return '#6B7280' // Xám
@@ -264,6 +25,10 @@ const getStatusColor = (status: string) => {
 
 const getStatusText = (status: string) => {
   switch (status) {
+    case 'PENDING': return 'Chờ xử lý'
+    case 'IN_TRANSIT': return 'Đang vận chuyển'
+    case 'DELIVERED': return 'Đã giao'
+    case 'COMPLETED': return 'Hoàn thành'
     case PackageStatus.OPEN: return 'Đang mở'
     case PackageStatus.CLOSED: return 'Đã đóng'
     case PackageStatus.DELETED: return 'Đã xóa'
@@ -271,7 +36,7 @@ const getStatusText = (status: string) => {
   }
 }
 
-const PackageCard: React.FC<PackageCardProps> = ({ pkg, onEdit, onDelete, onPost }) => {
+const PackageCard: React.FC<PackageCardProps> = ({ pkg, onEdit, onDelete, onPost, getStatusColor }) => {
   const { title, description, quantity, unit, weightKg, volumeM3, images = [], status } = pkg
   
   // Resolve image URL defensively: packageImages may contain objects with different keys or plain strings
@@ -285,7 +50,9 @@ const PackageCard: React.FC<PackageCardProps> = ({ pkg, onEdit, onDelete, onPost
     }
   }
 
-  const statusColor = getStatusColor(status)
+  // Use provided getStatusColor or fallback to default
+  const statusColorFn = getStatusColor || defaultGetStatusColor
+  const statusColor = statusColorFn(status)
   const statusLabel = getStatusText(status)
 
   return (

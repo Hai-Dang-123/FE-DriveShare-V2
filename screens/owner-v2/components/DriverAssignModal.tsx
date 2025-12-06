@@ -22,7 +22,7 @@ import AddressAutocomplete from '@/components/AddressAutocomplete'
 import assignmentService from '@/services/assignmentService'
 import { DriverAssignment, TripDetailFullDTOExtended } from '@/models/types'
 // Sử dụng icon từ thư viện vector-icons cho đẹp và nhẹ
-import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons' 
+import { Ionicons, MaterialIcons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons'
 
 interface DriverAssignModalProps {
   visible: boolean
@@ -31,6 +31,7 @@ interface DriverAssignModalProps {
   tripId: string
   mainDriverExists: boolean
   onAssigned: (updated: TripDetailFullDTOExtended) => void
+  driverAnalysis?: any
 }
 
 const formatMoney = (raw: string) => {
@@ -38,7 +39,7 @@ const formatMoney = (raw: string) => {
   return raw.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
-const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose, trip, tripId, mainDriverExists, onAssigned }) => {
+const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose, trip, tripId, mainDriverExists, onAssigned, driverAnalysis }) => {
   const [drivers, setDrivers] = useState<LinkedDriverDTO[]>([])
   const [driverLoading, setDriverLoading] = useState(false)
   const [driverPage, setDriverPage] = useState(1)
@@ -199,6 +200,44 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
             
+            {/* AI Recommendation */}
+            {driverAnalysis?.suggestion && (
+              <View style={styles.aiSection}>
+                <View style={styles.aiHeader}>
+                  <MaterialIcons name="auto-awesome" size={18} color="#4F46E5" />
+                  <Text style={styles.aiTitle}>Phân tích </Text>
+                </View>
+                {driverAnalysis.suggestion.systemRecommendation && (
+                  <View style={styles.aiRecommendation}>
+                    <Text style={styles.aiRecommendText}>{driverAnalysis.suggestion.systemRecommendation}</Text>
+                  </View>
+                )}
+                <View style={styles.scenarioRow}>
+                  {driverAnalysis.suggestion.soloScenario?.isPossible && (
+                    <View style={styles.miniScenario}>
+                      <FontAwesome5 name="user" size={14} color="#059669" />
+                      <Text style={styles.miniScenarioLabel}>1 Tài</Text>
+                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.soloScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                    </View>
+                  )}
+                  {driverAnalysis.suggestion.teamScenario?.isPossible && (
+                    <View style={styles.miniScenario}>
+                      <FontAwesome5 name="user-friends" size={14} color="#2563EB" />
+                      <Text style={styles.miniScenarioLabel}>2 Tài</Text>
+                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.teamScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                    </View>
+                  )}
+                  {driverAnalysis.suggestion.expressScenario?.isPossible && (
+                    <View style={styles.miniScenario}>
+                      <MaterialCommunityIcons name="lightning-bolt" size={16} color="#DC2626" />
+                      <Text style={styles.miniScenarioLabel}>3 Tài</Text>
+                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.expressScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
             {/* 1. Section: Chọn Tài xế */}
             <View style={styles.section}>
                 <Text style={styles.sectionLabel}>1. Chọn tài xế ({driverTotal})</Text>
@@ -362,6 +401,17 @@ const styles = StyleSheet.create({
   closeBtn: { position: 'absolute', right: 16, padding: 4, backgroundColor: '#F3F4F6', borderRadius: 12 },
 
   scrollContent: { flex: 1 },
+
+  // AI Section
+  aiSection: { margin: 16, marginBottom: 8, backgroundColor: '#EFF6FF', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#BFDBFE' },
+  aiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 },
+  aiTitle: { fontSize: 13, fontWeight: '700', color: '#1E40AF' },
+  aiRecommendation: { backgroundColor: '#FFF', borderRadius: 8, padding: 10, marginBottom: 10 },
+  aiRecommendText: { fontSize: 12, color: '#374151', lineHeight: 18 },
+  scenarioRow: { flexDirection: 'row', gap: 8, justifyContent: 'flex-start' },
+  miniScenario: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
+  miniScenarioLabel: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
+  miniScenarioValue: { fontSize: 11, color: '#111827', fontWeight: '700' },
 
   // Sections
   section: { padding: 16 },

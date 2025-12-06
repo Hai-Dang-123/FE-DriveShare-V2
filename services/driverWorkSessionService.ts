@@ -29,9 +29,15 @@ const driverWorkSessionService = {
   },
   async end(dto: { TripId?: string; DriverWorkSessionId?: string } | any) {
     try {
-      const res = await api.put('api/DriverWorkSession/end', dto)
+      console.log('[DriverWorkSession] Sending end request with DTO:', JSON.stringify(dto, null, 2));
+      const res = await api.put('api/DriverWorkSession/end', dto, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
       return res.data
     } catch (e: any) {
+      console.error('[DriverWorkSession] End request failed:', e?.response?.data || e?.message);
       if (e?.response?.data) return e.response.data
       throw e
     }
@@ -40,6 +46,15 @@ const driverWorkSessionService = {
   async checkEligibility() {
     try {
       const res = await api.get('api/DriverWorkSession/check-eligibility')
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  },
+  async getCurrentSessionInTrip(tripId: string) {
+    try {
+      const res = await api.get(`api/DriverWorkSession/current-session/${tripId}`)
       return res.data
     } catch (e: any) {
       if (e?.response?.data) return e.response.data

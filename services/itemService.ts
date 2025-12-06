@@ -12,11 +12,17 @@ interface PaginatedResult<T = any> {
 }
 
 const itemService = {
-  // note: backend route expects a userId path param but uses token to resolve user; still accept userId
-  async getItemsByUserId(userId: string | undefined, pageNumber = 1, pageSize = 20) {
-
-    const res = await api.get(`api/item/get-items-by-user-id`, { params: { pageNumber, pageSize } })
-    return res.data as ResponseDTO<PaginatedResult<Item>>
+  // Get items by user ID with search, sort, and status filter
+  async getItemsByUserId(params: {
+    pageNumber?: number
+    pageSize?: number
+    search?: string
+    sortBy?: string
+    sortOrder?: 'ASC' | 'DESC'
+    status?: string
+  } = {}) {
+    const res = await api.get(`api/item/get-items-by-user-id`, { params })
+    return res.data as ResponseDTO<PaginatedResult<any>>
   },
 
   async getItemById(itemId: string) {

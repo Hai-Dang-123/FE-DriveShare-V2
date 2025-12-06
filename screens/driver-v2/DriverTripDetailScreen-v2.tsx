@@ -33,7 +33,15 @@ import {
 import tripService from "@/services/tripService";
 import vietmapService from "@/services/vietmapService";
 import tripProviderContractService from "@/services/tripProviderContractService";
+import tripDriverContractService from "@/services/tripDriverContractService";
+import tripDeliveryIssueService, { DeliveryIssueType } from "@/services/tripDeliveryIssueService";
 import { useAuth } from "@/hooks/useAuth";
+
+// Document Components
+import { ContractDocument } from "@/components/documents/ContractDocument";
+import { DeliveryRecordDocument } from "@/components/documents/DeliveryRecordDocument";
+import { HandoverRecordDocument } from "@/components/documents/HandoverRecordDocument";
+import IssueImagePicker from "@/components/shared/IssueImagePicker";
 
 import VietMapUniversal from "@/components/map/VietMapUniversal";
 import NavigationHUD from "@/components/map/NavigationHUD";
@@ -88,6 +96,12 @@ interface TripDetailData {
   status: string;
   createAt: string;
   updateAt: string;
+  vehiclePickupAddress: string;
+  vehiclePickupLat: number;
+  vehiclePickupLng: number;
+  vehicleDropoffAddress: string;
+  vehicleDropoffLat: number;
+  vehicleDropoffLng: number;
   vehicle: VehicleInfo;
   owner: OwnerInfo;
   shippingRoute: ShippingRouteInfo;
@@ -164,12 +178,21 @@ interface ContactInfo {
 }
 interface DeliveryRecordInfo {
   tripDeliveryRecordId: string;
-  recordType: "PICKUP" | "DROPOFF";
+  recordType?: "PICKUP" | "DROPOFF"; // Optional for backward compatibility
+  type?: "PICKUP" | "DROPOFF"; // API returns "type" field
   note: string;
   createAt: string;
   terms: DeliveryTermInfo[];
   driverSigned?: boolean;
   contactSigned?: boolean;
+  issues?: Array<{
+    tripDeliveryIssueId: string;
+    issueType: string;
+    description: string;
+    status: string;
+    createdAt: string;
+    imageUrls?: string[];
+  }>;
 }
 interface DeliveryTermInfo {
   deliveryRecordTermId: string;
@@ -271,6 +294,22 @@ const DriverTripDetailScreenV2: React.FC = () => {
     );
   }, [trip, user]);
 
+  // Detect current driver role (PRIMARY or SECONDARY)
+  const currentDriver = useMemo(() => {
+    if (!trip || !user) return null;
+    return (
+      trip.drivers?.find(
+        (d) => String(d.driverId) === String(user.userId)
+      ) || null
+    );
+  }, [trip, user]);
+
+  const isMainDriver = currentDriver?.type === "PRIMARY";
+
+  // Current session info (ai đang lái xe)
+  const [currentSession, setCurrentSession] = useState<any>(null);
+  const [loadingSession, setLoadingSession] = useState(false);
+
   // Contract signing UI state
   const [showContractModal, setShowContractModal] = useState(false);
   const [showDigitalSignatureTerms, setShowDigitalSignatureTerms] =
@@ -305,7 +344,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const handleSendContractOtp = async () => {
     if (!myDriverContract?.contractId)
       return Alert.alert("Lỗi", "Không có hợp đồng để ký");
-    // Hiển thị modal điều khoản chữ ký số trước
+    // Step 1: Show contract modal
+    setShowContractModal(true);
+  };
+
+  const handleSignContractFromModal = () => {
+    // Step 2: Show digital signature terms
     setShowDigitalSignatureTerms(true);
   };
 
@@ -314,6 +358,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
     setShowDigitalSignatureTerms(false);
     setSigningContract(true);
     try {
+      // Step 3: Send OTP using TripProviderContract API
       const res: any = await tripProviderContractService.sendSignOtp(
         myDriverContract.contractId
       );
@@ -429,6 +474,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
             const resp: any = await driverWorkSessionService.start({
               TripId: trip.tripId,
             });
+            console.log('[startNavigationToPickupAddress] Start session response:', JSON.stringify(resp, null, 2));
             if (!(resp?.isSuccess ?? resp?.statusCode === 200)) {
               Alert.alert(
                 "Lỗi",
@@ -437,10 +483,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
               setPickupRouteCoords(null);
               return;
             }
-            // backend returns created DriverWorkSessionId in resp.result
-            const sid =
-              resp?.result?.DriverWorkSessionId ?? resp?.result ?? null;
-            if (sid) setDriverSessionId(String(sid));
+            // backend returns sessionId in resp.result.sessionId
+            const sid = resp?.result?.sessionId ?? resp?.result?.SessionId ?? null;
+            console.log('[startNavigationToPickupAddress] Extracted session ID:', sid, 'type:', typeof sid);
+            if (!sid || typeof sid !== 'string') {
+              console.error('[startNavigationToPickupAddress] Invalid session ID:', sid);
+              Alert.alert('Lỗi', 'Không nhận được ID phiên làm việc hợp lệ');
+              setPickupRouteCoords(null);
+              return;
+            }
+            setDriverSessionId(sid);
             // Start local continuous timer behavior: start counting from zero.
             setActiveSessionStart(new Date());
             setContinuousSeconds(0);
@@ -472,7 +524,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         Speech.speak("Bắt đầu dẫn đường đến điểm lấy hàng", {
           language: "vi-VN",
         });
-      } catch {}
+      } catch { }
     } catch (error: any) {
       Alert.alert("Lỗi", error?.message || "Không thể bắt đầu dẫn đường");
     } finally {
@@ -568,6 +620,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
             const resp: any = await driverWorkSessionService.start({
               TripId: trip.tripId,
             });
+            console.log('[startNavigationToDeliveryAddress] Start session response:', JSON.stringify(resp, null, 2));
             if (!(resp?.isSuccess ?? resp?.statusCode === 200)) {
               Alert.alert(
                 "Lỗi",
@@ -576,9 +629,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
               setDeliveryRouteCoords(null);
               return;
             }
-            const sid =
-              resp?.result?.DriverWorkSessionId ?? resp?.result ?? null;
-            if (sid) setDriverSessionId(String(sid));
+            // backend returns sessionId in resp.result.sessionId
+            const sid = resp?.result?.sessionId ?? resp?.result?.SessionId ?? null;
+            console.log('[startNavigationToDeliveryAddress] Extracted session ID:', sid, 'type:', typeof sid);
+            if (!sid || typeof sid !== 'string') {
+              console.error('[startNavigationToDeliveryAddress] Invalid session ID:', sid);
+              Alert.alert('Lỗi', 'Không nhận được ID phiên làm việc hợp lệ');
+              setDeliveryRouteCoords(null);
+              return;
+            }
+            setDriverSessionId(sid);
             setActiveSessionStart(new Date());
             setContinuousSeconds(0);
             setStoppedSeconds(0);
@@ -608,7 +668,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
           language: "vi-VN",
         });
-      } catch {}
+      } catch { }
     } catch (error: any) {
       Alert.alert("Lỗi", error?.message || "Không thể bắt đầu dẫn đường");
     } finally {
@@ -684,14 +744,15 @@ const DriverTripDetailScreenV2: React.FC = () => {
     if (!myDriverContract?.contractId) return;
     setSigningContract(true);
     try {
+      // Step 4: Sign contract using TripDriverContract API
       const dto = { ContractId: myDriverContract.contractId, Otp: otp };
-      const res: any = await tripProviderContractService.signContract(dto);
+      const res: any = await tripDriverContractService.signContract(dto);
       const ok = res?.isSuccess ?? res?.statusCode === 200;
       if (!ok) {
         Alert.alert("Ký thất bại", res?.message || "Mã OTP không hợp lệ");
         return;
       }
-      Alert.alert("Thành công", "Ký hợp đồng thành công");
+      Alert.alert("Thành công", "Ký hợp đồng thành công! ✅");
       setShowContractOtpModal(false);
       setShowContractModal(false);
       fetchTripData();
@@ -794,7 +855,18 @@ const DriverTripDetailScreenV2: React.FC = () => {
         activeDeliveryRecord.tripDeliveryRecordId
       );
       if (fresh?.isSuccess) {
-        setActiveDeliveryRecord(fresh.result);
+        const rec = fresh.result;
+        // Map deliveryRecordTerms to terms format for component
+        if (rec.deliveryRecordTemplate?.deliveryRecordTerms && Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)) {
+          rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map((term: any) => ({
+            deliveryRecordTermId: term.deliveryRecordTermId,
+            content: term.content || "",
+            displayOrder: term.displayOrder || 0,
+          }));
+        } else {
+          rec.terms = [];
+        }
+        setActiveDeliveryRecord(rec);
         // If both parties signed or record status completed, close the delivery modal and refresh trip
         const bothSigned = !!(
           fresh.result.driverSigned && fresh.result.contactSigned
@@ -815,6 +887,100 @@ const DriverTripDetailScreenV2: React.FC = () => {
     }
   };
 
+  // ========== ISSUE REPORT HANDLERS (FOR PICKUP) ==========
+  const handleOpenIssueReport = () => {
+    if (!activeDeliveryRecord) return;
+    setIssueType(DeliveryIssueType.DAMAGED);
+    setIssueDescription("");
+    setIssueImages([]);
+    setShowIssueReportModal(true);
+  };
+
+  const handleSubmitIssueReport = async () => {
+    console.log("🔘 Button pressed!");
+    console.log("📋 Check conditions:", {
+      activeDeliveryRecord: !!activeDeliveryRecord,
+      tripId: tripId,
+      description: issueDescription,
+      descriptionTrimmed: issueDescription.trim(),
+    });
+    
+    if (!activeDeliveryRecord || !tripId) {
+      console.log("❌ Missing activeDeliveryRecord or tripId");
+      return;
+    }
+    
+    if (!issueDescription.trim()) {
+      console.log("❌ Description is empty");
+      Alert.alert("Lỗi", "Vui lòng nhập mô tả sự cố");
+      return;
+    }
+
+    try {
+      setSubmittingIssue(true);
+      console.log("✅ Starting submission...");
+
+      // Create DTO
+      const dto = {
+        TripId: tripId,
+        DeliveryRecordId: activeDeliveryRecord.tripDeliveryRecordId,
+        IssueType: issueType,
+        Description: issueDescription.trim(),
+      };
+
+      console.log("📝 Submitting issue report with", issueImages.length, "images");
+      console.log("📦 DTO:", dto);
+      
+      // Send DTO + images in one request
+      const response = await tripDeliveryIssueService.reportIssue(dto, issueImages);
+      console.log("📥 Response:", response);
+      
+      if (response.isSuccess) {
+        Alert.alert(
+          "Thành công", 
+          issueImages.length > 0 
+            ? `Đã báo cáo sự cố với ${issueImages.length} ảnh minh chứng`
+            : "Đã báo cáo sự cố thành công"
+        );
+        
+        // Close modal and reset form
+        setShowIssueReportModal(false);
+        setIssueDescription("");
+        setIssueImages([]);
+        
+        // Refresh delivery record to get updated issues
+        console.log("🔄 Refreshing delivery record...");
+        try {
+          const refreshRes = await tripService.getDeliveryRecordForDriver(
+            activeDeliveryRecord.tripDeliveryRecordId
+          );
+          if (refreshRes?.isSuccess) {
+            const rec = refreshRes.result;
+            // Map terms
+            if (rec.deliveryRecordTemplate?.deliveryRecordTerms && Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)) {
+              rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map((term: any) => ({
+                deliveryRecordTermId: term.deliveryRecordTermId,
+                content: term.content || "",
+                displayOrder: term.displayOrder || 0,
+              }));
+            }
+            setActiveDeliveryRecord(rec);
+            console.log("✅ Delivery record refreshed with issues:", rec.issues?.length || 0);
+          }
+        } catch (err) {
+          console.error("❌ Failed to refresh delivery record:", err);
+        }
+      } else {
+        Alert.alert("Lỗi", response.message || "Không thể báo cáo sự cố");
+      }
+    } catch (error: any) {
+      console.error("Error submitting issue:", error);
+      Alert.alert("Lỗi", error?.message || "Có lỗi khi báo cáo sự cố");
+    } finally {
+      setSubmittingIssue(false);
+    }
+  };
+
   // Navigation UI State
   const [navActive, setNavActive] = useState(false);
   const [navMinimized, setNavMinimized] = useState(false);
@@ -831,6 +997,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [signatureInProgress, setSignatureInProgress] = useState(false);
   const [pickupMarked, setPickupMarked] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  
+  // Issue Report Modal State (for PICKUP)
+  const [showIssueReportModal, setShowIssueReportModal] = useState(false);
+  const [issueType, setIssueType] = useState<DeliveryIssueType>(DeliveryIssueType.DAMAGED);
+  const [issueDescription, setIssueDescription] = useState("");
+  const [issueImages, setIssueImages] = useState<string[]>([]);
+  const [submittingIssue, setSubmittingIssue] = useState(false);
+  
   // Vehicle handover states
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [activeHandoverRecord, setActiveHandoverRecord] = useState<any | null>(
@@ -903,6 +1077,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
   >("overview");
   const [driverSessionId, setDriverSessionId] = useState<string | null>(null);
   const [sessionPaused, setSessionPaused] = useState<boolean>(false);
+  const [isResuming, setIsResuming] = useState<boolean>(false); // Guard for resume button
   const [eligibility, setEligibility] = useState<{
     canDrive: boolean;
     message?: string;
@@ -945,6 +1120,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
     };
   }, [tripId]);
 
+  // Polling: Auto-refresh session info khi có nhiều tài xế
+  useEffect(() => {
+    if (!trip || !tripId) return;
+
+    const hasMultipleDrivers = (trip.drivers?.length || 0) > 1;
+    const isActiveTrip = ['IN_PROGRESS', 'READY_FOR_VEHICLE_HANDOVER', 'VEHICLE_HANDOVERED'].includes(trip.status);
+
+    if (hasMultipleDrivers && isActiveTrip) {
+      console.log('[DriverTripDetail] Starting session polling (15s interval)');
+      const interval = setInterval(() => {
+        fetchCurrentSession();
+      }, 15000); // 15 seconds
+
+      return () => {
+        console.log('[DriverTripDetail] Stopping session polling');
+        clearInterval(interval);
+      };
+    }
+  }, [trip, tripId]);
+
   const loadEligibilityAndSession = async () => {
     try {
       const resp: any = await driverWorkSessionService.checkEligibility();
@@ -953,9 +1148,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       const hoursToday =
         Number(
           data?.HoursDrivenToday ??
-            data?.hoursDrivenToday ??
-            data?.HoursDrivenThisDay ??
-            0
+          data?.hoursDrivenToday ??
+          data?.HoursDrivenThisDay ??
+          0
         ) || 0;
       const hoursWeek =
         Number(data?.HoursDrivenThisWeek ?? data?.hoursDrivenThisWeek ?? 0) ||
@@ -1016,6 +1211,25 @@ const DriverTripDetailScreenV2: React.FC = () => {
       }
     };
   }, [sessionPaused, navActive]);
+  const fetchCurrentSession = async () => {
+    if (!tripId) return;
+    try {
+      setLoadingSession(true);
+      const res = await driverWorkSessionService.getCurrentSessionInTrip(tripId);
+      console.log('[DriverTripDetail] Current session:', res);
+      if (res?.isSuccess && res?.result) {
+        setCurrentSession(res.result);
+      } else {
+        setCurrentSession(null); // Không có ai đang lái
+      }
+    } catch (e: any) {
+      console.warn('[DriverTripDetail] Failed to fetch current session:', e);
+      setCurrentSession(null);
+    } finally {
+      setLoadingSession(false);
+    }
+  };
+
   const fetchTripData = async () => {
     try {
       const res = (await tripService.getById(tripId!)) as TripDetailAPIResponse;
@@ -1052,6 +1266,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
           setEndPoint(coords[coords.length - 1] as [number, number]);
         }
       }
+
+      // Fetch current session sau khi load trip
+      await fetchCurrentSession();
     } catch (e: any) {
       setError(e?.message || "Lỗi không xác định");
     } finally {
@@ -1110,14 +1327,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
       // Determine which route user is focusing on. If 'toPickup' or 'toDelivery' and we already have the planned route, use it.
       const routeToUse =
         visibleRoute === "toPickup" &&
-        pickupRouteCoords &&
-        pickupRouteCoords.length > 1
+          pickupRouteCoords &&
+          pickupRouteCoords.length > 1
           ? pickupRouteCoords
           : visibleRoute === "toDelivery" &&
             deliveryRouteCoords &&
             deliveryRouteCoords.length > 1
-          ? deliveryRouteCoords
-          : routeCoords;
+            ? deliveryRouteCoords
+            : routeCoords;
 
       // If user is focusing on pickup but we don't have its planned route yet, plan from current position -> pickup point
       if (
@@ -1185,14 +1402,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
       // Start navigation using the selected route (if available). We copy it into routeCoords so navigation uses it.
       const effectiveRoute =
         visibleRoute === "toPickup" &&
-        pickupRouteCoords &&
-        pickupRouteCoords.length > 1
+          pickupRouteCoords &&
+          pickupRouteCoords.length > 1
           ? pickupRouteCoords
           : visibleRoute === "toDelivery" &&
             deliveryRouteCoords &&
             deliveryRouteCoords.length > 1
-          ? deliveryRouteCoords
-          : routeCoords;
+            ? deliveryRouteCoords
+            : routeCoords;
       if (effectiveRoute && effectiveRoute.length > 1) {
         setRouteCoords(effectiveRoute);
       }
@@ -1219,7 +1436,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           Speech.speak("Bắt đầu dẫn đường đến điểm lấy hàng", {
             language: "vi-VN",
           });
-      } catch {}
+      } catch { }
     } catch (error: any) {
       Alert.alert("Lỗi", error.message);
     } finally {
@@ -1333,7 +1550,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       try {
         const s: any = watchSubRef.current;
         if (typeof s.remove === "function") s.remove();
-      } catch (e) {}
+      } catch (e) { }
       watchSubRef.current = null;
     }
 
@@ -1394,7 +1611,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       try {
         const s: any = watchSubRef.current;
         if (typeof s.remove === "function") s.remove();
-      } catch (e) {}
+      } catch (e) { }
       watchSubRef.current = null;
     }
     setNavActive(false);
@@ -1402,9 +1619,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
     setNavHidden(false);
     try {
       Speech.speak("Đã dừng dẫn đường", { language: "vi-VN" });
-    } catch {}
+    } catch { }
   };
 
+  // Call backend to end current driver work session (but keep navigation UI active)
   // Call backend to end current driver work session (but keep navigation UI active)
   const handlePauseSession = async () => {
     if (!driverSessionId) {
@@ -1439,6 +1657,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
   };
 
   // End session and exit navigation UI
+  // End session and exit navigation UI
   const handleEndAndExit = async () => {
     if (!driverSessionId) {
       // Nothing to end server-side, just stop navigation
@@ -1472,27 +1691,35 @@ const DriverTripDetailScreenV2: React.FC = () => {
     stopNavigation();
   };
 
+
   // Resume a previously-paused work session by calling Start again
   const handleResumeSession = async () => {
-    if (startingNav || !trip) return;
-    // check eligibility before resuming
-    if (!eligibility) await loadEligibilityAndSession();
-    if (eligibility && !eligibility.canDrive)
-      return Alert.alert(
-        "Không đủ điều kiện",
-        eligibility.message || "Bạn không đủ điều kiện lái xe hiện tại"
-      );
-    const contHours = continuousSeconds / 3600;
-    if (contHours >= 4)
-      return Alert.alert(
-        "Ngừng",
-        "Bạn đã lái quá 4 giờ liên tục, hãy nghỉ trước khi tiếp tục"
-      );
-
+    // Guard against double-tap: if already starting or session already running, return
+    if (startingNav || !trip || isSessionRunning || isResuming) return;
+    setIsResuming(true);
     try {
+      // check eligibility before resuming
+      if (!eligibility) await loadEligibilityAndSession();
+      if (eligibility && !eligibility.canDrive) {
+        Alert.alert(
+          "Không đủ điều kiện",
+          eligibility.message || "Bạn không đủ điều kiện lái xe hiện tại"
+        );
+        return;
+      }
+      const contHours = continuousSeconds / 3600;
+      if (contHours >= 4) {
+        Alert.alert(
+          "Ngừng",
+          "Bạn đã lái quá 4 giờ liên tục, hãy nghỉ trước khi tiếp tục"
+        );
+        return;
+      }
+
       const resp: any = await driverWorkSessionService.start({
         TripId: trip.tripId,
       });
+      console.log('[handleResumeSession] Start session response:', JSON.stringify(resp, null, 2));
       if (!(resp?.isSuccess ?? resp?.statusCode === 200)) {
         Alert.alert(
           "Lỗi",
@@ -1500,8 +1727,15 @@ const DriverTripDetailScreenV2: React.FC = () => {
         );
         return;
       }
-      const sid = resp?.result?.DriverWorkSessionId ?? resp?.result ?? null;
-      if (sid) setDriverSessionId(String(sid));
+      // backend returns sessionId in resp.result.sessionId
+      const sid = resp?.result?.sessionId ?? resp?.result?.SessionId ?? null;
+      console.log('[handleResumeSession] Extracted session ID:', sid, 'type:', typeof sid);
+      if (!sid || typeof sid !== 'string') {
+        console.error('[handleResumeSession] Invalid session ID:', sid);
+        Alert.alert('Lỗi', 'Không nhận được ID phiên làm việc hợp lệ');
+        return;
+      }
+      setDriverSessionId(sid);
       // start local continuous timer
       setActiveSessionStart(new Date());
       setContinuousSeconds(0);
@@ -1511,10 +1745,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
       showToast("Đã tiếp tục phiên làm việc");
       // refresh eligibility/totals
       loadEligibilityAndSession();
-      stopNavigation();
+      // DON'T call stopNavigation() - we want to keep navigation UI active when resuming
     } catch (e: any) {
       console.warn("[DriverTripDetail] resume session failed", e);
       Alert.alert("Lỗi", e?.message || "Không thể tiếp tục phiên làm việc");
+    } finally {
+      setIsResuming(false);
     }
   };
 
@@ -1550,20 +1786,30 @@ const DriverTripDetailScreenV2: React.FC = () => {
     // Also end the current driver work session on the backend (keep nav UI active)
     if (driverSessionId) {
       try {
-        const endResp: any = await driverWorkSessionService.end({
-          DriverWorkSessionId: driverSessionId,
-        });
-        const ok = endResp?.isSuccess ?? endResp?.statusCode === 200;
-        if (ok) {
-          showToast("Đã ghi nhận thời gian nghỉ");
-          // clear local session id and stop continuous timer
-          setDriverSessionId(null);
-          setIsSessionRunning(false);
-          setActiveSessionStart(null);
-          // Keep nav active but mark paused so UI shows resume option
-          setSessionPaused(true);
+        // Extract string GUID - driverSessionId might be object like {DriverWorkSessionId: "guid"}
+        let sessionIdToSend = driverSessionId;
+        if (sessionIdToSend && typeof sessionIdToSend === 'object') {
+          sessionIdToSend = (sessionIdToSend as any).DriverWorkSessionId ?? (sessionIdToSend as any).driverWorkSessionId ?? null;
+        }
+        console.log('[confirmPickup] extracted sessionIdToSend:', sessionIdToSend, 'type:', typeof sessionIdToSend);
+        if (!sessionIdToSend || typeof sessionIdToSend !== 'string') {
+          console.error('[confirmPickup] Invalid session ID, skipping end call');
         } else {
-          console.warn("[DriverTripDetail] end session failed", endResp);
+          const endResp: any = await driverWorkSessionService.end({
+            DriverWorkSessionId: sessionIdToSend,
+          });
+          const ok = endResp?.isSuccess ?? endResp?.statusCode === 200;
+          if (ok) {
+            showToast("Đã ghi nhận thời gian nghỉ");
+            // clear local session id and stop continuous timer
+            setDriverSessionId(null);
+            setIsSessionRunning(false);
+            setActiveSessionStart(null);
+            // Keep nav active but mark paused so UI shows resume option
+            setSessionPaused(true);
+          } else {
+            console.warn("[DriverTripDetail] end session failed", endResp);
+          }
         }
       } catch (e: any) {
         console.warn("[DriverTripDetail] end session error", e);
@@ -1601,7 +1847,18 @@ const DriverTripDetailScreenV2: React.FC = () => {
       );
       setLoadingDeliveryRecord(false);
       if (res?.isSuccess) {
-        setActiveDeliveryRecord(res.result);
+        const record = res.result;
+        // Map deliveryRecordTerms to terms format for component
+        if (record.deliveryRecordTemplate?.deliveryRecordTerms && Array.isArray(record.deliveryRecordTemplate.deliveryRecordTerms)) {
+          record.terms = record.deliveryRecordTemplate.deliveryRecordTerms.map((term: any) => ({
+            deliveryRecordTermId: term.deliveryRecordTermId,
+            content: term.content || "",
+            displayOrder: term.displayOrder || 0,
+          }));
+        } else {
+          record.terms = [];
+        }
+        setActiveDeliveryRecord(record);
         // exit navigation UI before opening the record
         stopNavigation();
         setDeliveryModalOpen(true);
@@ -1621,12 +1878,13 @@ const DriverTripDetailScreenV2: React.FC = () => {
       Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
         language: "vi-VN",
       });
-    } catch {}
+    } catch { }
   };
 
   const [confirmingDelivery, setConfirmingDelivery] = useState(false);
   const [confirmingReturn, setConfirmingReturn] = useState(false);
   const [confirmingHandover, setConfirmingHandover] = useState(false);
+  const [confirmingVehicleReturning, setConfirmingVehicleReturning] = useState(false);
 
   // Helper to show alerts with web fallback
   const showAlert = (title: string, message?: string) => {
@@ -1639,7 +1897,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
     } catch (e) {
       try {
         Alert.alert(title, message);
-      } catch {}
+      } catch { }
     }
   };
 
@@ -1691,16 +1949,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
         // End current driver work session if exists (keep behavior consistent with pickup)
         if (driverSessionId) {
           try {
-            const endResp: any = await driverWorkSessionService.end({
-              DriverWorkSessionId: driverSessionId,
-            });
-            const ok2 = endResp?.isSuccess ?? endResp?.statusCode === 200;
-            if (ok2) {
-              showToast("Đã ghi nhận thời gian nghỉ");
-              setDriverSessionId(null);
-              setIsSessionRunning(false);
-              setActiveSessionStart(null);
-              setSessionPaused(true);
+            // Extract string GUID - driverSessionId might be object like {DriverWorkSessionId: "guid"}
+            let sessionIdToSend = driverSessionId;
+            if (sessionIdToSend && typeof sessionIdToSend === 'object') {
+              sessionIdToSend = (sessionIdToSend as any).DriverWorkSessionId ?? (sessionIdToSend as any).driverWorkSessionId ?? null;
+            }
+            console.log('[confirmDelivery] extracted sessionIdToSend:', sessionIdToSend, 'type:', typeof sessionIdToSend);
+            if (!sessionIdToSend || typeof sessionIdToSend !== 'string') {
+              console.error('[confirmDelivery] Invalid session ID, skipping end call');
+            } else {
+              const endResp: any = await driverWorkSessionService.end({
+                DriverWorkSessionId: sessionIdToSend,
+              });
+              const ok2 = endResp?.isSuccess ?? endResp?.statusCode === 200;
+              if (ok2) {
+                showToast("Đã ghi nhận thời gian nghỉ");
+                setDriverSessionId(null);
+                setIsSessionRunning(false);
+                setActiveSessionStart(null);
+                setSessionPaused(true);
+              }
             }
           } catch (e: any) {
             console.warn("[DriverTripDetail] end session failed", e);
@@ -1723,7 +1991,18 @@ const DriverTripDetailScreenV2: React.FC = () => {
           );
           setLoadingDeliveryRecord(false);
           if (fres?.isSuccess) {
-            setActiveDeliveryRecord(fres.result);
+            const rec = fres.result;
+            // Map deliveryRecordTerms to terms format for component
+            if (rec.deliveryRecordTemplate?.deliveryRecordTerms && Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)) {
+              rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map((term: any) => ({
+                deliveryRecordTermId: term.deliveryRecordTermId,
+                content: term.content || "",
+                displayOrder: term.displayOrder || 0,
+              }));
+            } else {
+              rec.terms = [];
+            }
+            setActiveDeliveryRecord(rec);
             setDeliveryModalOpen(true);
           }
         }
@@ -1731,7 +2010,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         setJourneyPhase("COMPLETED");
         try {
           Speech.speak("Đã hoàn thành đơn hàng", { language: "vi-VN" });
-        } catch {}
+        } catch { }
         await fetchTripData();
       } catch (e: any) {
         showAlert("Lỗi", e?.message || "Có lỗi khi xác nhận giao hàng");
@@ -1760,7 +2039,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           status: record.status,
         });
 
-        // Map termResults to terms format with IDs
+        // Map termResults to terms format with IDs (for editing UI)
         const mappedRecord = {
           ...record,
           terms: (record.termResults || []).map((t: any) => ({
@@ -1768,6 +2047,13 @@ const DriverTripDetailScreenV2: React.FC = () => {
             content: t.termContent,
             isChecked: t.isPassed,
             deviation: t.note || "",
+          })),
+          // Map for document display - add isOk and termContent
+          termResults: (record.termResults || []).map((t: any) => ({
+            termResultId: t.tripVehicleHandoverTermResultId,
+            termContent: t.termContent || "",
+            isOk: t.isPassed || false,
+            note: t.note || null,
           })),
         };
         setActiveHandoverRecord(mappedRecord);
@@ -1980,14 +2266,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
       try {
         const res: any = await tripService.changeStatus({
           TripId: trip.tripId,
-          NewStatus: "VEHICLE_HANDOVER",
+          NewStatus: "VEHICLE_HANDOVERED",
         });
         const ok = res?.isSuccess ?? res?.statusCode === 200;
         if (ok) {
           showToast("Đã xác nhận nhận xe");
           setTrip((prev) =>
             prev
-              ? ({ ...prev, status: "VEHICLE_HANDOVER" } as TripDetailData)
+              ? ({ ...prev, status: "VEHICLE_HANDOVERED" } as TripDetailData)
               : prev
           );
           await fetchTripData();
@@ -2004,6 +2290,57 @@ const DriverTripDetailScreenV2: React.FC = () => {
       }
     } catch (e: any) {
       console.warn("[DriverTripDetail] confirmVehicleHandover error", e);
+    }
+  };
+
+  const confirmReadyToReturnVehicle = async () => {
+    try {
+      let confirmed = true;
+      if (Platform.OS === "web") {
+        confirmed = window.confirm("Xác nhận đã sẵn sàng trả xe?");
+      } else {
+        confirmed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            "Xác nhận",
+            "Bạn đã sẵn sàng trả xe?",
+            [
+              { text: "Hủy", style: "cancel", onPress: () => resolve(false) },
+              { text: "Đã sẵn sàng", onPress: () => resolve(true) },
+            ],
+            { cancelable: true }
+          );
+        });
+      }
+      if (!confirmed) return;
+      if (confirmingVehicleReturning || !trip) return;
+      setConfirmingVehicleReturning(true);
+      try {
+        const res: any = await tripService.changeStatus({
+          TripId: trip.tripId,
+          NewStatus: "VEHICLE_RETURNING",
+        });
+        const ok = res?.isSuccess ?? res?.statusCode === 200;
+        if (ok) {
+          showToast("Đã xác nhận sẵn sàng trả xe");
+          setTrip((prev) =>
+            prev
+              ? ({ ...prev, status: "VEHICLE_RETURNING" } as TripDetailData)
+              : prev
+          );
+          await fetchTripData();
+        } else {
+          showAlert(
+            "Lỗi",
+            res?.message || "Không thể cập nhật trạng thái"
+          );
+        }
+      } catch (e: any) {
+        showAlert("Lỗi", e?.message || "Có lỗi khi xác nhận");
+      } finally {
+        setConfirmingVehicleReturning(false);
+      }
+    } catch (e: any) {
+      console.warn("[DriverTripDetail] confirmReadyToReturnVehicle error", e);
     }
   };
 
@@ -2076,7 +2413,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   // Signing rules
   const isPickupSignAllowed = trip?.status === "LOADING";
-  const isDropoffSignAllowed = trip?.status === "UNLOADING";
+  // DROPOFF: Driver phải đợi contact ký trước
+  const isDropoffSignAllowed = 
+    trip?.status === "UNLOADING" && 
+    activeDeliveryRecord?.contactSigned === true;
   const recordTerms =
     (activeDeliveryRecord &&
       (activeDeliveryRecord.terms ||
@@ -2162,7 +2502,159 @@ const DriverTripDetailScreenV2: React.FC = () => {
         </View>
       )}
 
+
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
+
+
+        {/* Warning Banner for VEHICLE_HANDOVERED status - PRIMARY DRIVER ONLY */}
+        {isMainDriver && trip.status === 'VEHICLE_HANDOVERED' && (() => {
+          // Check if driver has signed the handover record
+          const handoverRecord = (trip as any).handoverReadDTOs?.find(
+            (r: any) => r && r.type === "HANDOVER"
+          );
+          const driverHasSigned = handoverRecord?.receiverSigned;
+          const ownerHasSigned = handoverRecord?.handoverSigned;
+
+          if (driverHasSigned && !ownerHasSigned) {
+            // Driver already signed, waiting for owner
+            return (
+              <View style={[styles.warningBanner, { backgroundColor: '#DBEAFE', borderLeftColor: '#3B82F6' }]}>
+                <View style={styles.warningIconContainer}>
+                  <Text style={styles.warningIcon}>⏳</Text>
+                </View>
+                <View style={styles.warningContent}>
+                  <Text style={[styles.warningTitle, { color: '#1E40AF' }]}>Đã ký biên bản giao xe</Text>
+                  <Text style={[styles.warningText, { color: '#1E3A8A' }]}>
+                    Bạn đã ký xác nhận biên bản giao xe. Đang đợi chủ xe xác nhận để bắt đầu chuyến đi.
+                  </Text>
+                </View>
+              </View>
+            );
+          } else if (!driverHasSigned) {
+            // Driver hasn't signed yet
+            return (
+              <View style={styles.warningBanner}>
+                <View style={styles.warningIconContainer}>
+                  <Text style={styles.warningIcon}>📝</Text>
+                </View>
+                <View style={styles.warningContent}>
+                  <Text style={styles.warningTitle}>Ghi nhận tình trạng xe</Text>
+                  <Text style={styles.warningText}>
+                    Vui lòng kiểm tra và ghi nhận tình trạng xe, sau đó ký biên bản giao xe để bắt đầu chuyến đi
+                  </Text>
+                </View>
+              </View>
+            );
+          }
+          return null; // Both signed - no banner needed
+        })()}
+
+        {/* Badges Row - Driver Role & Session Status */}
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginHorizontal: 16,
+          marginTop: 16,
+          marginBottom: 8,
+          gap: 12,
+        }}>
+          {/* Badge hiển thị ROLE của user hiện tại */}
+          {currentDriver && (
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: isMainDriver ? '#3B82F6' : '#6B7280',
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 20,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.2,
+              shadowRadius: 3,
+              elevation: 4,
+            }}>
+              <MaterialCommunityIcons
+                name={isMainDriver ? "account-star" : "account"}
+                size={18}
+                color="#FFFFFF"
+              />
+              <Text style={{
+                marginLeft: 6,
+                fontSize: 13,
+                fontWeight: '700',
+                color: '#FFFFFF',
+              }}>
+                {isMainDriver ? "Tài xế chính" : "Tài xế phụ"}
+              </Text>
+            </View>
+          )}
+
+          {/* Badge hiển thị AI ĐANG LÁI */}
+          {!loadingSession && (
+            <View style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              backgroundColor: currentSession
+                ? (currentSession.isSelf ? '#10B981' : '#F59E0B')
+                : '#94A3B8',
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 20,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.2,
+              shadowRadius: 3,
+              elevation: 4,
+            }}>
+              <MaterialCommunityIcons
+                name={currentSession ? "steering" : "sleep"}
+                size={16}
+                color="#FFFFFF"
+              />
+              <View style={{ marginLeft: 6, flex: 1 }}>
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: '#FFFFFF',
+                }} numberOfLines={1}>
+                  {currentSession
+                    ? (currentSession.isSelf ? 'Bạn đang lái' : `${currentSession.role || 'Tài xế'} đang lái`)
+                    : 'Chưa bắt đầu'
+                  }
+                </Text>
+                {currentSession && (
+                  <>
+                    {!currentSession.isSelf && (
+                      <Text style={{
+                        fontSize: 10,
+                        color: '#FFFFFF',
+                        marginTop: 1,
+                        opacity: 0.9,
+                      }} numberOfLines={1}>
+                        {currentSession.driverName}
+                      </Text>
+                    )}
+                    {currentSession.startTime && (
+                      <Text style={{
+                        fontSize: 9,
+                        color: '#FFFFFF',
+                        marginTop: 1,
+                        opacity: 0.8,
+                      }} numberOfLines={1}>
+                        Bắt đầu: {new Date(currentSession.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+
         {/* Map Section */}
         <View style={styles.cardNoPadding}>
           <View style={styles.mapContainer}>
@@ -2215,12 +2707,13 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     style={[
                       styles.smallToggleText,
                       visibleRoute === "overview" &&
-                        styles.smallToggleTextActive,
+                      styles.smallToggleTextActive,
                     ]}
                   >
                     Tổng quan
                   </Text>
                 </TouchableOpacity>
+                {['MOVING_TO_PICKUP', 'MOVING_TO_DROPOFF', 'LOADING', 'UNLOADING'].includes(trip.status) && (
                 <TouchableOpacity
                   style={[
                     styles.smallToggle,
@@ -2233,12 +2726,15 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     style={[
                       styles.smallToggleText,
                       visibleRoute === "toPickup" &&
-                        styles.smallToggleTextActive,
+                      styles.smallToggleTextActive,
                     ]}
                   >
                     Đến lấy hàng
                   </Text>
                 </TouchableOpacity>
+                )}
+
+                {['MOVING_TO_DROPOFF', 'LOADING', 'UNLOADING'].includes(trip.status) && (
                 <TouchableOpacity
                   style={[
                     styles.smallToggle,
@@ -2251,12 +2747,13 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     style={[
                       styles.smallToggleText,
                       visibleRoute === "toDelivery" &&
-                        styles.smallToggleTextActive,
+                      styles.smallToggleTextActive,
                     ]}
                   >
                     Đến giao hàng
                   </Text>
                 </TouchableOpacity>
+                )}
               </View>
 
               {visibleRoute !== "overview" && (
@@ -2266,14 +2763,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     (navActive ||
                       (eligibility && !eligibility.canDrive) ||
                       continuousSeconds / 3600 >= 4) &&
-                      styles.mapFabDisabled,
+                    styles.mapFabDisabled,
                   ]}
                   onPress={
                     visibleRoute === "toPickup"
                       ? startNavigationToPickupAddress
                       : visibleRoute === "toDelivery"
-                      ? startNavigationToDeliveryAddress
-                      : startNavigation
+                        ? startNavigationToDeliveryAddress
+                        : startNavigation
                   }
                   disabled={
                     navActive ||
@@ -2286,22 +2783,24 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     {navActive
                       ? "Đang dẫn đường"
                       : visibleRoute === "toPickup"
-                      ? "Bắt đầu đi đến điểm lấy hàng"
-                      : visibleRoute === "toDelivery"
-                      ? "Bắt đầu đi đến điểm giao hàng"
-                      : "Bắt đầu đi"}
+                        ? "Bắt đầu đi đến điểm lấy hàng"
+                        : visibleRoute === "toDelivery"
+                          ? "Bắt đầu đi đến điểm giao hàng"
+                          : "Bắt đầu đi"}
                   </Text>
                 </TouchableOpacity>
               )}
 
               {/* Dev test button removed */}
-              <Text style={styles.statLabel}>Thời gian</Text>
+              {/* <Text style={styles.statLabel}>Thời gian</Text>
               <Text style={styles.statValue}>
                 {(trip.tripRoute?.durationMinutes / 60).toFixed(1) || 0} giờ
-              </Text>
+              </Text> */}
             </View>
           </View>
         </View>
+
+        
 
         {/* Summary Card */}
         <View style={styles.card}>
@@ -2315,13 +2814,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
             }
             title="Tóm tắt chuyến"
           />
-          <KeyValue label="Điểm lấy" value={trip.shippingRoute.startAddress} />
-          <KeyValue label="Điểm giao" value={trip.shippingRoute.endAddress} />
+          <KeyValue label="Điểm lấy hàng" value={trip.shippingRoute.startAddress} />
+          <KeyValue label="Điểm giao hàng" value={trip.shippingRoute.endAddress} />
+          <KeyValue label="Điểm lấy xe" value={trip.vehiclePickupAddress} />
+          <KeyValue label="Điểm trả xe" value={trip.vehicleDropoffAddress} />
           <KeyValue
             label="Xe"
-            value={`${trip.vehicle.plateNumber} • ${
-              trip.vehicle.vehicleTypeName ?? ""
-            }`}
+            value={`${trip.vehicle.plateNumber} • ${trip.vehicle.vehicleTypeName ?? ""
+              }`}
           />
           <KeyValue
             label="Tài xế"
@@ -2333,83 +2833,131 @@ const DriverTripDetailScreenV2: React.FC = () => {
           />
         </View>
 
-        {/* CARD: Vehicle Handover Records */}
+        {/* Packages Card */}
         <View style={styles.card}>
           <SectionHeader
             icon={
               <MaterialCommunityIcons
-                name="car-key"
+                name="package-variant-closed"
                 size={20}
-                color="#059669"
+                color="#D97706"
               />
             }
-            title="Biên bản giao nhận xe"
+            title="Hàng hóa"
           />
-          {!trip.tripVehicleHandoverRecordId &&
-          !trip.tripVehicleReturnRecordId ? (
-            <Text style={styles.emptyText}>Chưa có biên bản giao nhận xe</Text>
-          ) : (
-            <View>
-              {/* Biên bản giao xe (HANDOVER) */}
-              {trip.tripVehicleHandoverRecordId && (
-                <TouchableOpacity
-                  style={styles.recordCard}
-                  onPress={() =>
-                    openVehicleHandoverModal(
-                      trip.tripVehicleHandoverRecordId || undefined
-                    )
-                  }
-                >
-                  <View style={styles.recordIcon}>
-                    <MaterialCommunityIcons
-                      name="car-arrow-right"
-                      size={22}
-                      color="#0EA5E9"
+          {trip.packages?.map((pkg: any, index: number) => (
+            <View key={pkg.packageId} style={styles.packageCard}>
+              <View style={styles.packageHeader}>
+                <Text style={styles.packageTitle}>
+                  📦 Kiện #{index + 1}: {pkg.packageCode}
+                </Text>
+              </View>
+              <View style={styles.packageBody}>
+                <Text style={styles.packageInfo}>
+                  {pkg.weight} kg • {pkg.volume} m³
+                </Text>
+              </View>
+              {pkg.items?.map((item: any) => (
+                <View key={item.itemId} style={styles.itemRow}>
+                  {item.images?.[0] && (
+                    <Image
+                      source={{ uri: item.images[0] }}
+                      style={styles.itemThumb}
                     />
-                  </View>
+                  )}
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.recordType}>Biên bản giao xe</Text>
-                    <Text style={styles.recordSubtext}>Chủ xe → Tài xế</Text>
+                    <Text style={styles.itemName}>{item.itemName}</Text>
+                    <Text style={styles.itemDesc}>{item.description}</Text>
                   </View>
-                  <MaterialCommunityIcons
-                    name="chevron-right"
-                    size={20}
-                    color="#9CA3AF"
-                  />
-                </TouchableOpacity>
-              )}
-
-              {/* Biên bản nhận xe (RETURN) */}
-              {trip.tripVehicleReturnRecordId && (
-                <TouchableOpacity
-                  style={styles.recordCard}
-                  onPress={() =>
-                    openVehicleHandoverModal(
-                      trip.tripVehicleReturnRecordId || undefined
-                    )
-                  }
-                >
-                  <View style={styles.recordIcon}>
-                    <MaterialCommunityIcons
-                      name="car-arrow-left"
-                      size={22}
-                      color="#10B981"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.recordType}>Biên bản nhận xe</Text>
-                    <Text style={styles.recordSubtext}>Tài xế → Chủ xe</Text>
-                  </View>
-                  <MaterialCommunityIcons
-                    name="chevron-right"
-                    size={20}
-                    color="#9CA3AF"
-                  />
-                </TouchableOpacity>
-              )}
+                  <Text style={styles.itemValue}>
+                    {item.declaredValue?.toLocaleString()} đ
+                  </Text>
+                </View>
+              ))}
             </View>
-          )}
+          ))}
         </View>
+        
+
+        {/* CARD: Vehicle Handover Records - PRIMARY DRIVER ONLY */}
+        {isMainDriver && (
+          <View style={styles.card}>
+            <SectionHeader
+              icon={
+                <MaterialCommunityIcons
+                  name="car-key"
+                  size={20}
+                  color="#059669"
+                />
+              }
+              title="Biên bản giao nhận xe"
+            />
+            {!trip.tripVehicleHandoverRecordId &&
+              !trip.tripVehicleReturnRecordId ? (
+              <Text style={styles.emptyText}>Chưa có biên bản giao nhận xe</Text>
+            ) : (
+              <View>
+                {/* Biên bản giao xe (HANDOVER) */}
+                {trip.tripVehicleHandoverRecordId && (
+                  <TouchableOpacity
+                    style={styles.recordCard}
+                    onPress={() =>
+                      openVehicleHandoverModal(
+                        trip.tripVehicleHandoverRecordId || undefined
+                      )
+                    }
+                  >
+                    <View style={styles.recordIcon}>
+                      <MaterialCommunityIcons
+                        name="car-arrow-right"
+                        size={22}
+                        color="#0EA5E9"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.recordType}>Biên bản giao xe</Text>
+                      <Text style={styles.recordSubtext}>Chủ xe → Tài xế</Text>
+                    </View>
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={20}
+                      color="#9CA3AF"
+                    />
+                  </TouchableOpacity>
+                )}
+
+                {/* Biên bản nhận xe (RETURN) */}
+                {trip.tripVehicleReturnRecordId && (
+                  <TouchableOpacity
+                    style={styles.recordCard}
+                    onPress={() =>
+                      openVehicleHandoverModal(
+                        trip.tripVehicleReturnRecordId || undefined
+                      )
+                    }
+                  >
+                    <View style={styles.recordIcon}>
+                      <MaterialCommunityIcons
+                        name="car-arrow-left"
+                        size={22}
+                        color="#10B981"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.recordType}>Biên bản nhận xe</Text>
+                      <Text style={styles.recordSubtext}>Tài xế → Chủ xe</Text>
+                    </View>
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={20}
+                      color="#9CA3AF"
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Driver Contract (Updated to Match Owner Style) */}
         {myDriverContract && (
@@ -2423,6 +2971,44 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 <StatusPill value={myDriverContract.status || "PENDING"} />
               </View>
             </View>
+
+            {/* Driver Role Badge */}
+            {currentDriver && (
+              <View style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor: isMainDriver ? "#EBF5FF" : "#F3F4F6",
+                borderRadius: 8,
+                borderLeftWidth: 3,
+                borderLeftColor: isMainDriver ? "#3B82F6" : "#6B7280",
+              }}>
+                <MaterialCommunityIcons
+                  name={isMainDriver ? "account-star" : "account"}
+                  size={20}
+                  color={isMainDriver ? "#3B82F6" : "#6B7280"}
+                />
+                <Text style={{
+                  marginLeft: 8,
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: isMainDriver ? "#1E40AF" : "#374151",
+                }}>
+                  {isMainDriver ? "Tài xế chính" : "Tài xế phụ"}
+                </Text>
+                {!isMainDriver && (
+                  <Text style={{
+                    marginLeft: 8,
+                    fontSize: 12,
+                    color: "#6B7280",
+                  }}>
+                    (Chỉ xem hợp đồng của bạn)
+                  </Text>
+                )}
+              </View>
+            )}
 
             <View style={styles.moneyBox}>
               <Text style={styles.moneyLabel}>Giá trị hợp đồng</Text>
@@ -2473,57 +3059,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
           </View>
         )}
 
-        {/* Packages Card */}
-        <View style={styles.card}>
-          <SectionHeader
-            icon={
-              <MaterialCommunityIcons
-                name="package-variant-closed"
-                size={20}
-                color="#D97706"
-              />
-            }
-            title="Hàng hóa"
-          />
-          {trip.packages?.map((pkg: any, index: number) => (
-            <View key={pkg.packageId} style={styles.packageCard}>
-              <View style={styles.packageHeader}>
-                <Text style={styles.packageTitle}>
-                  📦 Kiện #{index + 1}: {pkg.packageCode}
-                </Text>
-              </View>
-              <View style={styles.packageBody}>
-                <Text style={styles.packageInfo}>
-                  {pkg.weight} kg • {pkg.volume} m³
-                </Text>
-              </View>
-              {pkg.items?.map((item: any) => (
-                <View key={item.itemId} style={styles.itemRow}>
-                  {item.images?.[0] && (
-                    <Image
-                      source={{ uri: item.images[0] }}
-                      style={styles.itemThumb}
-                    />
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.itemName}>{item.itemName}</Text>
-                    <Text style={styles.itemDesc}>{item.description}</Text>
-                  </View>
-                  <Text style={styles.itemValue}>
-                    {item.declaredValue?.toLocaleString()} đ
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ))}
-        </View>
+       
 
-        {/* Delivery Records */}
-        {trip.deliveryRecords?.length > 0 && (
+        {/* Delivery Records - PRIMARY DRIVER ONLY */}
+        {isMainDriver && trip.deliveryRecords?.length > 0 && (
           <View style={styles.card}>
             <SectionHeader
               icon={<Ionicons name="document-text" size={20} color="#64748B" />}
-              title="Biên bản giao nhận"
+              title="Biên bản giao nhận hàng hóa"
             />
             {trip.deliveryRecords.map((record) => (
               <TouchableOpacity
@@ -2536,7 +3079,21 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   );
                   setLoadingDeliveryRecord(false);
                   if (res?.isSuccess) {
-                    setActiveDeliveryRecord(res.result);
+                    const rec = res.result;
+                    console.log("📋 Delivery Record Data:", JSON.stringify(rec, null, 2));
+                    console.log("🔍 Record type field:", rec.type);
+                    console.log("🔍 Record recordType field:", rec.recordType);
+                    // Map deliveryRecordTerms to terms format for component
+                    if (rec.deliveryRecordTemplate?.deliveryRecordTerms && Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)) {
+                      rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map((term: any) => ({
+                        deliveryRecordTermId: term.deliveryRecordTermId,
+                        content: term.content || "",
+                        displayOrder: term.displayOrder || 0,
+                      }));
+                    } else {
+                      rec.terms = [];
+                    }
+                    setActiveDeliveryRecord(rec);
                     setDeliveryModalOpen(true);
                   } else {
                     Alert.alert("Lỗi", "Không thể tải biên bản");
@@ -2546,7 +3103,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 <View style={styles.recordIcon}>
                   <MaterialCommunityIcons
                     name={
-                      record.recordType === "PICKUP"
+                      (record.recordType || record.type) === "PICKUP"
                         ? "package-up"
                         : "package-down"
                     }
@@ -2556,7 +3113,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.recordType}>
-                    {record.recordType === "PICKUP"
+                    {(record.recordType || record.type) === "PICKUP"
                       ? "Biên bản Lấy hàng"
                       : "Biên bản Giao hàng"}
                   </Text>
@@ -2696,7 +3253,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   styles.navMainBtn,
                   styles.btnGreen,
                   (!effectiveCanConfirmDelivery || confirmingDelivery) &&
-                    styles.btnDisabled,
+                  styles.btnDisabled,
                 ]}
                 onPress={() => {
                   console.debug("navBtn press: DELIVERY", {
@@ -2722,7 +3279,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 style={[
                   styles.resumeBtn,
                   (eligibility && !eligibility.canDrive) ||
-                  continuousSeconds / 3600 >= 4
+                    continuousSeconds / 3600 >= 4
                     ? styles.btnDisabled
                     : {},
                   { marginRight: 6 },
@@ -2792,117 +3349,29 @@ const DriverTripDetailScreenV2: React.FC = () => {
               contentContainerStyle={styles.paperScrollContent}
               showsVerticalScrollIndicator={true}
             >
-              <View style={styles.a4Paper}>
-                {/* Header Quốc Hiệu */}
-                <View style={styles.docHeader}>
-                  <View style={styles.docHeaderLeft}>
-                    <Image
-                      source={{
-                        uri: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
-                      }}
-                      style={styles.docLogo}
-                      resizeMode="contain"
-                    />
-                    <Text style={styles.companyName}>
-                      CÔNG TY CỔ PHẦN{"\n"}DRIVESHARE LOGISTICS
-                    </Text>
-                  </View>
-                  <View style={styles.docHeaderRight}>
-                    <Text style={styles.govText}>
-                      CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-                    </Text>
-                    <Text style={styles.govMotto}>
-                      Độc lập - Tự do - Hạnh phúc
-                    </Text>
-                    <View style={styles.docLine} />
-                  </View>
-                </View>
-                {/* Title */}
-                <View style={styles.docTitleWrap}>
-                  <Text style={styles.docMainTitle}>HỢP ĐỒNG VẬN CHUYỂN</Text>
-                  <Text style={styles.docRef}>
-                    Số: {myDriverContract?.contractCode || "......."}/HĐVC
-                  </Text>
-                  <Text style={styles.docDate}>
-                    Ngày lập: {new Date().toLocaleDateString("vi-VN")}
-                  </Text>
-                </View>
-                {/* Parties */}
-                <View style={styles.formSection}>
-                  <View style={styles.formHeaderBar}>
-                    <Text style={styles.formHeaderText}>
-                      I. CÁC BÊN THAM GIA
-                    </Text>
-                  </View>
-                  <View style={styles.partiesRow}>
-                    <View style={styles.partyCol}>
-                      <Text style={styles.partyLabel}>BÊN A (Chủ Hàng):</Text>
-                      <Text style={styles.partyValue}>
-                        {trip?.owner?.companyName || trip?.owner?.fullName}
-                      </Text>
-                    </View>
-                    <View style={styles.partyDivider} />
-                    <View style={styles.partyCol}>
-                      <Text style={styles.partyLabel}>BÊN B (Tài xế):</Text>
-                      <Text style={styles.partyValue}>
-                        {user?.userName || "..."}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                {/* Terms */}
-                <View style={styles.formSection}>
-                  <View style={styles.formHeaderBar}>
-                    <Text style={styles.formHeaderText}>
-                      II. ĐIỀU KHOẢN HỢP ĐỒNG
-                    </Text>
-                  </View>
-                  <View style={styles.termsList}>
-                    {(myDriverContract?.terms || [])
-                      .slice()
-                      .sort((a, b) => (a.order || 0) - (b.order || 0))
-                      .map((t, i) => (
-                        <View key={i} style={styles.termItem}>
-                          <Text style={styles.termIndex}>{i + 1}.</Text>
-                          <Text style={styles.termContent}>{t.content}</Text>
-                        </View>
-                      ))}
-                  </View>
-                </View>
-                {/* Signatures */}
-                <View style={styles.signatureSection}>
-                  <View style={styles.signBox}>
-                    <Text style={styles.signTitle}>ĐẠI DIỆN BÊN A</Text>
-                    <View style={styles.signArea}>
-                      {myDriverContract?.ownerSigned ? (
-                        <View style={styles.stampBox}>
-                          <Text style={styles.stampText}>ĐÃ KÝ</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.unsignedText}>Chưa ký</Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.signBox}>
-                    <Text style={styles.signTitle}>ĐẠI DIỆN BÊN B</Text>
-                    <View style={styles.signArea}>
-                      {myDriverContract?.counterpartySigned ? (
-                        <View
-                          style={[styles.stampBox, { borderColor: "#DC2626" }]}
-                        >
-                          <Text
-                            style={[styles.stampText, { color: "#DC2626" }]}
-                          >
-                            ĐÃ KÝ
-                          </Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.unsignedText}>Chưa ký</Text>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
+              {myDriverContract && (
+                <ContractDocument
+                  contractCode={myDriverContract.contractCode}
+                  contractType="DRIVER_CONTRACT"
+                  contractValue={myDriverContract.contractValue}
+                  currency={myDriverContract.currency}
+                  effectiveDate={myDriverContract.effectiveDate || new Date().toISOString()}
+                  terms={(myDriverContract.terms || [])
+                    .slice()
+                    .sort((a, b) => (a.order || 0) - (b.order || 0))
+                    .map((t) => ({
+                      contractTermId: t.contractTermId,
+                      order: t.order || 0,
+                      content: t.content
+                    }))}
+                  ownerName={trip?.owner?.companyName || trip?.owner?.fullName || "---"}
+                  counterpartyName={user?.userName || "---"}
+                  ownerSigned={myDriverContract.ownerSigned || false}
+                  ownerSignAt={myDriverContract.ownerSignAt || null}
+                  counterpartySigned={myDriverContract.counterpartySigned || false}
+                  counterpartySignAt={myDriverContract.counterpartySignAt || null}
+                />
+              )}
             </ScrollView>
             <View style={styles.modalFooter}>
               {myDriverContract?.fileURL && (
@@ -2921,7 +3390,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
               {!myDriverContract?.counterpartySigned && (
                 <TouchableOpacity
                   style={styles.signButton}
-                  onPress={handleSendContractOtp}
+                  onPress={handleSignContractFromModal}
                 >
                   <Text style={styles.signButtonText}>Ký Hợp Đồng</Text>
                 </TouchableOpacity>
@@ -3247,8 +3716,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
               <Text style={{ fontWeight: "700" }}>
                 {activeDeliveryRecord?.tripDeliveryRecordId
                   ? `Biên bản: ${activeDeliveryRecord.tripDeliveryRecordId
-                      .substring(0, 8)
-                      .toUpperCase()}`
+                    .substring(0, 8)
+                    .toUpperCase()}`
                   : ""}
               </Text>
               <Text style={{ color: "#6B7280", marginTop: 6 }}>
@@ -3439,197 +3908,65 @@ const DriverTripDetailScreenV2: React.FC = () => {
               contentContainerStyle={styles.paperScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.a4Paper}>
-                <View style={styles.docHeader}>
-                  <View style={styles.docHeaderLeft}>
-                    <Image
-                      source={{
-                        uri: "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
-                      }}
-                      style={styles.docLogo}
-                      resizeMode="contain"
-                    />
-                    <Text style={styles.companyName}>
-                      CÔNG TY CỔ PHẦN{"\n"}DRIVESHARE LOGISTICS
-                    </Text>
-                  </View>
-                  <View style={styles.docHeaderRight}>
-                    <Text style={styles.govText}>
-                      CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-                    </Text>
-                    <Text style={styles.govMotto}>
-                      Độc lập - Tự do - Hạnh phúc
-                    </Text>
-                    <View style={styles.docLine} />
-                  </View>
-                </View>
-                <View style={styles.docTitleWrap}>
-                  <Text style={styles.docMainTitle}>
-                    BIÊN BẢN GIAO NHẬN HÀNG HÓA
-                  </Text>
-                  <Text style={styles.docRef}>
-                    Số:{" "}
-                    {activeDeliveryRecord.tripDeliveryRecordId
-                      .substring(0, 8)
-                      .toUpperCase()}
-                    /BBGN
-                  </Text>
-                  <Text style={styles.docDate}>
-                    Ngày:{" "}
-                    {new Date(activeDeliveryRecord.createAt).toLocaleDateString(
-                      "vi-VN"
-                    )}
-                  </Text>
-                </View>
-                <View style={styles.formSection}>
-                  <View style={styles.formHeaderBar}>
-                    <Text style={styles.formHeaderText}>
-                      I. THÔNG TIN CÁC BÊN
-                    </Text>
-                  </View>
-                  <View style={styles.partiesRow}>
-                    <View style={styles.partyCol}>
-                      <Text style={styles.partyLabel}>BÊN GIAO (Tài xế):</Text>
-                      <Text style={styles.partyValue}>
-                        {activeDeliveryRecord.driverPrimary?.fullName || "..."}
-                      </Text>
-                      <Text style={styles.partySub}>
-                        SĐT: {activeDeliveryRecord.driverPrimary?.phoneNumber}
-                      </Text>
-                    </View>
-                    <View style={styles.partyDivider} />
-                    <View style={styles.partyCol}>
-                      <Text style={styles.partyLabel}>
-                        BÊN NHẬN (Khách hàng):
-                      </Text>
-                      <Text style={styles.partyValue}>
-                        {activeDeliveryRecord.tripContact?.fullName || "..."}
-                      </Text>
-                      <Text style={styles.partySub}>
-                        SĐT: {activeDeliveryRecord.tripContact?.phoneNumber}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.formSection}>
-                  <View style={styles.formHeaderBar}>
-                    <Text style={styles.formHeaderText}>
-                      II. CHI TIẾT HÀNG HÓA
-                    </Text>
-                  </View>
-                  <View style={styles.tableContainer}>
-                    <View style={styles.tableHead}>
-                      <Text style={[styles.th, { width: 40 }]}>STT</Text>
-                      <Text style={[styles.th, { flex: 1 }]}>Tên hàng</Text>
-                      <Text style={[styles.th, { width: 60 }]}>ĐVT</Text>
-                      <Text style={[styles.th, { width: 50 }]}>SL</Text>
-                    </View>
-                    {(activeDeliveryRecord.tripDetail?.packages || []).map(
-                      (p: any, i: number) => (
-                        <View key={i} style={styles.tableRow}>
-                          <Text
-                            style={[
-                              styles.td,
-                              { width: 40, textAlign: "center" },
-                            ]}
-                          >
-                            {i + 1}
-                          </Text>
-                          <Text style={[styles.td, { flex: 1 }]}>
-                            <Text style={{ fontWeight: "bold" }}>
-                              {p.item?.name || p.packageCode}
-                            </Text>
-                            {p.description ? `\n(${p.description})` : ""}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.td,
-                              { width: 60, textAlign: "center" },
-                            ]}
-                          >
-                            {p.unit || "Kiện"}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.td,
-                              {
-                                width: 50,
-                                textAlign: "center",
-                                fontWeight: "bold",
-                              },
-                            ]}
-                          >
-                            {p.quantity || 1}
-                          </Text>
-                        </View>
-                      )
-                    )}
-                    <View style={styles.tableRow}>
-                      <Text
-                        style={[
-                          styles.td,
-                          { flex: 1, textAlign: "right", fontWeight: "bold" },
-                        ]}
-                      >
-                        TỔNG CỘNG:
-                      </Text>
-                      <Text
-                        style={[
-                          styles.td,
-                          {
-                            width: 110,
-                            textAlign: "center",
-                            fontWeight: "bold",
-                          },
-                        ]}
-                      >
-                        {(
-                          activeDeliveryRecord.tripDetail?.packages || []
-                        ).reduce(
-                          (sum: number, item: any) =>
-                            sum + (item.quantity || 1),
-                          0
-                        )}{" "}
-                        Kiện
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.signatureSection}>
-                  <View style={styles.signBox}>
-                    <Text style={styles.signTitle}>ĐẠI DIỆN BÊN GIAO</Text>
-                    <View style={styles.signArea}>
-                      {activeDeliveryRecord.driverSigned ? (
-                        <View style={styles.stampBox}>
-                          <Text style={styles.stampText}>ĐÃ KÝ</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.unsignedText}>Chưa ký</Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.signBox}>
-                    <Text style={styles.signTitle}>ĐẠI DIỆN BÊN NHẬN</Text>
-                    <View style={styles.signArea}>
-                      {activeDeliveryRecord.contactSigned ? (
-                        <View
-                          style={[styles.stampBox, { borderColor: "#DC2626" }]}
-                        >
-                          <Text
-                            style={[styles.stampText, { color: "#DC2626" }]}
-                          >
-                            ĐÃ KÝ
-                          </Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.unsignedText}>Chưa ký</Text>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
+              <DeliveryRecordDocument
+                recordType={activeDeliveryRecord.recordType || activeDeliveryRecord.type}
+                note={activeDeliveryRecord.note || ""}
+                createAt={activeDeliveryRecord.createAt}
+                terms={activeDeliveryRecord.terms || []}
+                driver={{
+                  driverId: activeDeliveryRecord.driverPrimary?.driverId || "",
+                  fullName: activeDeliveryRecord.driverPrimary?.fullName || "Tài xế",
+                  type: activeDeliveryRecord.driverPrimary?.type || "PRIMARY",
+                }}
+                contact={{
+                  tripContactId: activeDeliveryRecord.tripContact?.tripContactId || "",
+                  type: (activeDeliveryRecord.recordType || activeDeliveryRecord.type) === "PICKUP" ? "SENDER" : "RECEIVER",
+                  fullName: activeDeliveryRecord.tripContact?.fullName || "Khách hàng",
+                  phoneNumber: activeDeliveryRecord.tripContact?.phoneNumber || "",
+                  note: activeDeliveryRecord.tripContact?.note || null,
+                }}
+                driverSigned={activeDeliveryRecord.driverSigned}
+                driverSignedAt={activeDeliveryRecord.driverSignedAt}
+                contactSigned={activeDeliveryRecord.contactSigned}
+                contactSignedAt={activeDeliveryRecord.contactSignedAt}
+                status={activeDeliveryRecord.status}
+                tripCode={trip?.tripCode}
+                vehiclePlate={trip?.vehicle?.plateNumber}
+                ownerCompany={trip?.owner?.companyName || trip?.owner?.fullName}
+                packages={(activeDeliveryRecord.tripDetail?.packages || []).map((p: any) => ({
+                  packageCode: p.packageCode || p.item?.name || "Hàng hóa",
+                  weight: p.weight || 0,
+                  volume: p.volume || 0,
+                }))}
+                issues={activeDeliveryRecord.issues || []}
+              />
             </ScrollView>
             <View style={styles.modalFooter}>
+              {/* Report Issue Button - Only for PICKUP records */}
+              {(() => {
+                const recordType = activeDeliveryRecord.recordType || activeDeliveryRecord.type;
+                const isPickup = recordType === "PICKUP";
+                console.log("🔔 Report Issue Button Check:", {
+                  recordType: activeDeliveryRecord.recordType,
+                  type: activeDeliveryRecord.type,
+                  finalType: recordType,
+                  isPickup: isPickup
+                });
+                
+                if (isPickup) {
+                  return (
+                    <TouchableOpacity
+                      style={styles.reportIssueButton}
+                      onPress={handleOpenIssueReport}
+                    >
+                      <MaterialIcons name="report-problem" size={20} color="#DC2626" />
+                      <Text style={styles.reportIssueButtonText}>Báo cáo sự cố</Text>
+                    </TouchableOpacity>
+                  );
+                }
+                return null;
+              })()}
+              
               <TouchableOpacity
                 style={styles.pdfButton}
                 onPress={() => {
@@ -3661,10 +3998,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
                       activeDeliveryRecord.type) === "PICKUP"
                       ? isPickupSignAllowed
                       : (activeDeliveryRecord.recordType ??
-                          activeDeliveryRecord.type) === "DROPOFF"
-                      ? isDropoffSignAllowed
-                      : false)) &&
-                    styles.btnDisabled,
+                        activeDeliveryRecord.type) === "DROPOFF"
+                        ? isDropoffSignAllowed
+                        : false)) &&
+                  styles.btnDisabled,
                 ]}
                 disabled={
                   activeDeliveryRecord.driverSigned ||
@@ -3673,11 +4010,21 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     activeDeliveryRecord.type) === "PICKUP"
                     ? isPickupSignAllowed
                     : (activeDeliveryRecord.recordType ??
-                        activeDeliveryRecord.type) === "DROPOFF"
-                    ? isDropoffSignAllowed
-                    : false)
+                      activeDeliveryRecord.type) === "DROPOFF"
+                      ? isDropoffSignAllowed
+                      : false)
                 }
                 onPress={async () => {
+                  // Check if DROPOFF and contact hasn't signed yet
+                  const recordType = activeDeliveryRecord.recordType ?? activeDeliveryRecord.type;
+                  if (recordType === "DROPOFF" && !activeDeliveryRecord.contactSigned) {
+                    Alert.alert(
+                      "Chưa thể ký",
+                      "Vui lòng đợi khách hàng ký xác nhận trước khi bạn có thể ký biên bản DROPOFF."
+                    );
+                    return;
+                  }
+                  
                   // Start multi-step signing flow: show confirmation -> send OTP -> enter OTP
                   setShowDeliverySignFlowModal(true);
                 }}
@@ -3688,7 +4035,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   <Text style={styles.signButtonText}>
                     {activeDeliveryRecord.driverSigned
                       ? "Đã Ký Tên"
-                      : "Ký Xác Nhận"}
+                      : (activeDeliveryRecord.recordType ?? activeDeliveryRecord.type) === "DROPOFF" && !activeDeliveryRecord.contactSigned
+                        ? "Đợi khách hàng ký..."
+                        : "Ký Xác Nhận"}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -3697,8 +4046,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
         </View>
       )}
 
-      {/* Confirm vehicle handover bar */}
-      {trip.status === "READY_FOR_VEHICLE_HANDOVER" && (
+      {/* Confirm vehicle handover bar - PRIMARY DRIVER ONLY */}
+      {isMainDriver && trip.status === "READY_FOR_VEHICLE_HANDOVER" && (
         <View style={styles.returnVehicleBar} pointerEvents="box-none">
           <TouchableOpacity
             style={[styles.returnBtn, confirmingHandover && styles.btnDisabled]}
@@ -3714,8 +4063,25 @@ const DriverTripDetailScreenV2: React.FC = () => {
         </View>
       )}
 
-      {/* Confirm vehicle returned bar */}
-      {trip.status === "RETURNING_VEHICLE" && (
+      {/* Confirm ready to return vehicle bar - PRIMARY DRIVER ONLY */}
+      {isMainDriver && trip.status === "READY_FOR_VEHICLE_RETURN" && (
+        <View style={styles.returnVehicleBar} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[styles.returnBtn, confirmingVehicleReturning && styles.btnDisabled]}
+            onPress={confirmReadyToReturnVehicle}
+            disabled={confirmingVehicleReturning}
+          >
+            {confirmingVehicleReturning ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.returnBtnText}>Xác nhận đã trả xe</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Confirm vehicle returned bar - PRIMARY DRIVER ONLY */}
+      {isMainDriver && trip.status === "RETURNING_VEHICLE" && (
         <View style={styles.returnVehicleBar} pointerEvents="box-none">
           <TouchableOpacity
             style={[styles.returnBtn, confirmingReturn && styles.btnDisabled]}
@@ -3751,292 +4117,74 @@ const DriverTripDetailScreenV2: React.FC = () => {
               contentContainerStyle={styles.paperScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.a4Paper}>
-                <View style={styles.docHeader}>
-                  <View style={styles.docHeaderLeft}>
-                    <Image
-                      source={{
-                        uri: "https://res.cloudinary.com/dg0kkdixc/image/upload/v1733502849/icon-with-name_zfsm6c.png",
-                      }}
-                      style={styles.docLogo}
-                      resizeMode="contain"
-                    />
-                    <Text style={styles.docCompany}>
-                      CÔNG TY CỔ PHẦN{"\n"}DRIVESHARE LOGISTICS
-                    </Text>
-                  </View>
-                  <View style={styles.docHeaderRight}>
-                    <Text style={styles.docNumber}>
-                      Số:{" "}
-                      {activeHandoverRecord.tripVehicleHandoverRecordId?.slice(
-                        -6
-                      ) || "......"}
-                      /BB-XE
-                    </Text>
-                    <Text style={styles.docDate}>
-                      Ngày:{" "}
-                      {activeHandoverRecord.createAt
-                        ? new Date(
-                            activeHandoverRecord.createAt
-                          ).toLocaleDateString("vi-VN")
-                        : new Date().toLocaleDateString("vi-VN")}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.docTitle}>
-                  <Text style={styles.docTitleText}>
-                    {activeHandoverRecord.type === "HANDOVER"
-                      ? "BIÊN BẢN GIAO XE"
-                      : "BIÊN BẢN NHẬN XE"}
+              <HandoverRecordDocument
+                type={activeHandoverRecord.type}
+                status={activeHandoverRecord.status}
+                handoverUserName={
+                  activeHandoverRecord.type === "HANDOVER"
+                    ? trip?.owner?.fullName || "---"
+                    : trip?.drivers?.[0]?.fullName || "---"
+                }
+                receiverUserName={
+                  activeHandoverRecord.type === "HANDOVER"
+                    ? trip?.drivers?.[0]?.fullName || "---"
+                    : trip?.owner?.fullName || "---"
+                }
+                vehiclePlate={trip?.vehicle?.plateNumber || "---"}
+                currentOdometer={activeHandoverRecord.currentOdometer || 0}
+                fuelLevel={activeHandoverRecord.fuelLevel || 0}
+                isEngineLightOn={activeHandoverRecord.isEngineLightOn || false}
+                notes={activeHandoverRecord.notes || ""}
+                handoverSigned={activeHandoverRecord.handoverSigned}
+                handoverSignedAt={activeHandoverRecord.handoverSignedAt}
+                receiverSigned={activeHandoverRecord.receiverSigned}
+                receiverSignedAt={activeHandoverRecord.receiverSignedAt}
+                tripCode={trip?.tripCode}
+                ownerCompany={trip?.owner?.fullName}
+                termResults={(activeHandoverRecord.terms || []).map((term: any) => ({
+                  termResultId: term.tripVehicleHandoverTermResultId || `term-${Math.random()}`,
+                  isOk: term.isChecked,
+                  note: term.deviation,
+                }))}
+              />
+              
+              {/* Edit Checklist Section - Show when editing */}
+              {isEditingChecklist && (
+                <View style={{ padding: 20, backgroundColor: '#F3F4F6', marginTop: 10 }}>
+                  <Text style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 10 }}>
+                    Chỉnh sửa kiểm tra
                   </Text>
-                </View>
-
-                <View style={styles.docDivider} />
-
-                {/* Parties */}
-                <View style={styles.partiesContainer}>
-                  <View style={styles.partyBox}>
-                    <Text style={styles.partyLabel}>
-                      {activeHandoverRecord.type === "HANDOVER"
-                        ? "BÊN GIAO (Chủ xe):"
-                        : "BÊN GIAO (Tài xế):"}
-                    </Text>
-                    <Text style={styles.partyName}>
-                      {activeHandoverRecord.type === "HANDOVER"
-                        ? trip?.owner?.fullName || "---"
-                        : trip?.drivers?.[0]?.fullName || "---"}
-                    </Text>
-                    <Text style={styles.partyInfo}>
-                      SĐT:{" "}
-                      {activeHandoverRecord.type === "HANDOVER"
-                        ? trip?.owner?.phoneNumber || "---"
-                        : trip?.drivers?.[0]?.phoneNumber || "---"}
-                    </Text>
-                  </View>
-                  <View style={styles.verticalDivider} />
-                  <View style={styles.partyBox}>
-                    <Text style={styles.partyLabel}>
-                      {activeHandoverRecord.type === "HANDOVER"
-                        ? "BÊN NHẬN (Tài xế):"
-                        : "BÊN NHẬN (Chủ xe):"}
-                    </Text>
-                    <Text style={styles.partyName}>
-                      {activeHandoverRecord.type === "HANDOVER"
-                        ? trip?.drivers?.[0]?.fullName || "---"
-                        : trip?.owner?.fullName || "---"}
-                    </Text>
-                    <Text style={styles.partyInfo}>
-                      SĐT:{" "}
-                      {activeHandoverRecord.type === "HANDOVER"
-                        ? trip?.drivers?.[0]?.phoneNumber || "---"
-                        : trip?.owner?.phoneNumber || "---"}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.docDivider} />
-
-                {/* Vehicle Info */}
-                <View style={styles.section}>
-                  <View style={styles.sectionHeaderBox}>
-                    <MaterialCommunityIcons
-                      name="car"
-                      size={18}
-                      color="#059669"
-                    />
-                    <Text style={styles.sectionHeaderText}>THÔNG TIN XE</Text>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Biển số:</Text>
-                    <Text style={styles.infoValue}>
-                      {trip?.vehicle?.plateNumber || "---"}
-                    </Text>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Loại xe:</Text>
-                    <Text style={styles.infoValue}>
-                      {trip?.vehicle?.vehicleTypeName || "---"}
-                    </Text>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Model:</Text>
-                    <Text style={styles.infoValue}>
-                      {trip?.vehicle?.model || "---"}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.docDivider} />
-
-                {/* Terms Checklist */}
-                <View style={styles.section}>
-                  <View style={styles.sectionHeaderBox}>
-                    <MaterialCommunityIcons
-                      name="clipboard-check-outline"
-                      size={18}
-                      color="#059669"
-                    />
-                    <Text style={styles.sectionHeaderText}>
-                      KIỂM TRA TÌNH TRẠNG XE
-                    </Text>
-                    <TouchableOpacity
-                      onPress={toggleEditChecklist}
-                      style={styles.editButton}
-                    >
-                      <MaterialCommunityIcons
-                        name={isEditingChecklist ? "close" : "pencil"}
-                        size={16}
-                        color={isEditingChecklist ? "#EF4444" : "#3B82F6"}
-                      />
-                      <Text
-                        style={[
-                          styles.editButtonText,
-                          isEditingChecklist && { color: "#EF4444" },
-                        ]}
-                      >
-                        {isEditingChecklist ? "Hủy" : "Sửa"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  {(isEditingChecklist
-                    ? editedTerms
-                    : activeHandoverRecord.terms || []
-                  ).map((term: any, idx: number) => (
+                  {editedTerms.map((term: any, idx: number) => (
                     <View key={idx} style={styles.termRow}>
-                      {isEditingChecklist ? (
-                        <TouchableOpacity
-                          style={[
-                            styles.termCheckbox,
-                            term.isChecked && styles.termCheckboxChecked,
-                          ]}
-                          onPress={() =>
-                            updateTermChecked(idx, !term.isChecked)
-                          }
-                        >
-                          {term.isChecked && (
-                            <MaterialCommunityIcons
-                              name="check"
-                              size={16}
-                              color="#FFF"
-                            />
-                          )}
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={styles.termCheckbox}>
-                          {term.isChecked ? (
-                            <MaterialCommunityIcons
-                              name="check"
-                              size={16}
-                              color="#059669"
-                            />
-                          ) : (
-                            <MaterialCommunityIcons
-                              name="close"
-                              size={16}
-                              color="#EF4444"
-                            />
-                          )}
-                        </View>
-                      )}
+                      <TouchableOpacity
+                        style={[
+                          styles.termCheckbox,
+                          term.isChecked && styles.termCheckboxChecked,
+                        ]}
+                        onPress={() => updateTermChecked(idx, !term.isChecked)}
+                      >
+                        {term.isChecked && (
+                          <MaterialCommunityIcons
+                            name="check"
+                            size={16}
+                            color="#FFF"
+                          />
+                        )}
+                      </TouchableOpacity>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.termContent}>{term.content}</Text>
-                        {isEditingChecklist ? (
-                          <TextInput
-                            style={styles.termNoteInput}
-                            placeholder="Nhập ghi chú (nếu có)"
-                            value={term.deviation || ""}
-                            onChangeText={(text) => updateTermNote(idx, text)}
-                            multiline
-                          />
-                        ) : term.deviation ? (
-                          <Text style={styles.termDeviation}>
-                            Ghi chú: {term.deviation}
-                          </Text>
-                        ) : null}
+                        <TextInput
+                          style={styles.termNoteInput}
+                          placeholder="Nhập ghi chú (nếu có)"
+                          value={term.deviation || ""}
+                          onChangeText={(text) => updateTermNote(idx, text)}
+                          multiline
+                        />
                       </View>
                     </View>
                   ))}
                 </View>
-
-                <View style={styles.docDivider} />
-
-                {/* Signatures */}
-                <View style={styles.signaturesContainer}>
-                  <View style={styles.signBox}>
-                    <Text style={styles.signTitle}>
-                      {activeHandoverRecord.type === "HANDOVER"
-                        ? "CHỦ XE (Người giao)"
-                        : "TÀI XẾ (Người giao)"}
-                    </Text>
-                    <View style={styles.signArea}>
-                      {/* Display handover side signature */}
-                      {activeHandoverRecord.handoverSigned ? (
-                        <View style={{ alignItems: "center" }}>
-                          <Text
-                            style={{
-                              fontSize: 16,
-                              fontWeight: "bold",
-                              color: "#10B981",
-                            }}
-                          >
-                            ĐÃ KÝ
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              color: "#6B7280",
-                              marginTop: 4,
-                            }}
-                          >
-                            {new Date(
-                              activeHandoverRecord.handoverSignedAt
-                            ).toLocaleString("vi-VN")}
-                          </Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.unsignedText}>Chưa ký</Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.signBox}>
-                    <Text style={styles.signTitle}>
-                      {activeHandoverRecord.type === "HANDOVER"
-                        ? "TÀI XẾ (Người nhận)"
-                        : "CHỦ XE (Người nhận)"}
-                    </Text>
-                    <View style={styles.signArea}>
-                      {/* Display receiver side signature */}
-                      {activeHandoverRecord.receiverSigned ? (
-                        <View style={{ alignItems: "center" }}>
-                          <Text
-                            style={{
-                              fontSize: 16,
-                              fontWeight: "bold",
-                              color: "#DC2626",
-                            }}
-                          >
-                            ĐÃ KÝ
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              color: "#6B7280",
-                              marginTop: 4,
-                            }}
-                          >
-                            {new Date(
-                              activeHandoverRecord.receiverSignedAt
-                            ).toLocaleString("vi-VN")}
-                          </Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.unsignedText}>Chưa ký</Text>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
+              )}
             </ScrollView>
             <View style={styles.paperFooter}>
               {isEditingChecklist ? (
@@ -4072,9 +4220,28 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   </TouchableOpacity>
                 </>
               ) : (
-                <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flexDirection: "row", gap: 8, width: "100%" }}>
+                  {/* Edit Button - Show if not signed yet AND trip status is VEHICLE_HANDOVERED for HANDOVER type */}
+                  {activeHandoverRecord && !activeHandoverRecord.handoverSigned && !activeHandoverRecord.receiverSigned && (
+                    activeHandoverRecord.type === "RETURN" || 
+                    (activeHandoverRecord.type === "HANDOVER" && trip?.status === "VEHICLE_HANDOVERED")
+                  ) && (
+                    <TouchableOpacity
+                      style={[styles.actionBtnSecondary, { flex: 1 }]}
+                      onPress={toggleEditChecklist}
+                    >
+                      <MaterialCommunityIcons
+                        name="pencil"
+                        size={18}
+                        color="#374151"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={styles.actionBtnTextSec}>Sửa</Text>
+                    </TouchableOpacity>
+                  )}
+
                   <TouchableOpacity
-                    style={styles.actionBtnSecondary}
+                    style={[styles.actionBtnSecondary, { flex: 1 }]}
                     onPress={() =>
                       openVehicleHandoverPdf(
                         activeHandoverRecord?.tripVehicleHandoverRecordId
@@ -4087,19 +4254,33 @@ const DriverTripDetailScreenV2: React.FC = () => {
                       color="#374151"
                       style={{ marginRight: 6 }}
                     />
-                    <Text style={styles.actionBtnTextSec}>Xem PDF</Text>
+                    <Text style={styles.actionBtnTextSec}>PDF</Text>
                   </TouchableOpacity>
 
                   {/* Check if current user (driver) hasn't signed yet */}
                   {activeHandoverRecord &&
                     (() => {
-                      // HANDOVER: Driver is receiver side, RETURN: Driver is handover side
-                      const needsSignature =
-                        activeHandoverRecord.type === "HANDOVER"
-                          ? !activeHandoverRecord.receiverSigned
-                          : !activeHandoverRecord.handoverSigned;
+                      // For HANDOVER: Driver signs as receiver (getting vehicle from owner)
+                      // For RETURN: Driver signs as receiver (getting vehicle back from owner after trip)
+                      // Driver must wait for owner to sign first (handoverSigned = true)
+                      
+                      const isHandoverType = activeHandoverRecord.type === "HANDOVER";
+                      const isReturnType = activeHandoverRecord.type === "RETURN";
+                      const driverHasNotSigned = !activeHandoverRecord.receiverSigned;
+                      const ownerHasSigned = activeHandoverRecord.handoverSigned;
+                      
+                      // For HANDOVER: Only allow when trip status is VEHICLE_HANDOVERED and owner signed
+                      const canSignHandover = isHandoverType && 
+                        trip?.status === "VEHICLE_HANDOVERED" && 
+                        ownerHasSigned && 
+                        driverHasNotSigned;
+                      
+                      // For RETURN: Only allow after owner has signed first
+                      const canSignReturn = isReturnType && 
+                        ownerHasSigned && 
+                        driverHasNotSigned;
 
-                      if (needsSignature) {
+                      if (canSignHandover || canSignReturn) {
                         return (
                           <TouchableOpacity
                             style={[styles.actionBtnPrimary, { flex: 1 }]}
@@ -4116,6 +4297,18 @@ const DriverTripDetailScreenV2: React.FC = () => {
                           </TouchableOpacity>
                         );
                       }
+                      
+                      // Show waiting message if owner hasn't signed yet
+                      if ((isHandoverType || isReturnType) && !ownerHasSigned && driverHasNotSigned) {
+                        return (
+                          <View style={[styles.actionBtnSecondary, { flex: 1, opacity: 0.6 }]}>
+                            <Text style={[styles.actionBtnTextSec, { fontSize: 13 }]}>
+                              Đợi chủ xe ký xác nhận
+                            </Text>
+                          </View>
+                        );
+                      }
+                      
                       return null;
                     })()}
                 </View>
@@ -4131,7 +4324,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           <View style={styles.otpModalContainer}>
             <Text style={styles.otpModalTitle}>Nhập mã OTP</Text>
             <Text style={styles.otpModalSubtitle}>
-              Mã OTP đã được gửi đến số điện thoại của bạn
+              Mã OTP đã được gửi đến email của bạn
             </Text>
 
             <View style={styles.otpInputContainer}>
@@ -4185,6 +4378,109 @@ const DriverTripDetailScreenV2: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* --- ISSUE REPORT MODAL (FOR PICKUP) --- */}
+      <Modal
+        visible={showIssueReportModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowIssueReportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.issueReportModal}>
+            <View style={styles.issueReportHeader}>
+              <Text style={styles.issueReportTitle}>Báo cáo sự cố hàng hóa</Text>
+              <TouchableOpacity onPress={() => setShowIssueReportModal(false)}>
+                <Ionicons name="close" size={24} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.issueReportContent}>
+              {/* Issue Type Selection */}
+              <Text style={styles.issueLabel}>Loại sự cố:</Text>
+              <View style={styles.issueTypeContainer}>
+                {[
+                  { type: DeliveryIssueType.DAMAGED, label: "Hàng hư hỏng", icon: "broken-image" },
+                  { type: DeliveryIssueType.LOST, label: "Thiếu hàng", icon: "inventory-2" },
+                  { type: DeliveryIssueType.WRONG_ITEM, label: "Sai hàng", icon: "error-outline" },
+                  { type: DeliveryIssueType.LATE, label: "Giao trễ", icon: "schedule" },
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.type}
+                    style={[
+                      styles.issueTypeButton,
+                      issueType === item.type && styles.issueTypeButtonActive,
+                    ]}
+                    onPress={() => setIssueType(item.type)}
+                  >
+                    <MaterialIcons
+                      name={item.icon as any}
+                      size={24}
+                      color={issueType === item.type ? "#DC2626" : "#6B7280"}
+                    />
+                    <Text
+                      style={[
+                        styles.issueTypeText,
+                        issueType === item.type && styles.issueTypeTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Description Input */}
+              <Text style={styles.issueLabel}>Mô tả chi tiết:</Text>
+              <TextInput
+                style={styles.issueDescriptionInput}
+                placeholder="Nhập mô tả sự cố (bắt buộc)"
+                placeholderTextColor="#9CA3AF"
+                value={issueDescription}
+                onChangeText={setIssueDescription}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+
+              {/* Image Upload */}
+              <Text style={styles.issueLabel}>Ảnh minh chứng (tùy chọn):</Text>
+              <IssueImagePicker
+                images={issueImages}
+                onImagesChange={setIssueImages}
+                maxImages={5}
+              />
+            </ScrollView>
+
+            {/* Footer Buttons */}
+            <View style={styles.issueReportFooter}>
+              <TouchableOpacity
+                style={[styles.actionBtnSecondary, { flex: 1 }]}
+                onPress={() => setShowIssueReportModal(false)}
+                disabled={submittingIssue}
+              >
+                <Text style={styles.actionBtnTextSec}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.actionBtnPrimary,
+                  { flex: 1 },
+                  (!issueDescription.trim() || submittingIssue) && styles.btnDisabled,
+                ]}
+                onPress={handleSubmitIssueReport}
+                disabled={!issueDescription.trim() || submittingIssue}
+              >
+                {submittingIssue ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.actionBtnTextPri}>Gửi báo cáo</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -4193,6 +4489,44 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F3F4F6" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   scrollContent: { padding: 16 },
+
+  // Warning Banner
+  warningBanner: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    flexDirection: "row",
+    borderLeftWidth: 4,
+    borderLeftColor: "#F59E0B",
+    shadowColor: "#F59E0B",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  warningIconContainer: {
+    marginRight: 12,
+    alignItems: "center",
+    justifyContent: "flex-start",
+  },
+  warningIcon: {
+    fontSize: 24,
+  },
+  warningContent: {
+    flex: 1,
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#92400E",
+    marginBottom: 4,
+  },
+  warningText: {
+    fontSize: 14,
+    color: "#78350F",
+    lineHeight: 20,
+  },
 
   // Header
   header: {
@@ -4245,6 +4579,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   smallToggle: {
+
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
@@ -5136,6 +5471,100 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#FFF",
+  },
+
+  // Issue Report Modal Styles
+  reportIssueButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    gap: 6,
+  },
+  reportIssueButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#DC2626",
+  },
+  issueReportModal: {
+    backgroundColor: "#FFF",
+    borderRadius: 16,
+    width: "90%",
+    maxHeight: "80%",
+    overflow: "hidden",
+  },
+  issueReportHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  issueReportTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  issueReportContent: {
+    padding: 16,
+  },
+  issueLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  issueTypeContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  issueTypeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F9FAFB",
+    gap: 8,
+    minWidth: "48%",
+  },
+  issueTypeButtonActive: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#DC2626",
+  },
+  issueTypeText: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  issueTypeTextActive: {
+    color: "#DC2626",
+    fontWeight: "600",
+  },
+  issueDescriptionInput: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: "#111827",
+    backgroundColor: "#FFF",
+    minHeight: 100,
+  },
+  issueReportFooter: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
   },
 });
 

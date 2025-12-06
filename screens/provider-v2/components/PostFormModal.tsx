@@ -8,7 +8,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import packageService from '@/services/packageService'
 import contractTemplateService from '@/services/contractTemplateService'
-import postService from '@/services/postService'
+import postPackageService, { type RouteCalculationResultDTO, type Location } from '@/services/postPackageService'
 import walletService from '@/services/walletService'
 import AddressAutocomplete from '@/components/AddressAutocomplete'
 import DateInput from '@/components/DateInput'
@@ -62,6 +62,11 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
   const [wallet, setWallet] = useState<any | null>(null)
   const [sufficientBalance, setSufficientBalance] = useState<boolean | null>(null)
   const [paymentLoading, setPaymentLoading] = useState(false)
+  
+  // Route validation state
+  const [routeValidation, setRouteValidation] = useState<RouteCalculationResultDTO | null>(null)
+  const [isCalculating, setIsCalculating] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   // Form State
   const [form, setForm] = useState({
@@ -114,6 +119,127 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
 
   const handleChange = (key: string, val: string) => setForm(p => ({ ...p, [key]: val }))
 
+  // Real-time route calculation - CHỈ gửi khi có đủ cả ngày lấy VÀ ngày giao
+  useEffect(() => {
+    const calculateRoute = async () => {
+      // PHẢI có đủ: địa điểm đi, địa điểm đến, ngày lấy, ngày giao
+      if (!form.startLocation || !form.endLocation || !form.pickupDate || !form.deliveryDate) {
+        setRouteValidation(null)
+        setValidationError(null)
+        return
+      }
+
+      setIsCalculating(true)
+      setValidationError(null)
+
+      try {
+        console.log('📍 Starting route calculation...')
+        console.log('Start address:', form.startLocation)
+        console.log('End address:', form.endLocation)
+        console.log('Pickup date:', form.pickupDate)
+        console.log('Delivery date:', form.deliveryDate)
+
+        // Geocode addresses to get coordinates first (with error handling)
+        let startLoc: Location
+        let endLoc: Location
+
+        try {
+          startLoc = await postPackageService.ensureLocationCoordinates({
+            address: form.startLocation || '',
+            latitude: null,
+            longitude: null
+          })
+          console.log('✅ Start location geocoded:', startLoc)
+        } catch (err: any) {
+          console.error('❌ Failed to geocode start location:', err)
+          setValidationError(`Không thể tìm tọa độ điểm đi: ${form.startLocation}. Vui lòng nhập địa chỉ cụ thể hơn.`)
+          setIsCalculating(false)
+          return
+        }
+
+        try {
+          endLoc = await postPackageService.ensureLocationCoordinates({
+            address: form.endLocation || '',
+            latitude: null,
+            longitude: null
+          })
+          console.log('✅ End location geocoded:', endLoc)
+        } catch (err: any) {
+          console.error('❌ Failed to geocode end location:', err)
+          setValidationError(`Không thể tìm tọa độ điểm đến: ${form.endLocation}. Vui lòng nhập địa chỉ cụ thể hơn.`)
+          setIsCalculating(false)
+          return
+        }
+
+        // Final validation before calling backend
+        if (!startLoc.address || !startLoc.latitude || !startLoc.longitude) {
+          console.error('❌ Start location incomplete:', startLoc)
+          setValidationError('Dữ liệu địa điểm đi không đầy đủ')
+          setIsCalculating(false)
+          return
+        }
+
+        if (!endLoc.address || !endLoc.latitude || !endLoc.longitude) {
+          console.error('❌ End location incomplete:', endLoc)
+          setValidationError('Dữ liệu địa điểm đến không đầy đủ')
+          setIsCalculating(false)
+          return
+        }
+
+        console.log('✅ Both locations validated, calling calculateRoute API...')
+
+        // Call calculate route với CẢ ngày lấy VÀ ngày giao
+        const response = await postPackageService.calculateRoute({
+          startLocation: startLoc,
+          endLocation: endLoc,
+          expectedPickupDate: new Date(form.pickupDate).toISOString(),
+          expectedDeliveryDate: new Date(form.deliveryDate).toISOString()
+        })
+
+        console.log('✅ Route calculation response:', response)
+        
+        // Extract result from ResponseDTO
+        const result = response?.result
+        console.log('✅ Extracted result:', result)
+
+        if (!result) {
+          setValidationError('Không nhận được kết quả từ server')
+          return
+        }
+
+        setRouteValidation(result)
+
+        if (!result.isValid) {
+          setValidationError(result.message || 'Lộ trình không hợp lệ')
+        }
+      } catch (error: any) {
+        console.error('❌ Route calculation error:', error)
+        setValidationError(error?.message || 'Không thể tính toán lộ trình')
+      } finally {
+        setIsCalculating(false)
+      }
+    }
+
+    const timer = setTimeout(calculateRoute, 800)
+    return () => clearTimeout(timer)
+  }, [form.startLocation, form.endLocation, form.pickupDate, form.deliveryDate])
+
+  // Validate delivery date against suggestion - tích hợp vào validation result
+  const getDeliveryDateValidation = () => {
+    if (!routeValidation?.suggestedMinDeliveryDate || !form.deliveryDate) return null
+    
+    const suggestedTime = new Date(routeValidation.suggestedMinDeliveryDate).getTime()
+    const selectedTime = new Date(form.deliveryDate).getTime()
+    
+    if (selectedTime < suggestedTime) {
+      return {
+        isValid: false,
+        message: `⚠️ Thời gian giao hàng quá ngắn! Vui lòng chọn sau ${new Date(suggestedTime).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+      }
+    }
+    return { isValid: true, message: '✓ Thời gian giao hàng hợp lý' }
+  }
+
   const fetchPendingPackages = async () => {
     try {
       const res: any = await packageService.getMyPendingPackages(1, 100)
@@ -161,12 +287,54 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
         Status: 'AWAITING_SIGNATURE'
       }
 
-      const createResp: any = await postService.createProviderPostPackage(createDto)
+      // Geocode locations to ensure we have coordinates
+      const startLoc = await postPackageService.ensureLocationCoordinates({
+        address: form.startLocation,
+        latitude: null,
+        longitude: null
+      })
+
+      const endLoc = await postPackageService.ensureLocationCoordinates({
+        address: form.endLocation,
+        latitude: null,
+        longitude: null
+      })
+
+      // Use postPackageService for creating with Location object (with coordinates)
+      const shippingRouteDto = {
+        startLocation: startLoc,
+        endLocation: endLoc,
+        expectedPickupDate: form.pickupDate ? new Date(form.pickupDate).toISOString() : new Date().toISOString(),
+        expectedDeliveryDate: form.deliveryDate ? new Date(form.deliveryDate).toISOString() : new Date().toISOString()
+      }
+
+      const createDtoNew = {
+        title: form.title,
+        description: form.description,
+        offeredPrice: Number(form.offeredPrice) || 0,
+        shippingRoute: shippingRouteDto,
+        senderContact: {
+          fullName: form.senderName,
+          phoneNumber: form.senderPhone,
+          email: form.senderEmail || undefined,
+          address: form.startLocation
+        },
+        receiverContact: {
+          fullName: form.receiverName,
+          phoneNumber: form.receiverPhone,
+          email: form.receiverEmail || undefined,
+          address: form.endLocation
+        },
+        packageIds: selectedIds,
+        status: 'OPEN' as const
+      }
+
+      const createResp: any = await postPackageService.createProviderPostPackage(createDtoNew)
       const okCreate = createResp?.isSuccess ?? (createResp?.statusCode === 201 || createResp?.statusCode === 200)
       if (!okCreate) {
         throw new Error(createResp?.message || 'Không thể tạo bài đăng')
       }
-      const postId = createResp?.result?.PostPackageId || createResp?.result?.postPackageId || createResp?.result?.postPackageId
+      const postId = createResp?.result?.PostPackageId || createResp?.result?.postPackageId || createResp?.result?.id
       setCreatedPostId(postId || null)
 
       // Fetch contract template if available
@@ -210,7 +378,22 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
   }
 
   // whether the form has the minimum required fields to proceed from step 1
-  const canProceed = !loading && form.title.trim().length > 0 && selectedIds.length > 0 && form.startLocation.trim().length > 0 && form.endLocation.trim().length > 0
+  const canProceed = (() => {
+    if (loading || isCalculating) return false
+    if (!form.title.trim() || selectedIds.length === 0) return false
+    if (!form.startLocation.trim() || !form.endLocation.trim()) return false
+    if (!form.pickupDate || !form.deliveryDate) return false
+    
+    // PHẢI có route validation và isValid === true mới được tiếp tục
+    if (!routeValidation) return false
+    if (routeValidation.isValid === false) return false
+    
+    // Kiểm tra delivery date validation
+    const deliveryValidation = getDeliveryDateValidation()
+    if (deliveryValidation && !deliveryValidation.isValid) return false
+    
+    return true
+  })()
 
   if (!visible) return null
 
@@ -259,6 +442,109 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
                 <DateInput label="Ngày giao" value={form.deliveryDate || ''} onChange={(d) => handleChange('deliveryDate', d ?? '')} />
               </View>
             </View>
+            
+            {/* Hint: Cần nhập đủ ngày lấy và ngày giao */}
+            {(!form.pickupDate || !form.deliveryDate) && (form.startLocation && form.endLocation) && (
+              <View style={{ backgroundColor: '#EFF6FF', padding: 10, borderRadius: 8, marginTop: 8, borderLeftWidth: 3, borderLeftColor: COLORS.primary }}>
+                <Text style={{ fontSize: 13, color: '#1E40AF' }}>
+                  💡 Vui lòng nhập cả Ngày lấy và Ngày giao để tính toán lộ trình
+                </Text>
+              </View>
+            )}
+
+            {/* Route Validation Display */}
+            {isCalculating && (
+              <View style={styles.validationBox}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.validationText}>Đang tính toán lộ trình...</Text>
+              </View>
+            )}
+
+            {routeValidation && !isCalculating && (() => {
+              const deliveryValidation = getDeliveryDateValidation()
+              const finalIsValid = routeValidation.isValid && (!deliveryValidation || deliveryValidation.isValid)
+              
+              return (
+                <View style={[
+                  styles.validationBox,
+                  routeValidation.isValid ? styles.validationSuccess : styles.validationWarning
+                ]}>
+                  <MaterialCommunityIcons 
+                    name={routeValidation.isValid ? "check-circle" : "alert-circle"} 
+                    size={20} 
+                    color={routeValidation.isValid ? '#10B981' : '#F59E0B'} 
+                  />
+                  <View style={styles.validationContent}>
+                    {/* Ngày lấy và ngày giao - CHỈ HIỆN NGÀY */}
+                    {form.pickupDate && (
+                      <Text style={styles.validationSubtext}>
+                        🚚 Ngày lấy: {new Date(form.pickupDate).toLocaleDateString('vi-VN', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric'
+                        })}
+                      </Text>
+                    )}
+                    
+                    {form.deliveryDate && (
+                      <Text style={styles.validationSubtext}>
+                        📦 Ngày giao: {new Date(form.deliveryDate).toLocaleDateString('vi-VN', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric'
+                        })}
+                      </Text>
+                    )}
+                    
+                    {/* Message từ backend */}
+                    {routeValidation.message && (
+                      <Text style={[
+                        styles.validationSubtext, 
+                        { 
+                          color: routeValidation.isValid ? '#059669' : '#D97706', 
+                          marginTop: 6,
+                          fontWeight: '600'
+                        }
+                      ]}>
+                        {routeValidation.message}
+                      </Text>
+                    )}
+                    
+                    {/* Thông tin quãng đường */}
+                    {routeValidation.distanceKm != null && (
+                      <Text style={styles.validationSubtext}>
+                        📍 Quãng đường: {routeValidation.distanceKm.toFixed(2)} km
+                      </Text>
+                    )}
+                    
+                    {/* Thời gian hoàn thành */}
+                    {routeValidation.estimatedDurationHours != null && (
+                      <Text style={styles.validationSubtext}>
+                        ⏱️ Thời gian hoàn thành: {routeValidation.estimatedDurationHours.toFixed(1)} giờ
+                      </Text>
+                    )}
+                    
+                    {/* Ngày gợi ý từ backend - CHỈ HIỆN NGÀY */}
+                    {routeValidation.suggestedMinDeliveryDate && (
+                      <Text style={styles.validationSubtext}>
+                        💡 Ngày giao gợi ý: {new Date(routeValidation.suggestedMinDeliveryDate).toLocaleDateString('vi-VN', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric'
+                        })}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )
+            })()}
+
+            {validationError && !routeValidation && (
+              <View style={styles.errorBox}>
+                <Ionicons name="warning" size={20} color={COLORS.danger} />
+                <Text style={styles.errorText}>{validationError}</Text>
+              </View>
+            )}
 
             <View style={styles.divider} />
             <Text style={styles.sectionTitle}>Thông tin liên hệ</Text>
@@ -346,7 +632,7 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
                 // Update post status to AWAITING_PAYMENT on server, then fetch wallet and compare balance
                 setLoading(true)
                 try {
-                  const upd: any = await postService.updatePostStatus(createdPostId as string, 'AWAITING_PAYMENT')
+                  const upd: any = await postPackageService.updatePostStatus(createdPostId as string, 'AWAITING_PAYMENT')
                   const ok = upd?.isSuccess ?? (upd?.statusCode === 200)
                   if (!ok) throw new Error(upd?.message || 'Không thể cập nhật trạng thái bài đăng')
 
@@ -468,7 +754,18 @@ const styles = StyleSheet.create({
   actionBtnSecondary: { padding: 10, borderRadius: 8, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   actionBtnPrimary: { padding: 10, borderRadius: 8, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' },
   actionBtnTextSec: { fontWeight: '600', color: '#374151' },
-  actionBtnTextPri: { fontWeight: '600', color: '#fff' }
+  actionBtnTextPri: { fontWeight: '600', color: '#fff' },
+  
+  // Validation styles
+  validationBox: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 8, marginVertical: 8, backgroundColor: '#F0F9FF' },
+  validationSuccess: { backgroundColor: '#ECFDF5', borderLeftWidth: 4, borderLeftColor: '#10B981' },
+  validationWarning: { backgroundColor: '#FEF3C7', borderLeftWidth: 4, borderLeftColor: '#F59E0B' },
+  validationContent: { marginLeft: 8, flex: 1 },
+  validationText: { marginLeft: 8, fontSize: 13, color: '#6B7280' },
+  validationTitle: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
+  validationSubtext: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  errorBox: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 8, backgroundColor: '#FEE2E2', borderLeftWidth: 4, borderLeftColor: COLORS.danger, marginVertical: 8 },
+  errorText: { marginLeft: 8, fontSize: 13, color: COLORS.danger, flex: 1 }
 })
 
 export default PostFormModal

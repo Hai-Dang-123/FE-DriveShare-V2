@@ -1,10 +1,29 @@
 import api from '@/config/api'
 
 const vehicleService = {
-  getMyVehicles: async (pageNumber = 1, pageSize = 20) => {
-    const res = await api.get('api/vehicle/get-my-vehicles', {
-      params: { pageNumber, pageSize },
+  getMyVehicles: async (params: {
+    pageNumber: number
+    pageSize: number
+    search?: string
+    sortBy?: string
+    sortOrder?: string
+    status?: string
+  }) => {
+    const queryParams = new URLSearchParams({
+      pageNumber: params.pageNumber.toString(),
+      pageSize: params.pageSize.toString(),
     })
+    if (params.search) queryParams.append('search', params.search)
+    if (params.sortBy) queryParams.append('sortBy', params.sortBy)
+    if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder)
+    if (params.status) queryParams.append('status', params.status)
+
+    const res = await api.get(`api/vehicle/get-my-vehicles?${queryParams.toString()}`)
+    return res.data
+  },
+
+  getVehicleById: async (id: string) => {
+    const res = await api.get(`api/vehicle/${id}`)
     return res.data
   },
   // Upload one or multiple vehicle documents (front/back images + expiration)

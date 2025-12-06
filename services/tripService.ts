@@ -91,12 +91,26 @@ const tripService = {
       throw e;
     }
   },
-  async getTripsByProvider(pageNumber = 1, pageSize = 10) {
+  async getTripsByProvider(params: {
+    pageNumber: number
+    pageSize: number
+    search?: string
+    sortField?: string
+    sortDirection?: string
+    status?: string
+  }) {
     try {
-      const res = await api.get(
-        `api/trip/provider?pageNumber=${pageNumber}&pageSize=${pageSize}`
-      );
-      return res.data;
+      const queryParams = new URLSearchParams({
+        pageNumber: params.pageNumber.toString(),
+        pageSize: params.pageSize.toString(),
+      })
+      if (params.search) queryParams.append('search', params.search)
+      if (params.sortField) queryParams.append('sortField', params.sortField)
+      if (params.sortDirection) queryParams.append('sortDirection', params.sortDirection)
+      if (params.status) queryParams.append('status', params.status)
+
+      const res = await api.get(`api/trip/provider?${queryParams.toString()}`)
+      return res.data
     } catch (e: any) {
       console.error("getTripsByProvider failed", e);
       if (e.response) console.error("response", e.response.data);
@@ -304,6 +318,17 @@ const tripService = {
       return res.data;
     } catch (e: any) {
       console.error("signVehicleHandoverRecord failed", e);
+      if (e.response) console.error("response", e.response.data);
+      throw e;
+    }
+  },
+
+  async analyzeDrivers(tripId: string) {
+    try {
+      const res = await api.get(`api/Trip/analyze-drivers/${tripId}`);
+      return res.data;
+    } catch (e: any) {
+      console.error("analyzeDrivers failed", e);
       if (e.response) console.error("response", e.response.data);
       throw e;
     }

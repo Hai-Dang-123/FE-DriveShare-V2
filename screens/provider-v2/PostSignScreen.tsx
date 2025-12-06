@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { View, Text, Modal, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, ScrollView, SafeAreaView } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
-import postService from '@/services/postService'
+import postPackageService from '@/services/postPackageService'
 import contractTemplateService from '@/services/contractTemplateService'
 
 const PostSignScreen: React.FC = () => {
@@ -18,7 +18,7 @@ const PostSignScreen: React.FC = () => {
   const fetchDetails = async () => {
     setLoading(true)
     try {
-      const res: any = await postService.getPostPackageDetails(postId!)
+      const res: any = await postPackageService.getPostPackageDetails(postId!)
       setPost(res?.result ?? res)
     } catch (e) { console.warn(e) } finally { setLoading(false) }
   }
@@ -37,7 +37,7 @@ const PostSignScreen: React.FC = () => {
       { text: 'Xác nhận', onPress: async () => {
         setLoading(true)
         try {
-          const upd: any = await postService.updatePostStatus(postId!, 'AWAITING_PAYMENT')
+          const upd: any = await postPackageService.updatePostStatus(postId!, 'AWAITING_PAYMENT')
           const ok = upd?.isSuccess ?? upd?.statusCode === 200
           if (!ok) throw new Error(upd?.message || 'Không thể cập nhật trạng thái')
           Alert.alert('Thành công', 'Đã ký hợp đồng. Mở giao diện thanh toán.')

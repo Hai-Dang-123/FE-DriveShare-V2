@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { View, Text, Modal, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, ScrollView, SafeAreaView } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
-import postService from '@/services/postService'
+import postPackageService from '@/services/postPackageService'
 import walletService from '@/services/walletService'
 
 const PostPaymentScreen: React.FC = () => {
@@ -17,7 +17,7 @@ const PostPaymentScreen: React.FC = () => {
 
   const fetchDetails = async () => {
     try {
-      const res: any = await postService.getPostPackageDetails(postId!)
+      const res: any = await postPackageService.getPostPackageDetails(postId!)
       setPost(res?.result ?? res)
     } catch (e) { console.warn(e) }
   }

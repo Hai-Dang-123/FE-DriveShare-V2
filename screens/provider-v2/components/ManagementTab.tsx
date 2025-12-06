@@ -41,9 +41,9 @@ const ManagementTabs: React.FC = () => {
       setLoading(true)
       // Prefetch small datasets for snappy navigation
       if (path.includes('/(provider)/items')) {
-        await itemService.getItemsByUserId(undefined, 1, 20)
+        await itemService.getItemsByUserId({ pageNumber: 1, pageSize: 20 })
       } else if (path.includes('/(provider)/packages')) {
-        await packageService.getPackagesByUserId(1, 20)
+        await packageService.getPackagesByUserId({ pageNumber: 1, pageSize: 20 })
       }
       router.push(path)
     } catch (e) {

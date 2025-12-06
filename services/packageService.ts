@@ -136,9 +136,16 @@ const packageService = {
       throw e
     }
   },
-  async getPackagesByUserId(pageNumber = 1, pageSize = 10) {
+  async getPackagesByUserId(params: {
+    pageNumber?: number
+    pageSize?: number
+    search?: string
+    sortField?: string
+    sortOrder?: 'ASC' | 'DESC'
+    status?: string
+  } = {}) {
     try {
-      const res = await api.get('api/package/get-packages-by-user', { params: { pageNumber, pageSize } })
+      const res = await api.get('api/package/get-packages-by-user', { params })
       return res.data
     } catch (e: any) {
       console.error('getPackagesByUserId failed', e)

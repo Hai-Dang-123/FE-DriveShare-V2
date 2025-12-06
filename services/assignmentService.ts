@@ -13,8 +13,8 @@ export interface CreateAssignmentPayload {
 export interface CreateAssignmentByPostTripDTO {
   postTripId: string
   postTripDetailId: string
-  startLocation: { address: string; latitude: number; longitude: number }
-  endLocation: { address: string; latitude: number; longitude: number }
+  startLocation: string | null | { address: string; latitude: number; longitude: number }
+  endLocation: string | null | { address: string; latitude: number; longitude: number }
 }
 
 const assignmentService = {
@@ -39,11 +39,31 @@ const assignmentService = {
   ,
   async applyByPostTrip(payload: CreateAssignmentByPostTripDTO) {
     try {
+      // Handle custom locations: null means use backend default, string means custom address
+      let startLoc = null
+      let endLoc = null
+      
+      if (payload.startLocation) {
+        if (typeof payload.startLocation === 'string') {
+          startLoc = payload.startLocation
+        } else if ((payload.startLocation as any).address) {
+          startLoc = (payload.startLocation as any).address
+        }
+      }
+      
+      if (payload.endLocation) {
+        if (typeof payload.endLocation === 'string') {
+          endLoc = payload.endLocation
+        } else if ((payload.endLocation as any).address) {
+          endLoc = (payload.endLocation as any).address
+        }
+      }
+      
       const res = await api.post('api/TripDriverAssignments/apply-post-trip', {
         postTripId: payload.postTripId,
         postTripDetailId: payload.postTripDetailId,
-        StartLocation: (payload.startLocation && (payload.startLocation as any).address) ? (payload.startLocation as any).address : (String(payload.startLocation) ?? ''),
-        EndLocation: (payload.endLocation && (payload.endLocation as any).address) ? (payload.endLocation as any).address : (String(payload.endLocation) ?? '')
+        StartLocation: startLoc,
+        EndLocation: endLoc
       })
       return res.data
     } catch (e: any) {

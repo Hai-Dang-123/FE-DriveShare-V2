@@ -245,6 +245,7 @@ interface CreatePostTripModalProps {
   onClose: () => void
   tripId: string
   onCreated: (post: PostTripViewDTO) => void
+  driverAnalysis?: any
 }
 
 interface DetailFormState {
@@ -259,7 +260,7 @@ interface DetailFormState {
     bonusAmount?: string
 }
 
-const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onClose, tripId, onCreated }) => {
+const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onClose, tripId, onCreated, driverAnalysis }) => {
   const [title, setTitle] = useState('Tìm thêm tài xế cho chuyến')
   const [description, setDescription] = useState('Cần bổ sung tài xế, ưu tiên kinh nghiệm và đúng giờ.')
     const [payloadKg, setPayloadKg] = useState('')
@@ -469,6 +470,44 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
             {step === 1 && (
               <>
+                {/* AI Recommendation */}
+                {driverAnalysis?.suggestion && (
+                  <View style={styles.aiSection}>
+                    <View style={styles.aiHeader}>
+                      <MaterialCommunityIcons name="robot-outline" size={18} color="#4F46E5" />
+                      <Text style={styles.aiTitle}>Khuyến nghị từ hệ thống</Text>
+                    </View>
+                    {driverAnalysis.suggestion.systemRecommendation && (
+                      <View style={styles.aiRecommendation}>
+                        <Text style={styles.aiRecommendText}>{driverAnalysis.suggestion.systemRecommendation}</Text>
+                      </View>
+                    )}
+                    <View style={styles.scenarioRow}>
+                      {driverAnalysis.suggestion.soloScenario?.isPossible && (
+                        <View style={styles.miniScenario}>
+                          <Ionicons name="person" size={14} color="#059669" />
+                          <Text style={styles.miniScenarioLabel}>1 Tài</Text>
+                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.soloScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                        </View>
+                      )}
+                      {driverAnalysis.suggestion.teamScenario?.isPossible && (
+                        <View style={styles.miniScenario}>
+                          <Ionicons name="people" size={14} color="#2563EB" />
+                          <Text style={styles.miniScenarioLabel}>2 Tài</Text>
+                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.teamScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                        </View>
+                      )}
+                      {driverAnalysis.suggestion.expressScenario?.isPossible && (
+                        <View style={styles.miniScenario}>
+                          <Ionicons name="flash" size={14} color="#DC2626" />
+                          <Text style={styles.miniScenarioLabel}>3 Tài</Text>
+                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.expressScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+
                 {/* Section 1: Thông tin chung */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>1. THÔNG TIN BÀI ĐĂNG</Text>
@@ -810,6 +849,17 @@ const styles = StyleSheet.create({
   closeBtn: { padding: 6, backgroundColor: '#F3F4F6', borderRadius: 12 },
 
   scrollContent: { flex: 1 },
+
+  // AI Section
+  aiSection: { margin: 16, marginBottom: 8, backgroundColor: '#EFF6FF', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#BFDBFE' },
+  aiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 },
+  aiTitle: { fontSize: 13, fontWeight: '700', color: '#1E40AF' },
+  aiRecommendation: { backgroundColor: '#FFF', borderRadius: 8, padding: 10, marginBottom: 10 },
+  aiRecommendText: { fontSize: 12, color: '#374151', lineHeight: 18 },
+  scenarioRow: { flexDirection: 'row', gap: 8, justifyContent: 'flex-start' },
+  miniScenario: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
+  miniScenarioLabel: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
+  miniScenarioValue: { fontSize: 11, color: '#111827', fontWeight: '700' },
 
   // Generic
   section: { marginTop: 16, paddingHorizontal: 16 },

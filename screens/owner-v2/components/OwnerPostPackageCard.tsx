@@ -67,22 +67,34 @@
 // export default OwnerPostPackageCard
 
 
-import React, { useState } from 'react'
+import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native'
 import { MaterialCommunityIcons, Feather, Ionicons } from '@expo/vector-icons'
 import { FreightPost } from '@/models/types'
-import OwnerPostDetailModal from './OwnerPostDetailModal'
 
 interface Props {
   post: FreightPost
   onView?: (postId: string) => void
   onAccept?: (postId: string) => void
+  getStatusColor?: (status: string) => string
+  onRefresh?: () => void
 }
 
 const formatDate = (dateString: string) => {
   if (!dateString) return 'N/A'
   try { return new Date(dateString).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) } 
   catch { return 'Invalid' }
+}
+
+// Default status color function
+const defaultGetStatusColor = (status: string) => {
+  switch (status) {
+    case 'OPEN': return '#10B981'
+    case 'ACCEPTED': return '#3B82F6'
+    case 'CLOSED': return '#6B7280'
+    case 'EXPIRED': return '#EF4444'
+    default: return '#F59E0B'
+  }
 }
 
 // Màu sắc chủ đạo
@@ -96,13 +108,13 @@ const COLORS = {
   danger: '#EF4444',
 }
 
-const OwnerPostPackageCard: React.FC<Props> = ({ post, onView, onAccept }) => {
-  const [detailVisible, setDetailVisible] = useState(false)
+const OwnerPostPackageCard: React.FC<Props> = ({ post, onView, onAccept, getStatusColor, onRefresh }) => {
+  const statusColorFn = getStatusColor || defaultGetStatusColor
+  
   return (
-    <>
     <TouchableOpacity 
       style={styles.card} 
-      onPress={() => setDetailVisible(true)}
+      onPress={() => onView?.(post.id)}
       activeOpacity={0.9}
     >
       {/* HEADER: Title & Price */}
@@ -157,35 +169,12 @@ const OwnerPostPackageCard: React.FC<Props> = ({ post, onView, onAccept }) => {
         </View>
 
               <View style={styles.actions}>
-                <TouchableOpacity onPress={() => { setDetailVisible(true) }} style={styles.iconBtn}>
+                <TouchableOpacity onPress={() => onView?.(post.id)} style={styles.iconBtn}>
                   <Feather name="eye" size={18} color={COLORS.primary} />
                 </TouchableOpacity>
-
-                {/* Nút Accept (nếu cần) - gọi callback và hiển thị lỗi nếu server trả về isSuccess=false */}
-                {onAccept && (
-                  <TouchableOpacity
-                    onPress={async () => {
-                      try {
-                        const res: any = await onAccept(post.id as string)
-                        // Nếu callback trả về object với isSuccess false, show message
-                        if (res && res.isSuccess === false) {
-                          const msg = res.message ?? 'Không thể nhận chuyến.'
-                          Alert.alert('Lỗi khi nhận chuyến', msg)
-                        }
-                      } catch (e: any) {
-                        Alert.alert('Lỗi', e?.message ?? 'Có lỗi xảy ra khi nhận chuyến')
-                      }
-                    }}
-                    style={[styles.iconBtn, { backgroundColor: '#ECFDF5' }]}
-                  >
-                    <Feather name="check" size={18} color={COLORS.success} />
-                  </TouchableOpacity>
-                )}
               </View>
       </View>
     </TouchableOpacity>
-    <OwnerPostDetailModal visible={detailVisible} postId={post.id} onClose={() => setDetailVisible(false)} />
-    </>
   )
 }
 

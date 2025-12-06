@@ -8,7 +8,8 @@ interface AuthState {
   user: AuthenticatedUser | null
   loading: boolean
   wallet?: any | null
-  cccdVerified?: boolean
+  isVerified?: boolean
+  verificationMessage?: string
   login: (user: AuthenticatedUser) => Promise<void>
   logout: () => Promise<void>
   restoreSession: () => Promise<void>
@@ -23,7 +24,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const token = await AsyncStorage.getItem('accessToken')
       const userStr = await AsyncStorage.getItem('user')
       const walletStr = await AsyncStorage.getItem('wallet')
-      const cccdStr = await AsyncStorage.getItem('cccdVerified')
+      const verifyStr = await AsyncStorage.getItem('verificationStatus')
       if (token && userStr) {
         const decoded: any = jwtDecode(token)
         
@@ -32,8 +33,14 @@ export const useAuthStore = create<AuthState>((set) => ({
           let storedWallet = walletStr ? JSON.parse(walletStr) : null
           // if backend response DTO was stored accidentally, extract result
           if (storedWallet && storedWallet.result) storedWallet = storedWallet.result
-          const storedCccd = cccdStr ? JSON.parse(cccdStr) : undefined
-          set({ user: storedUser, wallet: storedWallet, cccdVerified: storedCccd, loading: false })
+          const verifyData = verifyStr ? JSON.parse(verifyStr) : null
+          set({ 
+            user: storedUser, 
+            wallet: storedWallet, 
+            isVerified: verifyData?.isVerified || false,
+            verificationMessage: verifyData?.message || '',
+            loading: false 
+          })
           return
         }
       }
@@ -50,21 +57,31 @@ export const useAuthStore = create<AuthState>((set) => ({
     await AsyncStorage.setItem('user', JSON.stringify(userData))
     set({ user: userData })
 
-    // fetch wallet and cccd status after login (best-effort)
+    // fetch wallet and verification status after login (best-effort)
     try {
       const walletService = (await import('@/services/walletService')).default
-      const userService = (await import('@/services/userService')).default
+      const ekycService = (await import('@/services/ekycService')).ekycService
       const w = await walletService.getMyWallet()
       if (w && w.isSuccess !== false) {
         const walletObj = (w.result ?? w.data) || w
         await AsyncStorage.setItem('wallet', JSON.stringify(walletObj))
         set({ wallet: walletObj })
       }
-      const cc = await userService.checkCCCDStatus()
-      if (cc && cc.isSuccess !== false) {
-        const verified = cc.result === true || cc.result === 'true' || cc.result === 1
-        await AsyncStorage.setItem('cccdVerified', JSON.stringify(verified))
-        set({ cccdVerified: verified })
+      const verifyResp = await ekycService.checkVerifiedStatus()
+      if (verifyResp && verifyResp.isSuccess !== false) {
+        // Backend returns: { result: boolean, message: string }
+        const isVerified = verifyResp.result === true
+        const message = verifyResp.message || ''
+        
+        const statusData = {
+          isVerified,
+          message
+        }
+        await AsyncStorage.setItem('verificationStatus', JSON.stringify(statusData))
+        set({ 
+          isVerified: statusData.isVerified,
+          verificationMessage: statusData.message
+        })
       }
     } catch (e) {
       // swallow — non-critical for login
@@ -74,7 +91,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     await AsyncStorage.multiRemove(['accessToken', 'user'])
-    await AsyncStorage.multiRemove(['wallet', 'cccdVerified'])
-    set({ user: null })
+    await AsyncStorage.multiRemove(['wallet', 'verificationStatus'])
+    set({ user: null, wallet: null, isVerified: false, verificationMessage: '' })
   },
 }))

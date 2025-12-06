@@ -43,9 +43,11 @@ interface Props {
   posts: FreightPost[]
   onView?: (postId: string) => void
   onAccept?: (postId: string) => void
+  getStatusColor?: (status: string) => string
+  onRefresh?: () => void
 }
 
-const OwnerPostPackageList: React.FC<Props> = ({ posts, onView, onAccept }) => {
+const OwnerPostPackageList: React.FC<Props> = ({ posts, onView, onAccept, getStatusColor, onRefresh }) => {
   
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
@@ -61,7 +63,13 @@ const OwnerPostPackageList: React.FC<Props> = ({ posts, onView, onAccept }) => {
     <FlatList
       data={posts}
       renderItem={({ item }) => (
-        <OwnerPostPackageCard post={item} onView={onView} onAccept={onAccept} />
+        <OwnerPostPackageCard 
+          post={item} 
+          onView={onView}
+          onAccept={onAccept}
+          getStatusColor={getStatusColor}
+          onRefresh={onRefresh}
+        />
       )}
       keyExtractor={(i) => i.id}
       ListEmptyComponent={renderEmpty}

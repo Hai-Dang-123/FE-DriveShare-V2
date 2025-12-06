@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native'
 import { useRouter } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 import postTripService from '@/services/postTripService'
 
 type AnyObj = Record<string, any>
@@ -95,9 +96,11 @@ const PostTripsManagementScreen: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-    fetchPage(1)
-  }, [])
+  useFocusEffect(
+    useCallback(() => {
+      fetchPage(1)
+    }, [])
+  )
 
   const onRefresh = () => {
     setRefreshing(true)

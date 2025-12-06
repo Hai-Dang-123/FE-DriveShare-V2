@@ -1,195 +1,6 @@
-// import React, { useEffect, useState } from 'react'
-// import {
-//   View,
-//   Text,
-//   StyleSheet,
-//   SafeAreaView,
-//   TouchableOpacity,
-//   ActivityIndicator,
-//   FlatList,
-//   Image,
-// } from 'react-native'
-// import vehicleService from '@/services/vehicleService'
-// import { Vehicle } from '../../models/types'
-// import { ArrowLeftIcon } from '../provider-v2/icons/ActionIcons'
-// import VehicleList from './components/VehicleList'
-// import VehicleFormModal from './components/VehicleFormModal'
-// import { Alert } from 'react-native'
 
-// interface Props {
-//   onBack?: () => void
-// }
 
-// const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
-//   const [vehicles, setVehicles] = useState<Vehicle[]>([])
-//   const [loading, setLoading] = useState(false)
-//   const [error, setError] = useState<string | null>(null)
-//   const [showCreateModal, setShowCreateModal] = useState(false)
-
-//   const fetchVehicles = async (pageNumber = 1, pageSize = 20) => {
-//     setLoading(true)
-//     setError(null)
-//     try {
-//       const res: any = await vehicleService.getMyVehicles(pageNumber, pageSize)
-//       const payload = res?.result ?? res
-//       let items: any[] = []
-//       if (payload && Array.isArray(payload.data)) items = payload.data
-//       else if (payload && Array.isArray(payload.items)) items = payload.items
-//       else if (Array.isArray(payload)) items = payload
-
-//       const mapped: Vehicle[] = items.map((v: any) => ({
-//         id: v.vehicleId ?? v.VehicleId ?? v.id,
-//         plateNumber: v.plateNumber ?? v.PlateNumber ?? v.Plate ?? '',
-//         model: v.model ?? v.Model,
-//         brand: v.brand ?? v.Brand,
-//         color: v.color ?? v.Color,
-//         yearOfManufacture: v.yearOfManufacture ?? v.YearOfManufacture,
-//         payloadInKg: v.payloadInKg ?? v.PayloadInKg,
-//         volumeInM3: v.volumeInM3 ?? v.VolumeInM3,
-//         status: v.status ?? v.Status,
-//         vehicleType: v.vehicleType ?? v.VehicleType,
-//         owner: v.owner ?? v.Owner,
-//         // Support multiple possible backend shapes: 'imageUrls' or 'vehicleImages'
-//         imageUrls: Array.isArray(v.imageUrls)
-//           ? v.imageUrls.map((i: any) => ({
-//               vehicleImageId: i.vehicleImageId ?? i.id,
-//               imageURL: i.imageURL ?? i.imageUrl ?? i.ImageURL ?? i.url,
-//               caption: i.caption ?? i.captionText ?? null,
-//               createdAt: i.createdAt ?? i.createdAt,
-//             }))
-//           : Array.isArray(v.vehicleImages)
-//           ? v.vehicleImages.map((i: any) => ({
-//               vehicleImageId: i.vehicleImageId ?? i.id,
-//               imageURL: i.imageURL ?? i.imageUrl ?? i.ImageURL ?? i.url,
-//               caption: i.caption ?? null,
-//               createdAt: i.createdAt,
-//             }))
-//           : [],
-//       }))
-
-//       setVehicles(mapped)
-//     } catch (e: any) {
-//       setError(e?.message || 'Không thể tải danh sách xe')
-//     } finally {
-//       setLoading(false)
-//     }
-//   }
-
-//   useEffect(() => {
-//     fetchVehicles(1, 20)
-//   }, [])
-
-//   const handleEditVehicle = (v: Vehicle) => {
-//     Alert.alert('Chưa hỗ trợ', `Chỉnh sửa xe: ${v.plateNumber}`)
-//   }
-
-//   const handleDeleteVehicle = (vehicleId: string) => {
-//     Alert.alert('Xác nhận', 'Bạn có chắc chắn muốn xóa xe này?', [
-//       { text: 'Hủy', style: 'cancel' },
-//       { text: 'Xóa', style: 'destructive', onPress: () => setVehicles((prev) => prev.filter((x) => x.id !== vehicleId)) },
-//     ])
-//   }
-
-//   const handleOpenCreate = () => setShowCreateModal(true)
-
-//   const handleCreate = async (dto: any) => {
-//     try {
-//       setLoading(true)
-//       await vehicleService.createVehicle(dto)
-//       setShowCreateModal(false)
-//       fetchVehicles(1, 20)
-//     } catch (e: any) {
-//       Alert.alert('Lỗi', e?.message || 'Tạo xe thất bại')
-//     } finally {
-//       setLoading(false)
-//     }
-//   }
-
-//   const renderItem = ({ item }: { item: Vehicle }) => (
-//     <View style={styles.card}>
-// <View style={styles.row}>
-//         {item.imageUrls && item.imageUrls.length > 0 ? (
-//           <Image source={{ uri: item.imageUrls[0].imageURL ?? item.imageUrls[0].imageURL }} style={styles.thumb} />
-//         ) : (
-//           <View style={[styles.thumb, styles.thumbPlaceholder]} />
-//         )}
-//         <View style={{ flex: 1 }}>
-// <Text style={styles.plate}>{item.plateNumber}</Text>
-// <Text style={styles.meta}>{item.brand ?? item.model}</Text>
-// <Text style={styles.metaSmall}>{item.color ?? ''} • {item.yearOfManufacture ?? ''}</Text>
-// </View>
-// </View>
-// </View>
-//   )
-
-//   if (loading) {
-//     return (
-//       <SafeAreaView style={styles.centered}>
-// <ActivityIndicator size="large" color="#4F46E5" />
-// <Text style={styles.statusText}>Đang tải xe...</Text>
-// </SafeAreaView>
-//     )
-//   }
-
-//   if (error) {
-//     return (
-//       <SafeAreaView style={styles.centered}>
-// <Text style={styles.errorText}>{error}</Text>
-// <TouchableOpacity onPress={() => fetchVehicles(1, 20)} style={styles.retryButton}>
-// <Text style={styles.retryText}>Thử lại</Text>
-// </TouchableOpacity>
-// </SafeAreaView>
-//     )
-//   }
-
-//   return (
-//     <SafeAreaView style={styles.container}>
-// <View style={styles.headerContainer}>
-//         {onBack ? (
-//           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-// <ArrowLeftIcon style={styles.icon} />
-// </TouchableOpacity>
-//         ) : (
-//           <View style={styles.placeholder} />
-//         )}
-//         <Text style={styles.title}>Quản lý xe</Text>
-// <TouchableOpacity onPress={handleOpenCreate} style={{ padding: 8 }}>
-// <Text style={{ color: '#4F46E5', fontWeight: '700' }}>Thêm</Text>
-// </TouchableOpacity>
-// </View>
-// <View style={{ flex: 1 }}>
-// <VehicleList vehicles={vehicles} onEdit={handleEditVehicle} onDelete={handleDeleteVehicle} />
-// </View>
-// <VehicleFormModal visible={showCreateModal} onClose={() => setShowCreateModal(false)} onCreate={handleCreate} />
-// </SafeAreaView>
-//   )
-// }
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1, backgroundColor: '#F3F4F6' },
-//   headerContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-//   backButton: { padding: 8, marginLeft: -8 },
-//   icon: { width: 24, height: 24, color: '#111827' },
-//   title: { fontSize: 20, fontWeight: '700', color: '#111827' },
-//   placeholder: { width: 40 },
-//   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-//   statusText: { marginTop: 12, color: '#6B7280' },
-//   errorText: { color: '#EF4444' },
-//   retryButton: { marginTop: 12, backgroundColor: '#4F46E5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-//   retryText: { color: '#fff', fontWeight: '600' },
-//   listContent: { padding: 16, paddingBottom: 64 },
-//   card: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
-//   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-//   thumb: { width: 96, height: 64, borderRadius: 8, backgroundColor: '#E5E7EB', marginRight: 12 },
-//   thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-//   plate: { fontSize: 16, fontWeight: '700', color: '#111827' },
-//   meta: { color: '#6B7280' },
-//   metaSmall: { color: '#9CA3AF', marginTop: 4 },
-// })
-
-// export default VehiclesManagementScreen
-
-import React, { useEffect, useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
@@ -199,12 +10,16 @@ import {
   ActivityIndicator,
   TextInput,
   StatusBar,
-  Alert // Nhớ import Alert
+  Alert,
+  Modal,
+  ScrollView
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
+import { Ionicons, Feather } from '@expo/vector-icons'
 import { Vehicle } from '../../models/types'
 import vehicleService from '@/services/vehicleService'
+import { useVehicles } from '@/hooks/useVehicles'
 import VehicleList from './components/VehicleList'
 import VehicleFormModal from './components/VehicleFormModal'
 
@@ -214,96 +29,66 @@ interface Props {
 
 const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
   const router = useRouter()
-  const [vehicles, setVehicles] = useState<Vehicle[]>([])
-  const [loading, setLoading] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  const { vehicles, loading, search, sortBy, sortOrder, statusFilter, setSearch, setSortBy, setSortOrder, setStatusFilter, fetchPage } = useVehicles()
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [isSortModalOpen, setIsSortModalOpen] = useState(false)
+  const [searchText, setSearchText] = useState('')
+  const [searchDebounce, setSearchDebounce] = useState<ReturnType<typeof setTimeout> | null>(null)
+  const [toastMessage, setToastMessage] = useState('')
 
-  // Hàm tải danh sách xe
-  const fetchVehicles = async (pageNumber = 1, pageSize = 20) => {
-    setLoading(true)
-    try {
-      const res: any = await vehicleService.getMyVehicles(pageNumber, pageSize)
-      const payload = res?.result ?? res
-      let items: any[] = []
-      if (payload && Array.isArray(payload.data)) items = payload.data
-      else if (payload && Array.isArray(payload.items)) items = payload.items
-      else if (Array.isArray(payload)) items = payload
+  // Refetch data when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fetchPage(1)
+    }, [fetchPage])
+  )
 
-      const mapped: Vehicle[] = items.map((v: any) => ({
-        id: v.vehicleId ?? v.id,
-        plateNumber: v.plateNumber ?? '',
-        model: v.model,
-        brand: v.brand,
-        color: v.color,
-        yearOfManufacture: v.yearOfManufacture,
-        payloadInKg: v.payloadInKg,
-        volumeInM3: v.volumeInM3,
-        status: v.status,
-        // preserve verification flag and documents so UI can display correct state
-        isVerified: v.isVerified ?? v.IsVerified ?? false,
-        documents: Array.isArray(v.documents) ? v.documents : (Array.isArray(v.Documents) ? v.Documents : []),
-        imageUrls: Array.isArray(v.imageUrls) ? v.imageUrls : [],
-      }))
-
-      setVehicles(mapped)
-    } catch (e: any) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
+  const statusOptions = ['ALL', 'ACTIVE', 'IN_USE', 'INACTIVE']
+  const statusLabels: Record<string, string> = {
+    ALL: 'Tất cả',
+    ACTIVE: 'Hoạt động',
+    IN_USE: 'Đang dùng',
+    INACTIVE: 'Không hoạt động',
+  }
+  const statusColors: Record<string, string> = {
+    ACTIVE: '#10B981',
+    IN_USE: '#F59E0B',
+    INACTIVE: '#6B7280',
   }
 
-  useEffect(() => {
-    fetchVehicles()
-  }, [])
+  const showToast = (message: string, duration = 3000) => {
+    setToastMessage(message)
+    setTimeout(() => setToastMessage(''), duration)
+  }
+
+  const handleSearchChange = (text: string) => {
+    setSearchText(text)
+    if (searchDebounce) clearTimeout(searchDebounce)
+    const timeout = setTimeout(() => setSearch(text), 500)
+    setSearchDebounce(timeout)
+  }
+
+  const handleApplySort = (field: string, order: 'ASC' | 'DESC') => {
+    setSortBy(field)
+    setSortOrder(order)
+    setIsSortModalOpen(false)
+    showToast('Đã áp dụng sắp xếp')
+  }
 
   const handleEditVehicle = (v: Vehicle) => Alert.alert('Thông báo', `Sửa xe ${v.plateNumber}`)
   const handleDeleteVehicle = (id: string) => Alert.alert('Xác nhận', 'Bạn muốn xóa xe này?')
-
-  // Handle verification request coming from VehicleCard
-  const handleVerify = async (dto: any) => {
-    try {
-      setLoading(true)
-      // Normalize DTO shape for service method
-      const payload = {
-        VehicleId: dto.vehicleId ?? dto.VehicleId,
-        Documents: [
-          {
-            ExpirationDate: dto.expirationDate ?? dto.ExpirationDate,
-            FrontFile: dto.frontFile ?? dto.frontFile,
-            BackFile: dto.backFile ?? dto.backFile,
-          },
-        ],
-      }
-      await vehicleService.uploadVehicleDocument(payload)
-      Alert.alert('Thành công', 'Yêu cầu xác minh đã được gửi')
-      // refresh list so user sees updated documents/status
-      fetchVehicles()
-    } catch (e: any) {
-      console.error('verify failed', e)
-      Alert.alert('Lỗi', e?.message || 'Gửi yêu cầu xác minh thất bại')
-    } finally {
-      setLoading(false)
-    }
+  
+  const handleVehiclePress = (vehicleId: string) => {
+    router.push(`/vehicle-detail?id=${vehicleId}` as any)
   }
 
-  // --- LOGIC TẠO XE MỚI (ĐÃ SỬA) ---
   const handleCreate = async (dto: any) => {
     try {
-      // 1. Gọi API tạo xe
       await vehicleService.createVehicle(dto)
-      
-      // 2. Thông báo thành công
-      Alert.alert('Thành công', 'Thêm xe mới thành công!')
-      
-      // 3. Đóng modal
       setShowCreateModal(false)
-      
-      // 4. Tải lại danh sách
-      fetchVehicles()
+      showToast('Thêm xe mới thành công!')
+      fetchPage(1)
     } catch (e: any) {
-      // Xử lý lỗi
       Alert.alert('Lỗi', e?.message || 'Không thể tạo xe. Vui lòng thử lại.')
     }
   }
@@ -334,16 +119,40 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
           <TextInput
             placeholder="Tìm nhanh xe..."
             style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={searchText}
+            onChangeText={handleSearchChange}
           />
         </View>
-        <TouchableOpacity style={styles.filterBtn}>
-          <Ionicons name="options-outline" size={22} color="#374151" />
+        <TouchableOpacity style={styles.filterBtn} onPress={() => setIsSortModalOpen(true)}>
+          <Feather name="sliders" size={20} color="#374151" />
         </TouchableOpacity>
       </View>
 
-      {/* 3. VEHICLE LIST */}
+      {/* 3. STATUS FILTER CHIPS */}
+      <View style={styles.statusFilterRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+          {statusOptions.map(status => {
+            const isActive = statusFilter === status
+            const bgColor = isActive && status !== 'ALL' ? statusColors[status] : (isActive ? '#10439F' : '#F3F4F6')
+            return (
+              <TouchableOpacity
+                key={status}
+                style={[styles.statusChip, { backgroundColor: bgColor }]}
+                onPress={() => {
+                  setStatusFilter(status)
+                  showToast(`Lọc: ${statusLabels[status]}`)
+                }}
+              >
+                <Text style={[styles.statusChipText, isActive && styles.statusChipTextActive]}>
+                  {statusLabels[status]}
+                </Text>
+              </TouchableOpacity>
+            )
+          })}
+        </ScrollView>
+      </View>
+
+      {/* 4. VEHICLE LIST */}
       <View style={styles.listContainer}>
         {loading ? (
           <ActivityIndicator size="large" color="#10439F" style={{ marginTop: 40 }} />
@@ -352,7 +161,7 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
             vehicles={vehicles} 
             onEdit={handleEditVehicle} 
             onDelete={handleDeleteVehicle}
-            onVerify={handleVerify}
+            onPress={handleVehiclePress}
           />
         )}
       </View>
@@ -361,8 +170,65 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
       <VehicleFormModal 
         visible={showCreateModal} 
         onClose={() => setShowCreateModal(false)} 
-        onCreate={handleCreate} // Truyền hàm logic vào đây
+        onCreate={handleCreate}
       />
+
+      {/* SORT MODAL */}
+      {isSortModalOpen && (
+        <Modal transparent animationType="fade">
+          <TouchableOpacity 
+            style={styles.sortModalBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setIsSortModalOpen(false)}
+          >
+            <View style={styles.sortModal}>
+              <Text style={styles.sortModalTitle}>Sắp xếp theo</Text>
+              
+              {[
+                { label: 'Biển số (A-Z)', field: 'plate', order: 'ASC' as const },
+                { label: 'Biển số (Z-A)', field: 'plate', order: 'DESC' as const },
+                { label: 'Hãng xe (A-Z)', field: 'brand', order: 'ASC' as const },
+                { label: 'Hãng xe (Z-A)', field: 'brand', order: 'DESC' as const },
+                { label: 'Năm sản xuất (Cũ → Mới)', field: 'year', order: 'ASC' as const },
+                { label: 'Năm sản xuất (Mới → Cũ)', field: 'year', order: 'DESC' as const },
+                { label: 'Tải trọng (Thấp → Cao)', field: 'payload', order: 'ASC' as const },
+                { label: 'Tải trọng (Cao → Thấp)', field: 'payload', order: 'DESC' as const },
+                { label: 'Trạng thái (A-Z)', field: 'status', order: 'ASC' as const },
+                { label: 'Trạng thái (Z-A)', field: 'status', order: 'DESC' as const },
+              ].map((option, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[
+                    styles.sortOption,
+                    sortBy === option.field && sortOrder === option.order && styles.sortOptionActive
+                  ]}
+                  onPress={() => handleApplySort(option.field, option.order)}
+                >
+                  <Text style={styles.sortOptionText}>{option.label}</Text>
+                  {sortBy === option.field && sortOrder === option.order && (
+                    <Feather name="check" size={20} color="#10439F" />
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              <TouchableOpacity 
+                style={styles.sortCancelBtn}
+                onPress={() => setIsSortModalOpen(false)}
+              >
+                <Text style={styles.sortCancelText}>Đóng</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* TOAST */}
+      {toastMessage ? (
+        <View style={styles.toast}>
+          <Feather name="check-circle" size={18} color="#FFFFFF" />
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   )
 }
@@ -430,8 +296,108 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
+  statusFilterRow: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  statusChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  statusChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  statusChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
   listContainer: {
     flex: 1,
+  },
+  // Sort Modal
+  sortModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sortModal: {
+    width: '85%',
+    maxWidth: 400,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  sortModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  sortOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  sortOptionActive: {
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#10439F',
+  },
+  sortOptionText: {
+    fontSize: 15,
+    color: '#111827',
+  },
+  sortCancelBtn: {
+    marginTop: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  sortCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  // Toast
+  toast: {
+    position: 'absolute',
+    bottom: 32,
+    alignSelf: 'center',
+    backgroundColor: '#059669',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
 })
 

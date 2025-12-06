@@ -59,10 +59,10 @@ interface Props {
   vehicles: any
   onEdit: (v: Vehicle) => void
   onDelete: (vehicleId: string) => void
-  onVerify?: (dto: any) => Promise<any>
+  onPress?: (vehicleId: string) => void
 }
 
-const VehicleList: React.FC<Props> = ({ vehicles, onEdit, onDelete, onVerify }) => {
+const VehicleList: React.FC<Props> = ({ vehicles, onEdit, onDelete, onPress }) => {
   // Logic xử lý data đầu vào linh hoạt (giữ nguyên logic tốt của bạn)
   let list: Vehicle[] = []
   if (Array.isArray(vehicles)) list = vehicles
@@ -91,7 +91,7 @@ const VehicleList: React.FC<Props> = ({ vehicles, onEdit, onDelete, onVerify }) 
           vehicle={item} 
           onEdit={() => onEdit(item)} 
           onDelete={() => onDelete(item.id)} 
-          onVerify={onVerify}
+          onPress={() => onPress?.(item.id)}
         />
       )}
       keyExtractor={(item) => item.id.toString()}
