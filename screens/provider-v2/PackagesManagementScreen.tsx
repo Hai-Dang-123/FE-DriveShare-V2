@@ -1,46 +1,56 @@
-
-
-import React, { useState } from 'react'
+import React, { useState } from "react";
 import {
-  View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ActivityIndicator, Alert, TextInput, StatusBar
-} from 'react-native'
-import { Ionicons, Feather } from '@expo/vector-icons'
-import { Package } from '../../models/types'
-import PackageList from './components/PackageList'
-import PackageFormModal from './components/PackageFormModal'
-import usePackages from '@/hooks/usePackages'
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  TextInput,
+  StatusBar,
+  Modal,
+  Pressable,
+} from "react-native";
+import { Ionicons, Feather } from "@expo/vector-icons";
+import { Package } from "../../models/types";
+import PackageList from "./components/PackageList";
+import PackageFormModal from "./components/PackageFormModal";
+import EditPackageModal from "./components/EditPackageModal";
+import usePackages from "@/hooks/usePackages";
+import packageService from "../../services/packageService";
 
 interface Props {
-  onBack: () => void
+  onBack: () => void;
 }
 
 // Status color mapping for packages
 const STATUS_COLORS: Record<string, string> = {
-  ALL: '#0284C7',
-  PENDING: '#F59E0B', // orange
-  IN_TRANSIT: '#3B82F6', // blue
-  DELIVERED: '#10B981', // green
-  COMPLETED: '#6B7280', // gray
-  DELETED: '#EF4444', // red
-}
+  ALL: "#0284C7",
+  PENDING: "#F59E0B", // orange
+  IN_TRANSIT: "#3B82F6", // blue
+  DELIVERED: "#10B981", // green
+  COMPLETED: "#6B7280", // gray
+  DELETED: "#EF4444", // red
+};
 
 // Status label mapping
 const getStatusLabel = (status: string): string => {
   const labels: Record<string, string> = {
-    ALL: 'Tất cả',
-    PENDING: 'Chờ xử lý',
-    IN_TRANSIT: 'Đang vận chuyển',
-    DELIVERED: 'Đã giao',
-    COMPLETED: 'Hoàn thành',
-    DELETED: 'Đã xóa',
-  }
-  return labels[status] || status
-}
+    ALL: "Tất cả",
+    PENDING: "Chờ xử lý",
+    IN_TRANSIT: "Đang vận chuyển",
+    DELIVERED: "Đã giao",
+    COMPLETED: "Hoàn thành",
+    DELETED: "Đã xóa",
+  };
+  return labels[status] || status;
+};
 
 // Get status color
 const getStatusColor = (status: string): string => {
-  return STATUS_COLORS[status] || '#9CA3AF'
-}
+  return STATUS_COLORS[status] || "#9CA3AF";
+};
 
 const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
   const {
@@ -55,74 +65,144 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
     setSortField,
     setSortOrder,
     setStatusFilter,
-    fetchPage
-  } = usePackages(1, 20)
+    fetchPage,
+  } = usePackages(1, 20);
 
-  const [isModalOpen, setModalOpen] = useState(false)
-  const [isSortModalOpen, setIsSortModalOpen] = useState(false)
-  const [selectedItem, setSelectedItem] = useState<any>(null)
-  const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
+  const [isModalOpen, setModalOpen] = useState(false);
+  const [isSortModalOpen, setIsSortModalOpen] = useState(false);
+  const [isEditModalOpen, setEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [editPackageId, setEditPackageId] = useState<string | null>(null);
+  const [deletePackageId, setDeletePackageId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error";
+  }>({
     visible: false,
-    message: '',
-    type: 'success'
-  })
+    message: "",
+    type: "success",
+  });
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success', duration = 3000) => {
-    setToast({ visible: true, message, type })
-    setTimeout(() => setToast((t) => ({ ...t, visible: false })), duration)
-  }
+  const showToast = (
+    message: string,
+    type: "success" | "error" = "success",
+    duration = 3000
+  ) => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => setToast((t) => ({ ...t, visible: false })), duration);
+  };
 
   const handleEdit = (pkg: Package) => {
-    showToast('Chỉnh sửa gói hàng chưa được hỗ trợ', 'error')
-  }
+    console.log("🔧 Edit package clicked:", pkg.id);
+    setEditPackageId(pkg.id);
+    setEditModalOpen(true);
+    console.log("📝 Modal state:", {
+      editPackageId: pkg.id,
+      isEditModalOpen: true,
+    });
+  };
+
+  const handleEditSuccess = async () => {
+    console.log("🔄 Refreshing packages list after edit");
+    console.log("Current state:", {
+      search,
+      sortField,
+      sortOrder,
+      statusFilter,
+    });
+    // Force refresh with current filters
+    await fetchPage(1, 20, search, sortField, sortOrder, statusFilter);
+    console.log("✅ Packages list refreshed");
+    showToast("Đã cập nhật gói hàng thành công", "success");
+  };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Xác nhận', 'Bạn có chắc muốn xóa gói hàng này?', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Xóa',
-        style: 'destructive',
-        onPress: () => showToast('Xóa gói hàng chưa được hỗ trợ', 'error')
+    console.log("🗑️ handleDelete called with id:", id);
+    setDeletePackageId(id);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletePackageId) return;
+
+    setDeleting(true);
+    console.log("🗑️ Deleting package:", deletePackageId);
+
+    try {
+      const response = await packageService.deletePackage(deletePackageId);
+      console.log("✅ Delete response:", response);
+
+      // Check success by statusCode or result
+      const isDeleteSuccess =
+        response.result === true ||
+        response.statusCode === 200 ||
+        (response.message &&
+          response.message.toLowerCase().includes("success"));
+
+      if (isDeleteSuccess) {
+        console.log("✅ Package deleted successfully");
+        // Close modal
+        setDeleteModalOpen(false);
+        setDeletePackageId(null);
+        // Refresh data
+        setTimeout(async () => {
+          await fetchPage(1, 20, search, sortField, sortOrder, statusFilter);
+          showToast("Đã xóa gói hàng thành công", "success");
+        }, 200);
+      } else {
+        showToast(response.message || "Không thể xóa gói hàng", "error");
       }
-    ])
-  }
+    } catch (error) {
+      console.error("❌ Error deleting package:", error);
+      showToast("Đã xảy ra lỗi khi xóa gói hàng", "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleSearchChange = (text: string) => {
-    setSearch(text)
+    setSearch(text);
     const timer = setTimeout(() => {
-      fetchPage(1, 20, text, sortField, sortOrder, statusFilter)
-    }, 500)
-    return () => clearTimeout(timer)
-  }
+      fetchPage(1, 20, text, sortField, sortOrder, statusFilter);
+    }, 500);
+    return () => clearTimeout(timer);
+  };
 
-  const handleApplySort = (field: string, order: 'ASC' | 'DESC') => {
-    setSortField(field)
-    setSortOrder(order)
-    setIsSortModalOpen(false)
-    fetchPage(1, 20, search, field, order, statusFilter)
-  }
+  const handleApplySort = (field: string, order: "ASC" | "DESC") => {
+    setSortField(field);
+    setSortOrder(order);
+    setIsSortModalOpen(false);
+    fetchPage(1, 20, search, field, order, statusFilter);
+  };
 
   const handleStatusFilter = (status: string) => {
-    setStatusFilter(status)
-    fetchPage(1, 20, search, sortField, sortOrder, status)
-  }
+    setStatusFilter(status);
+    fetchPage(1, 20, search, sortField, sortOrder, status);
+  };
 
   const handleOpenCreate = () => {
-    setSelectedItem({ itemName: 'iPhone 15 Pro Max', declaredValue: 35000000, currency: 'VND' })
-    setModalOpen(true)
-  }
+    setSelectedItem({
+      itemName: "iPhone 15 Pro Max",
+      declaredValue: 35000000,
+      currency: "VND",
+    });
+    setModalOpen(true);
+  };
 
   const handleCreatePackage = (data: any) => {
-    console.log('Create Package Data:', data)
-    setModalOpen(false)
-    showToast('Đã tạo gói hàng thành công', 'success')
-    fetchPage(1, 20, search, sortField, sortOrder, statusFilter)
-  }
+    console.log("Create Package Data:", data);
+    setModalOpen(false);
+    showToast("Đã tạo gói hàng thành công", "success");
+    fetchPage(1, 20, search, sortField, sortOrder, statusFilter);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
+
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.headerBtn}>
@@ -139,45 +219,66 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
       {/* SEARCH & FILTER */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputWrapper}>
-          <Ionicons name="search" size={20} color="#9CA3AF" style={{ marginRight: 8 }} />
-          <TextInput 
-            placeholder="Tìm gói hàng..." 
-            style={styles.searchInput} 
-            value={search} 
-            onChangeText={handleSearchChange} 
+          <Ionicons
+            name="search"
+            size={20}
+            color="#9CA3AF"
+            style={{ marginRight: 8 }}
+          />
+          <TextInput
+            placeholder="Tìm gói hàng..."
+            style={styles.searchInput}
+            value={search}
+            onChangeText={handleSearchChange}
           />
         </View>
-        <TouchableOpacity style={styles.filterButton} onPress={() => setIsSortModalOpen(true)}>
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => setIsSortModalOpen(true)}
+        >
           <Ionicons name="options-outline" size={22} color="#374151" />
         </TouchableOpacity>
       </View>
 
       {/* STATUS FILTER CHIPS */}
       <View style={styles.statusFilterRow}>
-        {['ALL', 'PENDING', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED'].map((status) => (
-          <TouchableOpacity
-            key={status}
-            style={[
-              styles.statusChip,
-              statusFilter === status && styles.statusChipActive,
-              { backgroundColor: statusFilter === status ? getStatusColor(status) : '#F3F4F6' }
-            ]}
-            onPress={() => handleStatusFilter(status)}
-          >
-            <Text style={[
-              styles.statusChipText,
-              statusFilter === status && styles.statusChipTextActive
-            ]}>
-              {getStatusLabel(status)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {["ALL", "PENDING", "IN_TRANSIT", "DELIVERED", "COMPLETED"].map(
+          (status) => (
+            <TouchableOpacity
+              key={status}
+              style={[
+                styles.statusChip,
+                statusFilter === status && styles.statusChipActive,
+                {
+                  backgroundColor:
+                    statusFilter === status
+                      ? getStatusColor(status)
+                      : "#F3F4F6",
+                },
+              ]}
+              onPress={() => handleStatusFilter(status)}
+            >
+              <Text
+                style={[
+                  styles.statusChipText,
+                  statusFilter === status && styles.statusChipTextActive,
+                ]}
+              >
+                {getStatusLabel(status)}
+              </Text>
+            </TouchableOpacity>
+          )
+        )}
       </View>
 
       {/* LIST */}
       <View style={styles.listContainer}>
         {loading ? (
-          <ActivityIndicator size="large" color="#0284C7" style={{ marginTop: 40 }} />
+          <ActivityIndicator
+            size="large"
+            color="#0284C7"
+            style={{ marginTop: 40 }}
+          />
         ) : error ? (
           <View style={styles.centeredContainer}>
             <Text style={styles.errorText}>{error}</Text>
@@ -191,15 +292,17 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
         ) : packages.length === 0 ? (
           <View style={styles.centeredContainer}>
             <Text style={styles.emptyText}>
-              {search ? 'Không tìm thấy gói hàng nào.' : 'Bạn chưa có gói hàng nào.'}
+              {search
+                ? "Không tìm thấy gói hàng nào."
+                : "Bạn chưa có gói hàng nào."}
             </Text>
           </View>
         ) : (
-          <PackageList 
-            packages={packages} 
-            onEdit={handleEdit} 
-            onDelete={handleDelete} 
-            onPost={() => {}} 
+          <PackageList
+            packages={packages}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onPost={() => {}}
             getStatusColor={getStatusColor}
           />
         )}
@@ -210,56 +313,102 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
         <View style={styles.sortModalBackdrop}>
           <View style={styles.sortModal}>
             <Text style={styles.sortModalTitle}>Sắp xếp theo</Text>
-            
-            <TouchableOpacity 
-              style={[styles.sortOption, sortField === 'title' && sortOrder === 'ASC' && styles.sortOptionActive]}
-              onPress={() => handleApplySort('title', 'ASC')}
+
+            <TouchableOpacity
+              style={[
+                styles.sortOption,
+                sortField === "title" &&
+                  sortOrder === "ASC" &&
+                  styles.sortOptionActive,
+              ]}
+              onPress={() => handleApplySort("title", "ASC")}
             >
               <Text style={styles.sortOptionText}>Tiêu đề (A-Z)</Text>
-              {sortField === 'title' && sortOrder === 'ASC' && <Feather name="check" size={20} color="#0284C7" />}
+              {sortField === "title" && sortOrder === "ASC" && (
+                <Feather name="check" size={20} color="#0284C7" />
+              )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.sortOption, sortField === 'title' && sortOrder === 'DESC' && styles.sortOptionActive]}
-              onPress={() => handleApplySort('title', 'DESC')}
+            <TouchableOpacity
+              style={[
+                styles.sortOption,
+                sortField === "title" &&
+                  sortOrder === "DESC" &&
+                  styles.sortOptionActive,
+              ]}
+              onPress={() => handleApplySort("title", "DESC")}
             >
               <Text style={styles.sortOptionText}>Tiêu đề (Z-A)</Text>
-              {sortField === 'title' && sortOrder === 'DESC' && <Feather name="check" size={20} color="#0284C7" />}
+              {sortField === "title" && sortOrder === "DESC" && (
+                <Feather name="check" size={20} color="#0284C7" />
+              )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.sortOption, sortField === 'weightKg' && sortOrder === 'ASC' && styles.sortOptionActive]}
-              onPress={() => handleApplySort('weightKg', 'ASC')}
+            <TouchableOpacity
+              style={[
+                styles.sortOption,
+                sortField === "weightKg" &&
+                  sortOrder === "ASC" &&
+                  styles.sortOptionActive,
+              ]}
+              onPress={() => handleApplySort("weightKg", "ASC")}
             >
-              <Text style={styles.sortOptionText}>Khối lượng (Thấp đến cao)</Text>
-              {sortField === 'weightKg' && sortOrder === 'ASC' && <Feather name="check" size={20} color="#0284C7" />}
+              <Text style={styles.sortOptionText}>
+                Khối lượng (Thấp đến cao)
+              </Text>
+              {sortField === "weightKg" && sortOrder === "ASC" && (
+                <Feather name="check" size={20} color="#0284C7" />
+              )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.sortOption, sortField === 'weightKg' && sortOrder === 'DESC' && styles.sortOptionActive]}
-              onPress={() => handleApplySort('weightKg', 'DESC')}
+            <TouchableOpacity
+              style={[
+                styles.sortOption,
+                sortField === "weightKg" &&
+                  sortOrder === "DESC" &&
+                  styles.sortOptionActive,
+              ]}
+              onPress={() => handleApplySort("weightKg", "DESC")}
             >
-              <Text style={styles.sortOptionText}>Khối lượng (Cao đến thấp)</Text>
-              {sortField === 'weightKg' && sortOrder === 'DESC' && <Feather name="check" size={20} color="#0284C7" />}
+              <Text style={styles.sortOptionText}>
+                Khối lượng (Cao đến thấp)
+              </Text>
+              {sortField === "weightKg" && sortOrder === "DESC" && (
+                <Feather name="check" size={20} color="#0284C7" />
+              )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.sortOption, sortField === 'status' && sortOrder === 'ASC' && styles.sortOptionActive]}
-              onPress={() => handleApplySort('status', 'ASC')}
+            <TouchableOpacity
+              style={[
+                styles.sortOption,
+                sortField === "status" &&
+                  sortOrder === "ASC" &&
+                  styles.sortOptionActive,
+              ]}
+              onPress={() => handleApplySort("status", "ASC")}
             >
               <Text style={styles.sortOptionText}>Trạng thái (A-Z)</Text>
-              {sortField === 'status' && sortOrder === 'ASC' && <Feather name="check" size={20} color="#0284C7" />}
+              {sortField === "status" && sortOrder === "ASC" && (
+                <Feather name="check" size={20} color="#0284C7" />
+              )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.sortOption, sortField === 'status' && sortOrder === 'DESC' && styles.sortOptionActive]}
-              onPress={() => handleApplySort('status', 'DESC')}
+            <TouchableOpacity
+              style={[
+                styles.sortOption,
+                sortField === "status" &&
+                  sortOrder === "DESC" &&
+                  styles.sortOptionActive,
+              ]}
+              onPress={() => handleApplySort("status", "DESC")}
             >
               <Text style={styles.sortOptionText}>Trạng thái (Z-A)</Text>
-              {sortField === 'status' && sortOrder === 'DESC' && <Feather name="check" size={20} color="#0284C7" />}
+              {sortField === "status" && sortOrder === "DESC" && (
+                <Feather name="check" size={20} color="#0284C7" />
+              )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.sortCancelBtn}
               onPress={() => setIsSortModalOpen(false)}
             >
@@ -270,78 +419,157 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
       )}
 
       {/* CREATE PACKAGE MODAL */}
-      <PackageFormModal 
-        visible={isModalOpen} 
-        onClose={() => setModalOpen(false)} 
-        onCreate={handleCreatePackage} 
-        item={selectedItem} 
+      <PackageFormModal
+        visible={isModalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreate={handleCreatePackage}
+        item={selectedItem}
       />
+
+      {/* EDIT PACKAGE MODAL */}
+      <EditPackageModal
+        visible={isEditModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setEditPackageId(null);
+        }}
+        onSuccess={handleEditSuccess}
+        packageId={editPackageId}
+      />
+
+      {/* DELETE CONFIRMATION MODAL */}
+      <Modal
+        visible={isDeleteModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalOpen(false)}
+      >
+        <Pressable
+          style={styles.deleteModalBackdrop}
+          onPress={() => !deleting && setDeleteModalOpen(false)}
+        >
+          <Pressable
+            style={styles.deleteModalContainer}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.deleteModalHeader}>
+              <Ionicons name="warning" size={48} color="#EF4444" />
+            </View>
+
+            <Text style={styles.deleteModalTitle}>Xác nhận xóa</Text>
+            <Text style={styles.deleteModalMessage}>
+              Bạn có chắc chắn muốn xóa gói hàng này?{"\n"}
+              Hành động này không thể hoàn tác.
+            </Text>
+
+            <View style={styles.deleteModalFooter}>
+              <TouchableOpacity
+                style={styles.deleteModalCancelBtn}
+                onPress={() => setDeleteModalOpen(false)}
+                disabled={deleting}
+              >
+                <Text style={styles.deleteModalCancelText}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.deleteModalDeleteBtn,
+                  deleting && { opacity: 0.7 },
+                ]}
+                onPress={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.deleteModalDeleteText}>Xóa</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* TOAST */}
       {toast.visible && (
-        <View style={[styles.toast, toast.type === 'success' ? styles.toastSuccess : styles.toastError]}>
+        <View
+          style={[
+            styles.toast,
+            toast.type === "success" ? styles.toastSuccess : styles.toastError,
+          ]}
+        >
           <Text style={styles.toastText}>{toast.message}</Text>
         </View>
       )}
     </SafeAreaView>
-  )
-}
+  );
+};
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    paddingHorizontal: 16, 
-    paddingVertical: 12, 
-    backgroundColor: '#fff', 
-    borderBottomWidth: 1, 
-    borderColor: '#F3F4F6' 
-  },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#0284C7' },
-  headerBtn: { flexDirection: 'row', alignItems: 'center' },
-  headerBtnText: { fontSize: 15, fontWeight: '500', color: '#111827', marginLeft: 4 },
-  headerCenter: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  headerRightPlaceholder: { width: 40 },
-  searchContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 16, 
-    backgroundColor: '#fff' 
-  },
-  searchInputWrapper: { 
-    flex: 1,
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#F3F4F6', 
-    borderRadius: 8, 
-    paddingHorizontal: 12, 
-    height: 44, 
-    borderWidth: 1, 
-    borderColor: '#E5E7EB' 
-  },
-  searchInput: { flex: 1, fontSize: 14, color: '#111827' },
-  filterButton: { 
-    marginLeft: 12, 
-    width: 44, 
-    height: 40, 
-    borderRadius: 10, 
-    borderWidth: 1, 
-    borderColor: '#E5E7EB', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    backgroundColor: '#fff' 
-  },
-  
-  // Status filter chips
-  statusFilterRow: { 
-    flexDirection: 'row', 
-    paddingHorizontal: 16, 
-    paddingVertical: 8, 
-    backgroundColor: '#fff',
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderColor: "#F3F4F6",
+  },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: "#0284C7" },
+  headerBtn: { flexDirection: "row", alignItems: "center" },
+  headerBtnText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#111827",
+    marginLeft: 4,
+  },
+  headerCenter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  headerRightPlaceholder: { width: 40 },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    backgroundColor: "#fff",
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  searchInput: { flex: 1, fontSize: 14, color: "#111827" },
+  filterButton: {
+    marginLeft: 12,
+    width: 44,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+
+  // Status filter chips
+  statusFilterRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
   statusChip: {
     paddingHorizontal: 12,
@@ -349,70 +577,70 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   statusChipActive: {
-    borderColor: 'transparent',
+    borderColor: "transparent",
   },
   statusChipText: {
     fontSize: 13,
-    fontWeight: '500',
-    color: '#6B7280',
+    fontWeight: "500",
+    color: "#6B7280",
   },
   statusChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
 
   listContainer: { flex: 1 },
   centeredContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 16,
   },
   errorText: {
     fontSize: 16,
-    color: '#EF4444',
-    textAlign: 'center',
+    color: "#EF4444",
+    textAlign: "center",
     marginBottom: 16,
   },
   emptyText: {
     fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
+    color: "#6B7280",
+    textAlign: "center",
   },
   retryButton: {
-    backgroundColor: '#0284C7',
+    backgroundColor: "#0284C7",
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 
   // Sort Modal
   sortModalBackdrop: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 1000,
   },
   sortModal: {
-    width: '85%',
+    width: "85%",
     maxWidth: 400,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -420,71 +648,134 @@ const styles = StyleSheet.create({
   },
   sortModalTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: "700",
+    color: "#111827",
     marginBottom: 16,
   },
   sortOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
     marginBottom: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
   },
   sortOptionActive: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: "#DBEAFE",
     borderWidth: 1,
-    borderColor: '#0284C7',
+    borderColor: "#0284C7",
   },
   sortOptionText: {
     fontSize: 15,
-    color: '#111827',
+    color: "#111827",
   },
   sortCancelBtn: {
     marginTop: 12,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   sortCancelText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontWeight: "600",
+    color: "#6B7280",
   },
 
   // Toast
   toast: {
-    position: 'absolute',
+    position: "absolute",
     left: 16,
     right: 16,
     bottom: 32,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 6,
   },
   toastSuccess: {
-    backgroundColor: '#10B981',
+    backgroundColor: "#10B981",
   },
   toastError: {
-    backgroundColor: '#EF4444',
+    backgroundColor: "#EF4444",
   },
   toastText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
-})
 
-export default PackagesManagementScreen
+  // Delete Modal Styles
+  deleteModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  deleteModalContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    alignItems: "center",
+  },
+  deleteModalHeader: {
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 12,
+  },
+  deleteModalMessage: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  deleteModalFooter: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  deleteModalCancelBtn: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+  },
+  deleteModalCancelText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+  },
+  deleteModalDeleteBtn: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+  },
+  deleteModalDeleteText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#fff",
+  },
+});
+
+export default PackagesManagementScreen;
