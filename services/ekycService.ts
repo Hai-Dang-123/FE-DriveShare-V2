@@ -30,7 +30,7 @@ export interface DocumentDetailDTO {
   placeOfResidence?: string
   issuePlace?: string
   licenseClass?: string
-  status: 'ACTIVE' | 'INACTIVE' | 'REJECTED'
+  status: 'ACTIVE' | 'INACTIVE' | 'REJECTED' | 'PENDING' | 'PENDING_REVIEW'
   reason?: string // Backend error response field
   rejectionReason?: string // Database field
   verifiedAt?: string
@@ -45,6 +45,11 @@ export interface MyDocumentsResponseDTO {
   isDriver: boolean
   cccd: DocumentDetailDTO | null
   driverDocuments?: DriverDocumentsDTO
+}
+
+export interface RequestManualReviewDTO {
+  UserDocumentId: string
+  UserNote: string
 }
 
 // Note: Backend returns { result: boolean, message: string } at ResponseDTO level
@@ -226,6 +231,19 @@ export const ekycService = {
       return response.data
     } catch (error: any) {
       console.error('ekycService.verifyLicense failed', error)
+      throw error
+    }
+  },
+
+  requestManualReview: async (dto: RequestManualReviewDTO): Promise<ResponseDTO<DocumentDetailDTO>> => {
+    try {
+      const response = await api.post<ResponseDTO<DocumentDetailDTO>>(
+        '/api/UserDocument/request-review',
+        dto
+      )
+      return response.data
+    } catch (error: any) {
+      console.error('ekycService.requestManualReview failed', error)
       throw error
     }
   },

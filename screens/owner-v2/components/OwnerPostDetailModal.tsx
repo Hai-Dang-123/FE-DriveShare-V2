@@ -4,6 +4,7 @@ import {
 } from 'react-native'
 import { Ionicons, MaterialCommunityIcons, FontAwesome5, Feather } from '@expo/vector-icons'
 import postPackageService from '@/services/postPackageService'
+import api from '@/config/api'
 
 interface Props {
   visible: boolean
@@ -34,9 +35,16 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<any>(null)
   const [accepting, setAccepting] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null)
+  const [showAiResult, setShowAiResult] = useState(false)
 
   useEffect(() => {
-    if (visible && postId) fetchDetails()
+    if (visible && postId) {
+      fetchDetails()
+      setAiAnalysis(null)
+      setShowAiResult(false)
+    }
     else setData(null)
   }, [visible, postId])
 
@@ -94,6 +102,29 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
     }
   }
 
+  const handleAnalyze = async () => {
+    if (!postId) return
+    
+    setAnalyzing(true)
+    try {
+      const response = await api.post(
+        `/api/PostAnalysis/analyze-post-package/${postId}`
+      )
+      
+      if (response.data && response.data.isSuccess) {
+        setAiAnalysis(response.data.result)
+        setShowAiResult(true)
+      } else {
+        Alert.alert('Thông báo', response.data?.message || 'Không thể phân tích đơn hàng')
+      }
+    } catch (e: any) {
+      console.error('AI Analysis Error:', e)
+      Alert.alert('Lỗi', e?.response?.data?.message || 'Có lỗi xảy ra khi phân tích AI')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
   const renderScenario = (label: string, scenarioData: any) => {
     if (!scenarioData) return null
     const isPossible = scenarioData.isPossible
@@ -105,6 +136,150 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
         </View>
         <Text style={styles.scenarioMsg}>{scenarioData.message}</Text>
         <Text style={styles.scenarioTime}>⏱ {scenarioData.totalHoursNeeded}h • {scenarioData.workHoursPerDriver}h/tài</Text>
+      </View>
+    )
+  }
+
+  const renderAIAnalysis = () => {
+    if (!aiAnalysis) return null
+
+    const getScoreColor = (score: number) => {
+      if (score >= 8) return COLORS.success
+      if (score >= 6) return COLORS.warning
+      return COLORS.danger
+    }
+
+    const getVerdictStyle = (verdict: string) => {
+      if (verdict?.includes('THƠM') || verdict?.includes('TỐT')) return { bg: '#ECFDF5', color: COLORS.success }
+      if (verdict?.includes('CẨN TRỌNG')) return { bg: '#FEF2F2', color: COLORS.danger }
+      return { bg: '#FFF7ED', color: COLORS.warning }
+    }
+
+    const verdictStyle = getVerdictStyle(aiAnalysis.verdict)
+
+    return (
+      <View style={styles.card}>
+        <View style={styles.aiHeader}>
+          <MaterialCommunityIcons name="robot" size={24} color={COLORS.purple} />
+          <Text style={styles.aiHeaderTitle}>Phân Tích AI</Text>
+        </View>
+
+        {/* Score & Verdict */}
+        <View style={styles.scoreContainer}>
+          <View style={styles.scoreCircle}>
+            <Text style={[styles.scoreValue, { color: getScoreColor(aiAnalysis.score) }]}>
+              {aiAnalysis.score.toFixed(1)}
+            </Text>
+            <Text style={styles.scoreMax}>/10</Text>
+          </View>
+          <View style={{ flex: 1, marginLeft: 16 }}>
+            <View style={[styles.verdictBadge, { backgroundColor: verdictStyle.bg }]}>
+              <Text style={[styles.verdictText, { color: verdictStyle.color }]}>{aiAnalysis.verdict}</Text>
+            </View>
+            {aiAnalysis.shortSummary && (
+              <Text style={styles.shortSummary}>{aiAnalysis.shortSummary}</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Financial Analysis */}
+        {aiAnalysis.financial && (
+          <View style={styles.analysisSection}>
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name="cash-multiple" size={18} color={COLORS.success} />
+              <Text style={styles.sectionHeaderText}>Phân Tích Tài Chính</Text>
+            </View>
+            <View style={styles.financialGrid}>
+              <View style={styles.financialItem}>
+                <Text style={styles.financialLabel}>Đánh giá</Text>
+                <Text style={styles.financialValue}>{aiAnalysis.financial.assessment}</Text>
+              </View>
+              <View style={styles.financialItem}>
+                <Text style={styles.financialLabel}>Dự kiến thu nhập</Text>
+                <Text style={styles.financialValue}>{aiAnalysis.financial.estimatedRevenue}</Text>
+              </View>
+              <View style={styles.financialItem}>
+                <Text style={styles.financialLabel}>Xu hướng thị trường</Text>
+                <Text style={styles.financialValue}>{aiAnalysis.financial.marketTrend}</Text>
+              </View>
+              <View style={styles.financialItem}>
+                <Text style={styles.financialLabel}>Điểm lợi nhuận</Text>
+                <Text style={[styles.financialValue, { color: getScoreColor(aiAnalysis.financial.profitabilityScore) }]}>
+                  {aiAnalysis.financial.profitabilityScore}/10
+                </Text>
+              </View>
+            </View>
+            {aiAnalysis.financial.details && (
+              <Text style={styles.detailsText}>{aiAnalysis.financial.details}</Text>
+            )}
+          </View>
+        )}
+
+        {/* Operational Analysis */}
+        {aiAnalysis.operational && (
+          <View style={styles.analysisSection}>
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name="truck-fast" size={18} color={COLORS.primary} />
+              <Text style={styles.sectionHeaderText}>Phân Tích Vận Hành</Text>
+            </View>
+            <View style={styles.operationalList}>
+              {aiAnalysis.operational.vehicleRecommendation && (
+                <View style={styles.operationalItem}>
+                  <Text style={styles.operationalLabel}>🚗 Xe đề xuất:</Text>
+                  <Text style={styles.operationalValue}>{aiAnalysis.operational.vehicleRecommendation}</Text>
+                </View>
+              )}
+              {aiAnalysis.operational.routeDifficulty && (
+                <View style={styles.operationalItem}>
+                  <Text style={styles.operationalLabel}>🛣️ Độ khó tuyến đường:</Text>
+                  <Text style={styles.operationalValue}>{aiAnalysis.operational.routeDifficulty}</Text>
+                </View>
+              )}
+              {aiAnalysis.operational.urgencyLevel && (
+                <View style={styles.operationalItem}>
+                  <Text style={styles.operationalLabel}>⏰ Mức độ gấp:</Text>
+                  <Text style={styles.operationalValue}>{aiAnalysis.operational.urgencyLevel}</Text>
+                </View>
+              )}
+              {aiAnalysis.operational.cargoNotes && (
+                <View style={styles.operationalItem}>
+                  <Text style={styles.operationalLabel}>📦 Ghi chú hàng hóa:</Text>
+                  <Text style={styles.operationalValue}>{aiAnalysis.operational.cargoNotes}</Text>
+                </View>
+              )}
+              {aiAnalysis.operational.routeNotes && (
+                <View style={styles.operationalItem}>
+                  <Text style={styles.operationalLabel}>🗺️ Ghi chú lộ trình:</Text>
+                  <Text style={styles.operationalValue}>{aiAnalysis.operational.routeNotes}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Recommended Actions */}
+        {aiAnalysis.recommendedActions && aiAnalysis.recommendedActions.length > 0 && (
+          <View style={styles.analysisSection}>
+            <View style={styles.sectionHeader}>
+              <Feather name="list" size={18} color={COLORS.purple} />
+              <Text style={styles.sectionHeaderText}>Hành Động Đề Xuất</Text>
+            </View>
+            {aiAnalysis.recommendedActions.map((action: string, index: number) => (
+              <View key={index} style={styles.actionItem}>
+                <Text style={styles.actionBullet}>•</Text>
+                <Text style={styles.actionText}>{action}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Risk Warning */}
+        {aiAnalysis.riskWarning && (
+          <View style={styles.riskWarning}>
+            <Ionicons name="warning" size={18} color={COLORS.danger} />
+            <Text style={styles.riskWarningText}>{aiAnalysis.riskWarning}</Text>
+          </View>
+        )}
       </View>
     )
   }
@@ -135,6 +310,22 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
             </View>
           </View>
           
+          {/* AI Analyze Button */}
+          <TouchableOpacity 
+            style={styles.analyzeBtn} 
+            onPress={handleAnalyze}
+            disabled={analyzing}
+          >
+            {analyzing ? (
+              <ActivityIndicator size="small" color={COLORS.purple} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="robot" size={18} color={COLORS.purple} />
+                <Text style={styles.analyzeBtnText}>Phân tích AI</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          
           <View style={styles.divider} />
           
           <View style={{flexDirection: 'row', justifyContent:'space-between', alignItems:'flex-end'}}>
@@ -153,7 +344,8 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
           {data.description ? <View style={styles.descBox}><Text style={styles.desc}>{data.description}</Text></View> : null}
         </View>
 
-        
+        {/* --- AI ANALYSIS RESULT --- */}
+        {showAiResult && renderAIAnalysis()}
 
         {/* --- 3. LỘ TRÌNH & PHÂN TÍCH --- */}
         <View style={styles.card}>
@@ -470,6 +662,181 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  
+  // AI ANALYSIS STYLES
+  analyzeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F3FF',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    gap: 6,
+  },
+  analyzeBtnText: {
+    color: COLORS.purple,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  aiHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  aiHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.purple,
+  },
+  scoreContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+  },
+  scoreCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: COLORS.primary,
+  },
+  scoreValue: {
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  scoreMax: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    marginTop: -4,
+  },
+  verdictBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  verdictText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  shortSummary: {
+    fontSize: 13,
+    color: COLORS.text,
+    lineHeight: 18,
+  },
+  analysisSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 6,
+  },
+  sectionHeaderText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  financialGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 12,
+  },
+  financialItem: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#F9FAFB',
+    padding: 10,
+    borderRadius: 8,
+  },
+  financialLabel: {
+    fontSize: 11,
+    color: COLORS.textLight,
+    marginBottom: 4,
+  },
+  financialValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  detailsText: {
+    fontSize: 12,
+    color: COLORS.text,
+    fontStyle: 'italic',
+    backgroundColor: '#F9FAFB',
+    padding: 10,
+    borderRadius: 8,
+  },
+  operationalList: {
+    gap: 10,
+  },
+  operationalItem: {
+    backgroundColor: '#F9FAFB',
+    padding: 10,
+    borderRadius: 8,
+  },
+  operationalLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  operationalValue: {
+    fontSize: 13,
+    color: COLORS.text,
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+    paddingLeft: 8,
+  },
+  actionBullet: {
+    fontSize: 16,
+    color: COLORS.purple,
+    marginRight: 8,
+    fontWeight: '700',
+  },
+  actionText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.text,
+    lineHeight: 18,
+  },
+  riskWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+    gap: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.danger,
+  },
+  riskWarningText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.danger,
+    fontWeight: '600',
   },
 })
 

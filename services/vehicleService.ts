@@ -1,4 +1,6 @@
 import api from '@/config/api'
+import { Platform } from 'react-native'
+import * as FileSystem from 'expo-file-system'
 
 const vehicleService = {
   getMyVehicles: async (params: {
@@ -223,6 +225,186 @@ const vehicleService = {
     } catch (e: any) {
       console.error('createVehicle failed', e)
       if (e.response) console.error('response', e.response.data)
+      throw e
+    }
+  },
+
+  // Add document to existing vehicle
+  addVehicleDocument: async (vehicleId: string, documentData: {
+    documentType: string
+    expirationDate?: string
+    frontFile: { uri?: string; base64?: string; fileName?: string; type?: string }
+    backFile?: { uri?: string; base64?: string; fileName?: string; type?: string }
+  }) => {
+    try {
+      const formData = new FormData()
+      
+      // Add DocumentType (required)
+      formData.append('DocumentType', documentData.documentType)
+      
+      // Add ExpirationDate in ISO format (yyyy-MM-dd) if provided
+      if (documentData.expirationDate) {
+        // Convert dd/MM/yyyy to yyyy-MM-dd
+        const parts = documentData.expirationDate.split('/')
+        if (parts.length === 3) {
+          const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}` // yyyy-MM-dd
+          formData.append('ExpirationDate', isoDate)
+          console.log(`ExpirationDate converted: ${documentData.expirationDate} → ${isoDate}`)
+        } else {
+          formData.append('ExpirationDate', documentData.expirationDate)
+        }
+      }
+      
+      // Helper to convert data URL to Blob (for WEB)
+      const dataUrlToBlob = async (dataUrl: string) => {
+        try {
+          const resp = await fetch(dataUrl)
+          return await resp.blob()
+        } catch (err) {
+          try {
+            const base64Marker = ';base64,'
+            const parts = dataUrl.split(base64Marker)
+            const contentType = dataUrl.substring(dataUrl.indexOf(':') + 1, dataUrl.indexOf(';'))
+            const raw = atob(parts[1])
+            const rawLength = raw.length
+            const uInt8Array = new Uint8Array(rawLength)
+            for (let i = 0; i < rawLength; ++i) {
+              uInt8Array[i] = raw.charCodeAt(i)
+            }
+            return new Blob([uInt8Array], { type: contentType })
+          } catch (e) {
+            console.warn('dataUrlToBlob fallback failed', e)
+            throw e
+          }
+        }
+      }
+      
+      // Helper function to attach file - COPY TỪ ItemService
+      const attachFile = async (fileObj: any, fieldName: string) => {
+        if (!fileObj) return
+        
+        // Ưu tiên base64 nếu có (vì blob: URL không gửi được)
+        let uri: string | undefined
+        if (fileObj.base64) {
+          uri = fileObj.base64.startsWith('data:') 
+            ? fileObj.base64 
+            : `data:image/jpeg;base64,${fileObj.base64}`
+        } else if (fileObj.uri) {
+          uri = fileObj.uri
+        }
+        
+        if (!uri) {
+          console.warn(`${fieldName}: No URI or base64 found`)
+          return
+        }
+        
+        console.log(`>>> [addVehicleDocument] Attaching ${fieldName}: ${uri.substring(0, 30)}...`)
+        
+        try {
+          if (uri.startsWith('data:')) {
+            // ===========================
+            // === LUỒNG DATA: URL ===
+            // ===========================
+            
+            if (Platform.OS === 'web') {
+              // === WEB: Convert to Blob ===
+              console.log(`>>> [addVehicleDocument] Web: Converting data:URL to Blob for ${fieldName}`)
+              const blob = await dataUrlToBlob(uri)
+              const fileName = fileObj.fileName || `${fieldName}-${Date.now()}.jpg`
+              // @ts-ignore
+              formData.append(fieldName, blob, fileName)
+              
+            } else {
+              // === MOBILE: Write to temp file ===
+              console.log(`>>> [addVehicleDocument] Mobile: Writing base64 to temp file for ${fieldName}`)
+              
+              const base64Data = uri.split(',')[1]
+              const fileName = fileObj.fileName || `${fieldName}-${Date.now()}.jpg`
+              const mimeType = fileObj.type || 'image/jpeg'
+              
+              const baseDir = (FileSystem as any).cacheDirectory ?? (FileSystem as any).documentDirectory ?? ''
+              const tempUri = baseDir + fileName
+              
+              await FileSystem.writeAsStringAsync(tempUri, base64Data, {
+                encoding: (FileSystem as any).EncodingType?.Base64 ?? 'base64',
+              })
+              
+              const rnFile: any = {
+                uri: tempUri,
+                name: fileName,
+                type: mimeType,
+              }
+              
+              // @ts-ignore
+              formData.append(fieldName, rnFile)
+            }
+            
+          } else if (uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('/')) {
+            // ===================================
+            // === LUỒNG MOBILE (file:) ===
+            // ===================================
+            console.log(`>>> [addVehicleDocument] Mobile file:// for ${fieldName}`)
+            
+            const fileName = fileObj.fileName || `${fieldName}-${Date.now()}.jpg`
+            const mimeType = fileObj.type || 'image/jpeg'
+            
+            const rnFile: any = {
+              uri: uri,
+              name: fileName,
+              type: mimeType,
+            }
+            
+            // @ts-ignore
+            formData.append(fieldName, rnFile)
+            
+          } else if (uri.startsWith('http://') || uri.startsWith('https://')) {
+            // ===========================
+            // === LUỒNG HTTP(S) URL ===
+            // ===========================
+            console.log(`>>> [addVehicleDocument] Fetching http(s):// for ${fieldName}`)
+            const resp = await fetch(uri)
+            const blob = await resp.blob()
+            // @ts-ignore
+            formData.append(fieldName, blob, `${fieldName}-${Date.now()}.jpg`)
+            
+          } else if (uri.startsWith('blob:')) {
+            // ===========================
+            // === LUỒNG BLOB: URL (WEB) ===
+            // ===========================
+            console.log(`>>> [addVehicleDocument] Web: Converting blob: URL for ${fieldName}`)
+            const resp = await fetch(uri)
+            const blob = await resp.blob()
+            const fileName = fileObj.fileName || `${fieldName}-${Date.now()}.jpg`
+            // @ts-ignore
+            formData.append(fieldName, blob, fileName)
+            
+          } else {
+            console.warn(`${fieldName}: Định dạng URI không được hỗ trợ: ${uri}`)
+          }
+        } catch (err) {
+          console.warn(`Lỗi khi xử lý ${fieldName}:`, err)
+        }
+      }
+      
+      // Attach FrontFile (required)
+      await attachFile(documentData.frontFile, 'FrontFile')
+      
+      // Attach BackFile (optional)
+      if (documentData.backFile) {
+        await attachFile(documentData.backFile, 'BackFile')
+      }
+      
+      console.log('Sending FormData to API:', `api/VehicleDocument/add/${vehicleId}`)
+      
+      // Let axios auto-set Content-Type with boundary
+      const res = await api.post(`api/VehicleDocument/add/${vehicleId}`, formData)
+      return res.data
+    } catch (e: any) {
+      console.error('addVehicleDocument failed', e)
+      if (e.response) {
+        console.error('Response status:', e.response.status)
+        console.error('Response data:', JSON.stringify(e.response.data, null, 2))
+      }
       throw e
     }
   },

@@ -10,7 +10,10 @@ import {
   Alert,
   StatusBar,
   Platform,
-  Dimensions
+  Dimensions,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
@@ -41,6 +44,10 @@ const MyDocumentsScreen = () => {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [documents, setDocuments] = useState<MyDocumentsResponseDTO | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewNote, setReviewNote] = useState('');
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [sendingRequest, setSendingRequest] = useState(false);
 
   useEffect(() => {
     loadDocuments();
@@ -60,6 +67,36 @@ const MyDocumentsScreen = () => {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRequestReview = async () => {
+    if (!selectedDocId) return;
+    if (!reviewNote.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập lý do yêu cầu xét duyệt');
+      return;
+    }
+
+    try {
+      setSendingRequest(true);
+      const response = await ekycService.requestManualReview({
+        UserDocumentId: selectedDocId,
+        UserNote: reviewNote.trim(),
+      });
+
+      if (response.isSuccess) {
+        Alert.alert('Thành công', 'Đã gửi yêu cầu xét duyệt thành công. Vui lòng đợi staff xác nhận.');
+        setShowReviewModal(false);
+        setReviewNote('');
+        setSelectedDocId(null);
+        await loadDocuments(); // Reload to update status
+      } else {
+        Alert.alert('Lỗi', response.message || 'Không thể gửi yêu cầu');
+      }
+    } catch (error: any) {
+      Alert.alert('Lỗi', error?.message || 'Đã có lỗi xảy ra');
+    } finally {
+      setSendingRequest(false);
     }
   };
 
@@ -85,7 +122,7 @@ const MyDocumentsScreen = () => {
     } else if (status === 'REJECTED' || status === 'INACTIVE') { 
       // INACTIVE mà có reason thì coi như bị từ chối/chưa đạt
       config = { color: COLORS.error, bg: COLORS.errorBg, icon: 'alert-circle', text: 'Chưa đạt / Bị từ chối' };
-    } else if (status === 'PENDING') {
+    } else if (status === 'PENDING' || status === 'PENDING_REVIEW') {
       config = { color: COLORS.warning, bg: COLORS.warningBg, icon: 'clock', text: 'Đang chờ duyệt' };
     }
 
@@ -161,14 +198,14 @@ const MyDocumentsScreen = () => {
         {/* Details Grid */}
         <View style={styles.detailsGrid}>
             <InfoItem icon="user" label="Họ và tên" value={doc.fullName} isFullWidth />
-            <InfoItem icon="calendar" label="Ngày sinh" value={doc.dateOfBirth ? new Date(doc.dateOfBirth).toLocaleDateString('vi-VN') : null} />
+            {/* <InfoItem icon="calendar" label="Ngày sinh" value={doc.dateOfBirth ? new Date(doc.dateOfBirth).toLocaleDateString('vi-VN') : null} />
             {isCCCD ? (
                  <InfoItem icon="map-pin" label="Nơi cấp" value={doc.issuePlace} /> // Giả sử DTO có
             ) : (
                  <InfoItem icon="award" label="Hạng bằng" value={doc.licenseClass} />
             )}
-            <InfoItem icon="clock" label="Ngày cấp" value={doc.issueDate ? new Date(doc.issueDate).toLocaleDateString('vi-VN') : null} />
-            <InfoItem icon="alert-circle" label="Hết hạn" value={doc.expiryDate ? new Date(doc.expiryDate).toLocaleDateString('vi-VN') : 'Không thời hạn'} />
+            <InfoItem icon="clock" label="Ngày cấp" value={doc.issueDate ? new Date(doc.issueDate).toLocaleDateString('vi-VN') : null} /> */}
+            {/* <InfoItem icon="alert-circle" label="Hết hạn" value={doc.expiryDate ? new Date(doc.expiryDate).toLocaleDateString('vi-VN') : 'Không thời hạn'} /> */}
         </View>
 
         {/* Rejection / Analysis Box */}
@@ -184,12 +221,26 @@ const MyDocumentsScreen = () => {
 
         {/* Action Button - Always show for non-ACTIVE status */}
         {doc.status !== 'ACTIVE' ? (
-            <TouchableOpacity style={styles.fixButton} onPress={handlePress}>
-                <Text style={styles.fixButtonText}>
-                    {doc.rejectionReason ? 'Cập nhật lại ngay' : 'Xác thực ngay'}
-                </Text>
-                <Feather name="chevron-right" size={16} color="#FFF" />
-            </TouchableOpacity>
+            <View style={{ gap: 10, marginTop: 16 }}>
+                <TouchableOpacity style={styles.fixButton} onPress={handlePress}>
+                    <Text style={styles.fixButtonText}>
+                        {doc.rejectionReason ? 'Cập nhật lại ngay' : 'Xác thực ngay'}
+                    </Text>
+                    <Feather name="chevron-right" size={16} color="#FFF" />
+                </TouchableOpacity>
+                {doc.status !== 'PENDING' && doc.status !== 'PENDING_REVIEW' && doc.userDocumentId && (
+                    <TouchableOpacity 
+                        style={styles.requestReviewButton} 
+                        onPress={() => {
+                            setSelectedDocId(doc.userDocumentId!);
+                            setShowReviewModal(true);
+                        }}
+                    >
+                        <Feather name="send" size={16} color={COLORS.primary} />
+                        <Text style={styles.requestReviewButtonText}>Yêu cầu Staff xét duyệt</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
         ) : (
             <TouchableOpacity style={styles.updateButton} onPress={handlePress}>
                 <Feather name="edit-3" size={16} color={COLORS.primary} />
@@ -245,6 +296,72 @@ const MyDocumentsScreen = () => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Review Request Modal */}
+      <Modal
+        visible={showReviewModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowReviewModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalContainer}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Yêu cầu xét duyệt thủ công</Text>
+                <TouchableOpacity onPress={() => setShowReviewModal(false)}>
+                  <Feather name="x" size={24} color={COLORS.textMain} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.modalDescription}>
+                Vui lòng mô tả lý do bạn muốn staff xét duyệt lại tài liệu này:
+              </Text>
+
+              <TextInput
+                style={styles.modalTextArea}
+                placeholder="Ví dụ: Ảnh bị mờ do điều kiện ánh sáng, xin được duyệt thủ công..."
+                placeholderTextColor={COLORS.textSub}
+                multiline
+                numberOfLines={4}
+                value={reviewNote}
+                onChangeText={setReviewNote}
+                maxLength={500}
+              />
+
+              <Text style={styles.charCount}>{reviewNote.length}/500</Text>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity 
+                  style={styles.modalCancelBtn} 
+                  onPress={() => {
+                    setShowReviewModal(false);
+                    setReviewNote('');
+                    setSelectedDocId(null);
+                  }}
+                >
+                  <Text style={styles.modalCancelText}>Hủy</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.modalSubmitBtn, sendingRequest && { opacity: 0.6 }]} 
+                  onPress={handleRequestReview}
+                  disabled={sendingRequest}
+                >
+                  {sendingRequest ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <Text style={styles.modalSubmitText}>Gửi yêu cầu</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -539,6 +656,110 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  // Request Review Button
+  requestReviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+  },
+  requestReviewButtonText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 500,
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textMain,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: COLORS.textSub,
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  modalTextArea: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    color: COLORS.textMain,
+    minHeight: 120,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  charCount: {
+    fontSize: 12,
+    color: COLORS.textSub,
+    textAlign: 'right',
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textSub,
+  },
+  modalSubmitBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  modalSubmitText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
   },
 });
 

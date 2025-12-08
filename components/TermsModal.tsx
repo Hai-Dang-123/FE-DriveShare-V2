@@ -129,14 +129,22 @@ const TermsModal: React.FC<TermsModalProps> = ({ visible, onClose }) => {
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   } as ViewStyle,
   modalContainer: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
+    borderRadius: 20,
+    maxHeight: '85%',
+    width: '100%',
+    maxWidth: 500,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   } as ViewStyle,
   header: {
     flexDirection: 'row',

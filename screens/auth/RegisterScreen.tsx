@@ -367,9 +367,15 @@ const RegisterScreen: React.FC = () => {
                         <View style={[styles.checkbox, agreed && styles.checkboxActive]}>
                             {agreed && <Feather name="check" size={14} color="#FFF" />}
                         </View>
-                        <Text style={styles.termsText}>
-                            Đồng ý với <Text style={styles.linkText} onPress={() => setShowTermsModal(true)}>Điều khoản & Chính sách</Text>
-                        </Text>
+                        <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap' }}>
+                            <Text style={styles.termsText}>Đồng ý với </Text>
+                            <TouchableOpacity onPress={(e) => {
+                                e.stopPropagation();
+                                setShowTermsModal(true);
+                            }}>
+                                <Text style={styles.linkText}>Điều khoản & Chính sách</Text>
+                            </TouchableOpacity>
+                        </View>
                     </TouchableOpacity>
 
                     {/* Submit Button Gradient */}

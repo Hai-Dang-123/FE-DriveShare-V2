@@ -4272,7 +4272,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                       // For HANDOVER: Only allow when trip status is VEHICLE_HANDOVERED and owner signed
                       const canSignHandover = isHandoverType && 
                         trip?.status === "VEHICLE_HANDOVERED" && 
-                        ownerHasSigned && 
+                       
                         driverHasNotSigned;
                       
                       // For RETURN: Only allow after owner has signed first
