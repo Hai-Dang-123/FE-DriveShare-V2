@@ -1,34 +1,210 @@
 import api from '@/config/api'
 
+// ================== ENUMS ==================
+export enum FleetJoinStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+
+// ================== DTOs ==================
 export interface LinkedDriverDTO {
   ownerDriverLinkId: string
   driverId: string
   fullName: string
-  phoneNumber?: string
+  phoneNumber: string
   avatarUrl?: string
   licenseNumber?: string
   status: string
-  requestedAt?: string
+  requestedAt: string
   approvedAt?: string
+  hoursDrivenToday: number
+  hoursDrivenThisWeek: number
+  hoursDrivenThisMonth: number
+  canDrive: boolean
 }
 
-export interface PaginatedDTO<T> {
-  items: T[]
+export interface DriverTeamInfoDTO {
+  ownerDriverLinkId: string
+  status: string
+  requestedAt: string
+  approvedAt?: string
+  ownerId: string
+  ownerName: string
+  ownerPhoneNumber: string
+  ownerAvatar?: string
+  ownerEmail: string
+}
+
+export interface CreateOwnerDriverLinkDTO {
+  ownerId: string
+}
+
+export interface ChangeStatusOwnerDriverLinkDTO {
+  ownerDriverLinkId: string
+  status: FleetJoinStatus
+}
+
+export interface PaginatedDrivers {
+  data: LinkedDriverDTO[]
   totalCount: number
-  pageNumber: number
+  currentPage: number
+  totalPages: number
   pageSize: number
 }
 
-const ownerDriverLinkService = {
-  async getMyDrivers(pageNumber = 1, pageSize = 10) {
+// ================== SERVICE ==================
+class OwnerDriverLinkService {
+  // Owner: Lấy danh sách tài xế đã liên kết
+  async getMyDrivers(pageNumber: number = 1, pageSize: number = 10) {
     try {
-      const res = await api.get(`api/OwnerDriverLink/my-drivers?pageNumber=${pageNumber}&pageSize=${pageSize}`)
-      return res.data
-    } catch (e: any) {
-      if (e?.response?.data) return e.response.data
-      throw e
+      const response = await api.get<{
+        isSuccess: boolean
+        result: PaginatedDrivers
+        message?: string
+      }>('/api/OwnerDriverLink/my-drivers', {
+        params: { pageNumber, pageSize },
+      })
+
+      if (response.data.isSuccess) {
+        return {
+          success: true,
+          data: response.data.result,
+        }
+      }
+
+      return {
+        success: false,
+        error: response.data.message || 'Không thể tải danh sách tài xế',
+      }
+    } catch (error: any) {
+      console.error('Error fetching my drivers:', error)
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Lỗi kết nối',
+      }
+    }
+  }
+
+  // Driver: Kiểm tra đang thuộc đội xe nào
+  async getMyTeamInfo() {
+    try {
+      const response = await api.get<{
+        isSuccess: boolean
+        result?: DriverTeamInfoDTO
+        message?: string
+        statusCode?: number
+      }>('/api/OwnerDriverLink/my-team')
+
+      if (response.data.isSuccess) {
+        return {
+          success: true,
+          data: response.data.result,
+        }
+      }
+
+      // 404 = chưa thuộc đội nào
+      if (response.data.statusCode === 404) {
+        return {
+          success: true,
+          data: null,
+        }
+      }
+
+      return {
+        success: false,
+        error: response.data.message || 'Không thể tải thông tin đội',
+      }
+    } catch (error: any) {
+      // 404 = chưa thuộc đội nào
+      if (error.response?.status === 404) {
+        return {
+          success: true,
+          data: null,
+        }
+      }
+
+      console.error('Error fetching team info:', error)
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Lỗi kết nối',
+      }
+    }
+  }
+
+  // Driver: Gửi yêu cầu gia nhập đội xe
+  async createJoinRequest(dto: CreateOwnerDriverLinkDTO) {
+    try {
+      const response = await api.post<{
+        isSuccess: boolean
+        result?: { linkId: string }
+        message?: string
+      }>('/api/OwnerDriverLink', dto)
+
+      if (response.data.isSuccess) {
+        return {
+          success: true,
+          data: response.data.result,
+          message: 'Gửi yêu cầu thành công',
+        }
+      }
+
+      return {
+        success: false,
+        error: response.data.message || 'Không thể gửi yêu cầu',
+      }
+    } catch (error: any) {
+      console.error('Error creating join request:', error)
+      const statusCode = error.response?.status
+
+      if (statusCode === 409) {
+        return {
+          success: false,
+          error: 'Bạn đã gửi yêu cầu hoặc đã thuộc đội xe này',
+        }
+      }
+
+      if (statusCode === 404) {
+        return {
+          success: false,
+          error: 'Không tìm thấy chủ xe',
+        }
+      }
+
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Lỗi kết nối',
+      }
+    }
+  }
+
+  // Owner: Duyệt/từ chối yêu cầu
+  async changeStatus(dto: ChangeStatusOwnerDriverLinkDTO) {
+    try {
+      const response = await api.post<{
+        isSuccess: boolean
+        message?: string
+      }>('/api/OwnerDriverLink/change-status', dto)
+
+      if (response.data.isSuccess) {
+        return {
+          success: true,
+          message: response.data.message || 'Cập nhật trạng thái thành công',
+        }
+      }
+
+      return {
+        success: false,
+        error: response.data.message || 'Không thể cập nhật trạng thái',
+      }
+    } catch (error: any) {
+      console.error('Error changing status:', error)
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Lỗi kết nối',
+      }
     }
   }
 }
 
-export default ownerDriverLinkService
+export default new OwnerDriverLinkService()

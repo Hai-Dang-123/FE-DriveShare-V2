@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 
 interface HandoverRecordDocumentProps {
   type: 'HANDOVER' | 'RETURN';
@@ -22,6 +22,7 @@ interface HandoverRecordDocumentProps {
     termContent: string;
     isOk: boolean;
     note: string | null;
+    evidenceImageUrl?: string | null;
   }>;
   issues?: Array<{
     issueId: string;
@@ -163,6 +164,15 @@ export const HandoverRecordDocument: React.FC<HandoverRecordDocumentProps> = ({
               <View style={styles.termContent}>
                 <Text style={styles.termText}>{index + 1}. {term.termContent || 'Hạng mục kiểm tra'}</Text>
                 {term.note && <Text style={styles.termNote}>Ghi chú: {term.note}</Text>}
+                {term.evidenceImageUrl && (
+                  <View style={styles.evidenceImageContainer}>
+                    <Image 
+                      source={{ uri: term.evidenceImageUrl }} 
+                      style={styles.evidenceImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                )}
               </View>
             </View>
           ))}
@@ -477,6 +487,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#6B7280',
     fontStyle: 'italic',
+  },
+  evidenceImageContainer: {
+    marginTop: 8,
+    borderRadius: 6,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  evidenceImage: {
+    width: '100%',
+    height: 150,
+    backgroundColor: '#F3F4F6',
   },
   issuesSection: {
     marginBottom: 16,

@@ -7,6 +7,8 @@ import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-ic
 import postTripService from '@/services/postTripService'
 import tripService from '@/services/tripService'
 import assignmentService from '@/services/assignmentService'
+import postAnalysisService from '@/services/postAnalysisService'
+import driverWorkSessionService from '@/services/driverWorkSessionService'
 import { useAuth } from '@/hooks/useAuth'
 import { track } from '@/utils/analytics'
 import useTripStore from '@/stores/tripStore'
@@ -35,7 +37,8 @@ function normalizePostTrip(raw: AnyObj) {
     tripId: tripRaw.tripId || tripRaw.TripId,
     startLocationName: tripRaw.startLocationName || tripRaw.StartLocationName,
     endLocationName: tripRaw.endLocationName || tripRaw.EndLocationName,
-    startTime: tripRaw.startTime || tripRaw.StartTime,
+    startDate: tripRaw.startDate || tripRaw.StartDate,
+    endDate: tripRaw.endDate || tripRaw.EndDate,
     vehicleModel: tripRaw.vehicleModel || tripRaw.VehicleModel,
     vehiclePlate: tripRaw.vehiclePlate || tripRaw.VehiclePlate,
     packageCount: tripRaw.packageCount || tripRaw.PackageCount,
@@ -43,9 +46,10 @@ function normalizePostTrip(raw: AnyObj) {
   }
   const startName = trip.startLocationName || ''
   const endName = trip.endLocationName || ''
-  const startTime = trip.startTime
+  const startDate = trip.startDate
+  const endDate = trip.endDate
   const details = raw.postTripDetails || raw.PostTripDetails || []
-  return { id, title, description, status, requiredPayloadInKg, startName, endName, startTime, details, trip }
+  return { id, title, description, status, requiredPayloadInKg, startName, endName, startDate, endDate, details, trip }
 }
 
 // --- COMPONENTS ---
@@ -77,15 +81,26 @@ const DriverPostTripDetailScreen: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<any | null>(null)
   const [error, setError] = useState<string | null>(null)
-    const [justApplied, setJustApplied] = useState(false)
+  const [justApplied, setJustApplied] = useState(false)
+  
+  // AI Analysis
+  const [aiAnalysis, setAiAnalysis] = useState<any | null>(null)
+  const [loadingAI, setLoadingAI] = useState(false)
+  const [showAIModal, setShowAIModal] = useState(false)
 
   // Trip Detail (for rich data)
   const [tripDetail, setTripDetailState] = useState<any | null>(null)
   const [routeCoords, setRouteCoords] = useState<[number, number][]>([])
+  
+  // Driver Work Session States
+  const [availability, setAvailability] = useState<any | null>(null)
+  const [suitability, setSuitability] = useState<any | null>(null)
+  const [loadingSession, setLoadingSession] = useState(false)
 
   // Action States
   const [applyingId, setApplyingId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ visible: boolean; type: 'success'|'error'; message: string }>({ visible: false, type: 'success', message: '' })
+  const [showDepositConfirm, setShowDepositConfirm] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [pendingDetail, setPendingDetail] = useState<AnyObj | null>(null)
   
@@ -111,6 +126,27 @@ const DriverPostTripDetailScreen: React.FC = () => {
   useEffect(() => {
     fetchData()
   }, [postTripId])
+
+  const fetchDriverSessionData = async (tripId: string) => {
+    setLoadingSession(true)
+    try {
+      // 1. Get my availability (quỹ thời gian)
+      const availRes: any = await driverWorkSessionService.getMyAvailability()
+      if (availRes?.isSuccess && availRes.result) {
+        setAvailability(availRes.result)
+      }
+      
+      // 2. Check suitability for this trip
+      const suitRes: any = await driverWorkSessionService.checkSuitabilityForTrip(tripId)
+      if (suitRes) {
+        setSuitability(suitRes)
+      }
+    } catch (e: any) {
+      console.error('Error fetching driver session data:', e)
+    } finally {
+      setLoadingSession(false)
+    }
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -147,6 +183,9 @@ const DriverPostTripDetailScreen: React.FC = () => {
                         setRouteCoords(coords as [number, number][])
                     }
                 }
+                
+                // Fetch Driver Work Session data
+                fetchDriverSessionData(normalized.trip.tripId)
             }
         } else {
             setError(res?.message || 'Không tải được bài đăng')
@@ -180,6 +219,24 @@ const DriverPostTripDetailScreen: React.FC = () => {
     setTimeout(() => setToast(t => ({ ...t, visible: false })), 2500)
   }
 
+  const fetchAIAnalysis = async () => {
+    if (!postTripId) return
+    setLoadingAI(true)
+    try {
+      const res: any = await postAnalysisService.analyzePostTrip(postTripId)
+      if (res?.isSuccess && res.result) {
+        setAiAnalysis(res.result)
+        setShowAIModal(true)
+      } else {
+        showToast('error', res?.message || 'Không thể phân tích')
+      }
+    } catch (e: any) {
+      showToast('error', e?.message || 'Lỗi kết nối AI')
+    } finally {
+      setLoadingAI(false)
+    }
+  }
+
   const handleApply = async (detail: AnyObj) => {
     if (!data?.id) return
     const postTripDetailId = detail.postTripDetailId || detail.PostTripDetailId || detail.id || detail.Id
@@ -198,7 +255,8 @@ const DriverPostTripDetailScreen: React.FC = () => {
             endLocation: endLocation as any
         })
         if (res?.isSuccess || res?.statusCode === 201) {
-            showToast('success', 'Ứng tuyển thành công!')
+            const successMsg = res?.message || 'Ứng tuyển thành công!'
+            showToast('success', successMsg)
             // Reset custom locations
             setCustomPickup('')
             setCustomDropoff('')
@@ -234,10 +292,23 @@ const DriverPostTripDetailScreen: React.FC = () => {
   const openLocationModal = (detail: AnyObj) => {
     setPendingDetail(detail)
     setLocationError('')
-    // Reset suggestions when opening modal
+    // Reset custom locations and suggestions when opening modal
+    setCustomPickup('')
+    setCustomDropoff('')
     setSelectedPickupSuggestion(null)
     setSelectedDropoffSuggestion(null)
     setShowLocationModal(true)
+  }
+
+  const closeLocationModal = () => {
+    // Reset everything when closing without confirming
+    setShowLocationModal(false)
+    setCustomPickup('')
+    setCustomDropoff('')
+    setSelectedPickupSuggestion(null)
+    setSelectedDropoffSuggestion(null)
+    setLocationError('')
+    setPendingDetail(null)
   }
 
   const confirmWithLocation = () => {
@@ -246,8 +317,35 @@ const DriverPostTripDetailScreen: React.FC = () => {
     setShowConfirm(true)
   }
 
+  const openDepositConfirm = (detail: AnyObj) => {
+    setPendingDetail(detail)
+    // Reset custom locations khi ứng tuyển trực tiếp (không qua modal tùy chỉnh)
+    setCustomPickup('')
+    setCustomDropoff('')
+    setSelectedPickupSuggestion(null)
+    setSelectedDropoffSuggestion(null)
+    // Chỉ hiển thị modal deposit nếu có tiền cọc > 0
+    if ((detail.depositAmount || 0) > 0) {
+      setShowDepositConfirm(true)
+    } else {
+      // Không có tiền cọc, confirm trực tiếp
+      setShowConfirm(true)
+    }
+  }
+
+  const confirmDeposit = () => {
+    setShowDepositConfirm(false)
+    // Sau khi đồng ý với thông báo tiền cọc, chuyển sang confirm apply
+    setShowConfirm(true)
+  }
+
   const openConfirm = (detail: AnyObj) => {
     setPendingDetail(detail)
+    // Reset custom locations khi ứng tuyển trực tiếp
+    setCustomPickup('')
+    setCustomDropoff('')
+    setSelectedPickupSuggestion(null)
+    setSelectedDropoffSuggestion(null)
     setShowConfirm(true)
   }
 
@@ -266,6 +364,13 @@ const DriverPostTripDetailScreen: React.FC = () => {
         <View style={{flex: 1}}>
             <Text style={styles.headerTitle} numberOfLines={1}>Chi tiết Bài đăng</Text>
         </View>
+        <TouchableOpacity onPress={fetchAIAnalysis} style={styles.aiBtn} disabled={loadingAI}>
+          {loadingAI ? (
+            <ActivityIndicator size="small" color="#8B5CF6" />
+          ) : (
+            <MaterialCommunityIcons name="robot-outline" size={20} color="#8B5CF6" />
+          )}
+        </TouchableOpacity>
         <StatusPill value={data.status} />
       </View>
 
@@ -293,6 +398,94 @@ const DriverPostTripDetailScreen: React.FC = () => {
             </View>
         </View>
 
+        {/* Driver Availability & Suitability Info */}
+        {availability && (
+          <View style={styles.card}>
+            <View style={styles.sessionHeader}>
+              <MaterialCommunityIcons name="clock-check-outline" size={24} color="#3B82F6" />
+              <Text style={styles.sessionTitle}>Quỹ Thời Gian Của Bạn</Text>
+            </View>
+            
+            <View style={styles.availabilityGrid}>
+              <View style={styles.availabilityItem}>
+                <Text style={styles.availabilityLabel}>Đã lái hôm nay</Text>
+                <Text style={[styles.availabilityValue, availability.drivenHoursToday > 8 && {color: '#F59E0B'}]}>
+                  {availability.drivenHoursToday}h / 10h
+                </Text>
+                <Text style={styles.availabilitySubtext}>Còn {availability.remainingHoursToday}h</Text>
+              </View>
+              
+              <View style={styles.availabilityDivider} />
+              
+              <View style={styles.availabilityItem}>
+                <Text style={styles.availabilityLabel}>Đã lái tuần này</Text>
+                <Text style={[styles.availabilityValue, availability.drivenHoursThisWeek > 40 && {color: '#F59E0B'}]}>
+                  {availability.drivenHoursThisWeek}h / 48h
+                </Text>
+                <Text style={styles.availabilitySubtext}>Còn {availability.remainingHoursThisWeek}h</Text>
+              </View>
+            </View>
+            
+            {availability.isBanned && (
+              <View style={styles.warningBanner}>
+                <Ionicons name="warning" size={18} color="#DC2626" />
+                <Text style={styles.warningBannerText}>{availability.message}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Suitability Check Result */}
+        {suitability && (
+          <View style={styles.card}>
+            <View style={styles.sessionHeader}>
+              <MaterialCommunityIcons 
+                name={suitability.isSuccess ? "check-circle-outline" : "alert-circle-outline"} 
+                size={24} 
+                color={suitability.isSuccess ? "#059669" : "#DC2626"} 
+              />
+              <Text style={styles.sessionTitle}>Kiểm Tra Phù Hợp</Text>
+            </View>
+            
+            {suitability.isSuccess ? (
+              <View style={styles.suitabilitySuccess}>
+                <View style={styles.suitabilityRow}>
+                  <Text style={styles.suitabilityLabel}>Giờ lái yêu cầu:</Text>
+                  <Text style={styles.suitabilityValue}>{suitability.result?.requiredHours?.toFixed(1)}h</Text>
+                </View>
+                <View style={styles.suitabilityRow}>
+                  <Text style={styles.suitabilityLabel}>Giờ lái còn lại của bạn:</Text>
+                  <Text style={[styles.suitabilityValue, {color: '#059669'}]}>
+                    {suitability.result?.driverRemainingHours?.toFixed(1)}h
+                  </Text>
+                </View>
+                <View style={styles.successBanner}>
+                  <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                  <Text style={styles.successBannerText}>Bạn đủ điều kiện ứng tuyển chuyến này!</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.suitabilityError}>
+                <Text style={styles.errorReason}>{suitability.message || 'Không phù hợp'}</Text>
+                {suitability.result && (
+                  <>
+                    <View style={styles.suitabilityRow}>
+                      <Text style={styles.suitabilityLabel}>Giờ lái yêu cầu:</Text>
+                      <Text style={styles.suitabilityValue}>{suitability.result.requiredHours?.toFixed(1)}h</Text>
+                    </View>
+                    <View style={styles.suitabilityRow}>
+                      <Text style={styles.suitabilityLabel}>Giờ lái còn lại của bạn:</Text>
+                      <Text style={[styles.suitabilityValue, {color: '#DC2626'}]}>
+                        {suitability.result.driverRemainingHours?.toFixed(1)}h
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* 2. Overview Info */}
         <View style={styles.card}>
             <Text style={styles.title}>{data.title}</Text>
@@ -307,12 +500,20 @@ const DriverPostTripDetailScreen: React.FC = () => {
                 </View>
                 <View style={styles.gridItem}>
                     <Text style={styles.label}>Khởi hành</Text>
-                    <Text style={styles.value}>{data.startTime ? new Date(data.startTime).toLocaleDateString('vi-VN') : '---'}</Text>
+                    <Text style={styles.value}>{data.startDate ? new Date(data.startDate).toLocaleDateString('vi-VN') : '---'}</Text>
                 </View>
+                <View style={styles.gridItem}>
+                    <Text style={styles.label}>Kết thúc</Text>
+                    <Text style={styles.value}>{data.endDate ? new Date(data.endDate).toLocaleDateString('vi-VN') : '---'}</Text>
+                </View>
+            </View>
+            <View style={styles.grid}>
                 <View style={styles.gridItem}>
                     <Text style={styles.label}>Tổng Slot</Text>
                     <Text style={styles.value}>{data.details.length}</Text>
                 </View>
+                <View style={styles.gridItem} />
+                <View style={styles.gridItem} />
             </View>
         </View>
 
@@ -350,6 +551,12 @@ const DriverPostTripDetailScreen: React.FC = () => {
                             <Ionicons name="flag-outline" size={16} color="#6B7280" />
                             <Text style={styles.slotText}>Trả: {d.dropoffLocation || '---'}</Text>
                         </View>
+                        {(d.depositAmount || 0) > 0 && (
+                            <View style={styles.slotRow}>
+                                <MaterialCommunityIcons name="cash" size={16} color="#F59E0B" />
+                                <Text style={styles.slotText}>Đặt cọc: <Text style={{fontWeight: '700', color: '#F59E0B'}}>{d.depositAmount.toLocaleString('vi-VN')} đ</Text></Text>
+                            </View>
+                        )}
                     </View>
 
                     {/* Apply Button */}
@@ -357,23 +564,25 @@ const DriverPostTripDetailScreen: React.FC = () => {
                         <View style={styles.actionContainer}>
                             {type === 'Tài xế Phụ' && (
                                 <TouchableOpacity 
-                                    style={[styles.customLocationBtn, (applyingId || isFull) && styles.btnDisabled]}
+                                    style={[styles.customLocationBtn, (applyingId || isFull || (suitability && !suitability.isSuccess)) && styles.btnDisabled]}
                                     onPress={() => openLocationModal(d)}
-                                    disabled={!!applyingId || isFull}
+                                    disabled={!!applyingId || isFull || (suitability && !suitability.isSuccess)}
                                 >
                                     <Ionicons name="location" size={16} color="#4F46E5" />
                                     <Text style={styles.customLocationText}>Tùy chỉnh điểm đón/trả</Text>
                                 </TouchableOpacity>
                             )}
                             <TouchableOpacity 
-                                style={[styles.applyBtn, (applyingId || isFull) && styles.btnDisabled, type === 'Tài xế Phụ' && styles.applyBtnSecondary]}
-                                onPress={() => openConfirm(d)}
-                                disabled={!!applyingId || isFull}
+                                style={[styles.applyBtn, (applyingId || isFull || (suitability && !suitability.isSuccess)) && styles.btnDisabled, type === 'Tài xế Phụ' && styles.applyBtnSecondary]}
+                                onPress={() => openDepositConfirm(d)}
+                                disabled={!!applyingId || isFull || (suitability && !suitability.isSuccess)}
                             >
                                 {applyingId === String(d.postTripDetailId) ? (
                                     <ActivityIndicator color="#FFF" />
                                 ) : (
-                                    <Text style={styles.applyBtnText}>{isFull ? 'Đã đủ người' :  'Ứng tuyển ngay'}</Text>
+                                    <Text style={styles.applyBtnText}>
+                                      {isFull ? 'Đã đủ người' : (suitability && !suitability.isSuccess) ? 'Không đủ điều kiện' : 'Ứng tuyển ngay'}
+                                    </Text>
                                 )}
                             </TouchableOpacity>
                         </View>
@@ -407,13 +616,58 @@ const DriverPostTripDetailScreen: React.FC = () => {
         <View style={{height: 40}} />
       </ScrollView>
 
+      {/* Deposit Confirmation Modal */}
+      <Modal visible={showDepositConfirm} transparent animationType="fade" onRequestClose={() => setShowDepositConfirm(false)}>
+        <View style={styles.confirmModalBackdrop}>
+            <View style={styles.depositModalCard}>
+                <View style={styles.depositModalHeader}>
+                    <MaterialCommunityIcons name="cash-multiple" size={48} color="#F59E0B" />
+                    <Text style={styles.depositModalTitle}>Xác nhận đặt cọc</Text>
+                </View>
+                
+                <View style={styles.depositInfoBox}>
+                    <Text style={styles.depositInfoTitle}>Thông tin ứng tuyển</Text>
+                    <View style={styles.depositInfoRow}>
+                        <Text style={styles.depositInfoLabel}>Vị trí:</Text>
+                        <Text style={styles.depositInfoValue}>{pendingDetail?.type === 'PRIMARY' ? 'Tài xế Chính' : 'Tài xế Phụ'}</Text>
+                    </View>
+                    <View style={styles.depositInfoRow}>
+                        <Text style={styles.depositInfoLabel}>Lương:</Text>
+                        <Text style={[styles.depositInfoValue, {color: '#059669'}]}>{pendingDetail?.pricePerPerson?.toLocaleString('vi-VN')} đ</Text>
+                    </View>
+                    <View style={styles.dividerThin} />
+                    <View style={styles.depositInfoRow}>
+                        <Text style={styles.depositAmountLabel}>Tiền đặt cọc:</Text>
+                        <Text style={styles.depositAmountValue}>{(pendingDetail?.depositAmount || 0).toLocaleString('vi-VN')} đ</Text>
+                    </View>
+                </View>
+
+                <View style={styles.depositWarningBox}>
+                    <Ionicons name="alert-circle" size={20} color="#DC2626" />
+                    <Text style={styles.depositWarningText}>
+                        Bạn cần đặt cọc để xác nhận ứng tuyển. Số tiền sẽ được hoàn trả sau khi hoàn thành chuyến đi.
+                    </Text>
+                </View>
+
+                <View style={styles.modalActions}>
+                    <TouchableOpacity style={styles.btnSecondary} onPress={() => setShowDepositConfirm(false)}>
+                        <Text style={styles.btnSecondaryText}>Hủy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnPrimary} onPress={confirmDeposit}>
+                        <Text style={styles.btnPrimaryText}>Đồng ý đặt cọc</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+      </Modal>
+
       {/* Custom Location Modal (Assistant Drivers Only) */}
-      <Modal visible={showLocationModal} transparent animationType="slide" onRequestClose={() => setShowLocationModal(false)}>
+      <Modal visible={showLocationModal} transparent animationType="slide" onRequestClose={closeLocationModal}>
         <View style={styles.modalBackdrop}>
             <View style={styles.locationModalCard}>
                 <View style={styles.locationModalHeader}>
                     <Text style={styles.modalTitle}>Tùy chỉnh điểm đón/trả</Text>
-                    <TouchableOpacity onPress={() => setShowLocationModal(false)}>
+                    <TouchableOpacity onPress={closeLocationModal}>
                         <Ionicons name="close" size={24} color="#6B7280" />
                     </TouchableOpacity>
                 </View>
@@ -461,7 +715,7 @@ const DriverPostTripDetailScreen: React.FC = () => {
                 ) : null}
 
                 <View style={styles.modalActions}>
-                    <TouchableOpacity style={styles.btnSecondary} onPress={() => setShowLocationModal(false)}>
+                    <TouchableOpacity style={styles.btnSecondary} onPress={closeLocationModal}>
                         <Text style={styles.btnSecondaryText}>Hủy</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.btnPrimary} onPress={confirmWithLocation}>
@@ -484,14 +738,20 @@ const DriverPostTripDetailScreen: React.FC = () => {
                     <Text style={{fontWeight: 'bold', color: '#2563EB'}}> {pendingDetail?.pricePerPerson?.toLocaleString()} đ</Text>?
                 </Text>
                 
-                {/* Show custom locations if set */}
-                {(customPickup || customDropoff) && (
+                {/* Show custom locations if set, otherwise show default message */}
+                {(customPickup || customDropoff) ? (
                     <View style={styles.customLocSummary}>
                         <Text style={styles.customLocTitle}>📍 Địa điểm tùy chỉnh:</Text>
                         {customPickup && <Text style={styles.customLocText}>Đón: {customPickup}</Text>}
                         {customDropoff && <Text style={styles.customLocText}>Trả: {customDropoff}</Text>}
                     </View>
-                )}
+                ) : pendingDetail?.type !== 'PRIMARY' ? (
+                    <View style={styles.defaultLocSummary}>
+                        <Text style={styles.defaultLocTitle}>📍 Sử dụng điểm đón/trả mặc định:</Text>
+                        <Text style={styles.defaultLocText}>Đón: {pendingDetail?.pickupLocation || '---'}</Text>
+                        <Text style={styles.defaultLocText}>Trả: {pendingDetail?.dropoffLocation || '---'}</Text>
+                    </View>
+                ) : null}
                 
                 <View style={styles.modalActions}>
                     <TouchableOpacity style={styles.btnSecondary} onPress={() => setShowConfirm(false)}>
@@ -502,6 +762,155 @@ const DriverPostTripDetailScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
             </View>
+        </View>
+      </Modal>
+
+      {/* AI Analysis Modal */}
+      <Modal visible={showAIModal} transparent animationType="slide" onRequestClose={() => setShowAIModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.aiModalCard}>
+            <View style={styles.aiModalHeader}>
+              <View style={styles.aiModalTitleRow}>
+                <MaterialCommunityIcons name="robot-outline" size={32} color="#8B5CF6" />
+                <Text style={styles.aiModalTitle}>Phân tích AI</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAIModal(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {aiAnalysis && (
+              <ScrollView style={styles.aiModalContent} showsVerticalScrollIndicator={false}>
+                
+                {/* Verdict Badge */}
+                <View style={[styles.verdictBadge, aiAnalysis.verdict?.includes('THƠM') ? styles.verdictGood : styles.verdictWarning]}>
+                  <Text style={styles.verdictText}>{aiAnalysis.verdict || 'PHÂN TÍCH'}</Text>
+                  <Text style={styles.scoreText}>⭐ {aiAnalysis.score?.toFixed(1) || 0}/10</Text>
+                </View>
+
+                {/* Short Summary */}
+                {aiAnalysis.shortSummary && (
+                  <View style={styles.summaryBox}>
+                    <Text style={styles.summaryText}>{aiAnalysis.shortSummary}</Text>
+                  </View>
+                )}
+
+                {/* Financial Section */}
+                {aiAnalysis.financial && (
+                  <View style={styles.aiSection}>
+                    <View style={styles.aiSectionHeader}>
+                      <MaterialCommunityIcons name="cash-multiple" size={20} color="#059669" />
+                      <Text style={styles.aiSectionTitle}>Tài chính</Text>
+                    </View>
+                    <View style={styles.aiSectionBody}>
+                      <View style={styles.aiRow}>
+                        <Text style={styles.aiLabel}>Đánh giá:</Text>
+                        <Text style={styles.aiValue}>{aiAnalysis.financial.assessment}</Text>
+                      </View>
+                      {aiAnalysis.financial.estimatedRevenue && (
+                        <View style={styles.aiRow}>
+                          <Text style={styles.aiLabel}>Doanh thu dự kiến:</Text>
+                          <Text style={[styles.aiValue, {color: '#059669'}]}>{aiAnalysis.financial.estimatedRevenue}</Text>
+                        </View>
+                      )}
+                      {aiAnalysis.financial.marketTrend && (
+                        <View style={styles.aiRow}>
+                          <Text style={styles.aiLabel}>Xu hướng:</Text>
+                          <Text style={styles.aiValue}>{aiAnalysis.financial.marketTrend}</Text>
+                        </View>
+                      )}
+                      {aiAnalysis.financial.profitabilityScore > 0 && (
+                        <View style={styles.scoreBar}>
+                          <Text style={styles.scoreBarLabel}>Lợi nhuận: {aiAnalysis.financial.profitabilityScore}/10</Text>
+                          <View style={styles.scoreBarBg}>
+                            <View style={[styles.scoreBarFill, { width: `${(aiAnalysis.financial.profitabilityScore / 10) * 100}%` }]} />
+                          </View>
+                        </View>
+                      )}
+                      {aiAnalysis.financial.details && (
+                        <Text style={styles.detailsText}>{aiAnalysis.financial.details}</Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {/* Operational Section */}
+                {aiAnalysis.operational && (
+                  <View style={styles.aiSection}>
+                    <View style={styles.aiSectionHeader}>
+                      <MaterialCommunityIcons name="truck-fast" size={20} color="#2563EB" />
+                      <Text style={styles.aiSectionTitle}>Vận hành</Text>
+                    </View>
+                    <View style={styles.aiSectionBody}>
+                      {aiAnalysis.operational.vehicleRecommendation && (
+                        <View style={styles.opItem}>
+                          <Ionicons name="car" size={16} color="#6B7280" />
+                          <Text style={styles.opText}>{aiAnalysis.operational.vehicleRecommendation}</Text>
+                        </View>
+                      )}
+                      {aiAnalysis.operational.routeDifficulty && (
+                        <View style={styles.opItem}>
+                          <Ionicons name="trail-sign" size={16} color="#6B7280" />
+                          <Text style={styles.opText}>Độ khó: {aiAnalysis.operational.routeDifficulty}</Text>
+                        </View>
+                      )}
+                      {aiAnalysis.operational.urgencyLevel && (
+                        <View style={styles.opItem}>
+                          <Ionicons name="time" size={16} color="#6B7280" />
+                          <Text style={styles.opText}>Mức độ gấp: {aiAnalysis.operational.urgencyLevel}</Text>
+                        </View>
+                      )}
+                      {aiAnalysis.operational.cargoNotes && (
+                        <View style={styles.opItem}>
+                          <MaterialCommunityIcons name="package-variant" size={16} color="#6B7280" />
+                          <Text style={styles.opText}>{aiAnalysis.operational.cargoNotes}</Text>
+                        </View>
+                      )}
+                      {aiAnalysis.operational.routeNotes && (
+                        <View style={styles.noteBox}>
+                          <Text style={styles.noteTitle}>📍 Ghi chú tuyến đường:</Text>
+                          <Text style={styles.noteText}>{aiAnalysis.operational.routeNotes}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {/* Recommended Actions */}
+                {aiAnalysis.recommendedActions && aiAnalysis.recommendedActions.length > 0 && (
+                  <View style={styles.aiSection}>
+                    <View style={styles.aiSectionHeader}>
+                      <Ionicons name="checkmark-circle" size={20} color="#F59E0B" />
+                      <Text style={styles.aiSectionTitle}>Khuyến nghị hành động</Text>
+                    </View>
+                    <View style={styles.aiSectionBody}>
+                      {aiAnalysis.recommendedActions.map((action: string, idx: number) => (
+                        <View key={idx} style={styles.actionItem}>
+                          <Text style={styles.actionBullet}>•</Text>
+                          <Text style={styles.actionText}>{action}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Risk Warning */}
+                {aiAnalysis.riskWarning && (
+                  <View style={styles.riskWarningBox}>
+                    <Ionicons name="warning" size={20} color="#DC2626" />
+                    <Text style={styles.riskWarningText}>{aiAnalysis.riskWarning}</Text>
+                  </View>
+                )}
+
+              </ScrollView>
+            )}
+
+            <View style={styles.aiModalFooter}>
+              <TouchableOpacity style={styles.btnPrimary} onPress={() => setShowAIModal(false)}>
+                <Text style={styles.btnPrimaryText}>Đóng</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
 
@@ -525,6 +934,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   backBtn: { padding: 8, marginRight: 8 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  aiBtn: { padding: 8, marginRight: 8, backgroundColor: '#F5F3FF', borderRadius: 8 },
   pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1 },
   pillText: { fontSize: 11, fontWeight: '700' },
 
@@ -578,6 +988,26 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   infoLabel: { fontSize: 14, color: '#6B7280' },
   infoValue: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  
+  // Driver Work Session Styles
+  sessionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  sessionTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
+  availabilityGrid: { flexDirection: 'row', alignItems: 'stretch', gap: 12 },
+  availabilityItem: { flex: 1, alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB' },
+  availabilityLabel: { fontSize: 12, color: '#6B7280', marginBottom: 8, textAlign: 'center' },
+  availabilityValue: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 4 },
+  availabilitySubtext: { fontSize: 11, color: '#9CA3AF', fontWeight: '600' },
+  availabilityDivider: { width: 1, backgroundColor: '#E5E7EB' },
+  warningBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, padding: 10, backgroundColor: '#FEF2F2', borderRadius: 8, borderWidth: 1, borderColor: '#FEE2E2' },
+  warningBannerText: { flex: 1, fontSize: 13, color: '#991B1B', fontWeight: '600' },
+  successBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, padding: 10, backgroundColor: '#ECFDF5', borderRadius: 8, borderWidth: 1, borderColor: '#D1FAE5' },
+  successBannerText: { flex: 1, fontSize: 13, color: '#065F46', fontWeight: '600' },
+  suitabilitySuccess: { gap: 8 },
+  suitabilityError: { gap: 8 },
+  suitabilityRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  suitabilityLabel: { fontSize: 14, color: '#6B7280', flex: 1 },
+  suitabilityValue: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  errorReason: { fontSize: 14, color: '#DC2626', fontWeight: '600', marginBottom: 8, padding: 10, backgroundColor: '#FEF2F2', borderRadius: 8, borderWidth: 1, borderColor: '#FEE2E2' },
 
   // Modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
@@ -585,9 +1015,25 @@ const styles = StyleSheet.create({
   locationModalCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 20, maxHeight: '90%' },
   confirmModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
   confirmModalCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
+  depositModalCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 24, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, maxWidth: 400, width: '100%', alignSelf: 'center' },
+  depositModalHeader: { alignItems: 'center', marginBottom: 20 },
+  depositModalTitle: { fontSize: 20, fontWeight: '800', color: '#111827', marginTop: 12, textAlign: 'center' },
+  depositInfoBox: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+  depositInfoTitle: { fontSize: 14, fontWeight: '700', color: '#6B7280', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+  depositInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  depositInfoLabel: { fontSize: 14, color: '#6B7280' },
+  depositInfoValue: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  dividerThin: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 12 },
+  depositAmountLabel: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  depositAmountValue: { fontSize: 18, fontWeight: '800', color: '#F59E0B' },
+  depositWarningBox: { flexDirection: 'row', backgroundColor: '#FEF2F2', padding: 12, borderRadius: 10, gap: 10, alignItems: 'flex-start', marginBottom: 20, borderWidth: 1, borderColor: '#FEE2E2' },
+  depositWarningText: { flex: 1, fontSize: 13, color: '#991B1B', lineHeight: 20 },
   customLocSummary: { backgroundColor: '#F0F9FF', padding: 12, borderRadius: 8, marginVertical: 12, borderLeftWidth: 3, borderLeftColor: '#3B82F6' },
   customLocTitle: { fontSize: 13, fontWeight: '700', color: '#1E40AF', marginBottom: 6 },
   customLocText: { fontSize: 12, color: '#1E3A8A', marginTop: 2 },
+  defaultLocSummary: { backgroundColor: '#F9FAFB', padding: 12, borderRadius: 8, marginVertical: 12, borderLeftWidth: 3, borderLeftColor: '#6B7280' },
+  defaultLocTitle: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 },
+  defaultLocText: { fontSize: 12, color: '#4B5563', marginTop: 2 },
   locationModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   warningBox: { flexDirection: 'row', backgroundColor: '#FFFBEB', padding: 12, borderRadius: 8, gap: 8, marginBottom: 16, borderWidth: 1, borderColor: '#FEF3C7' },
   warningText: { flex: 1, fontSize: 12, color: '#92400E', lineHeight: 18 },
@@ -610,7 +1056,58 @@ const styles = StyleSheet.create({
   toastSuccess: { backgroundColor: '#059669' },
   toastError: { backgroundColor: '#DC2626' },
   toastText: { color: '#FFF', fontWeight: '600' },
-  errorText: { color: '#DC2626' }
+  errorText: { color: '#DC2626' },
+  
+  // AI Modal
+  aiModalCard: { backgroundColor: '#FFF', borderRadius: 20, maxHeight: '90%', maxWidth: 500, width: '100%', alignSelf: 'center', overflow: 'hidden' },
+  aiModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  aiModalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  aiModalTitle: { fontSize: 20, fontWeight: '800', color: '#111827' },
+  aiModalContent: { padding: 20 },
+  aiModalFooter: { padding: 16, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  
+  // Verdict
+  verdictBadge: { padding: 16, borderRadius: 12, marginBottom: 16, alignItems: 'center', gap: 8 },
+  verdictGood: { backgroundColor: '#D1FAE5', borderWidth: 2, borderColor: '#059669' },
+  verdictWarning: { backgroundColor: '#FEF3C7', borderWidth: 2, borderColor: '#F59E0B' },
+  verdictText: { fontSize: 18, fontWeight: '800', color: '#111827' },
+  scoreText: { fontSize: 16, fontWeight: '700', color: '#059669' },
+  
+  // Summary
+  summaryBox: { backgroundColor: '#F0F9FF', padding: 14, borderRadius: 10, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: '#3B82F6' },
+  summaryText: { fontSize: 14, color: '#1E3A8A', lineHeight: 20, fontWeight: '500' },
+  
+  // AI Sections
+  aiSection: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+  aiSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  aiSectionTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  aiSectionBody: { gap: 10 },
+  aiRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  aiLabel: { fontSize: 13, color: '#6B7280', flex: 1 },
+  aiValue: { fontSize: 13, fontWeight: '600', color: '#111827', flex: 1, textAlign: 'right' },
+  detailsText: { fontSize: 13, color: '#4B5563', marginTop: 8, fontStyle: 'italic', lineHeight: 18 },
+  
+  // Score Bar
+  scoreBar: { marginTop: 8 },
+  scoreBarLabel: { fontSize: 12, color: '#6B7280', marginBottom: 4 },
+  scoreBarBg: { height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden' },
+  scoreBarFill: { height: '100%', backgroundColor: '#059669', borderRadius: 4 },
+  
+  // Operational Items
+  opItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  opText: { fontSize: 13, color: '#374151', flex: 1 },
+  noteBox: { backgroundColor: '#FFFBEB', padding: 10, borderRadius: 8, marginTop: 8, borderWidth: 1, borderColor: '#FEF3C7' },
+  noteTitle: { fontSize: 12, fontWeight: '700', color: '#92400E', marginBottom: 4 },
+  noteText: { fontSize: 13, color: '#78350F', lineHeight: 18 },
+  
+  // Actions
+  actionItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  actionBullet: { fontSize: 16, color: '#F59E0B', fontWeight: '700' },
+  actionText: { fontSize: 13, color: '#374151', flex: 1, lineHeight: 18 },
+  
+  // Risk Warning
+  riskWarningBox: { flexDirection: 'row', backgroundColor: '#FEF2F2', padding: 12, borderRadius: 10, gap: 10, alignItems: 'flex-start', borderWidth: 1, borderColor: '#FEE2E2' },
+  riskWarningText: { flex: 1, fontSize: 13, color: '#991B1B', lineHeight: 18, fontWeight: '600' }
 })
 
 export default DriverPostTripDetailScreen

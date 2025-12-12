@@ -106,12 +106,23 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
   };
 
   const handleEditItem = (item: Item) => {
+    // Chỉ cho phép sửa khi status là PENDING
+    if (item.status !== ItemStatus.PENDING) {
+      showToast("Chỉ có thể sửa sản phẩm ở trạng thái Chờ xử lý", "error");
+      return;
+    }
     setSelectedItem(item);
     setItemModalOpen(true);
   };
 
   const handleDeleteItem = (itemId: string) => {
     console.log("🗑️ handleDeleteItem called with id:", itemId);
+    // Tìm item để kiểm tra status
+    const item = items.find((i) => i.id === itemId);
+    if (item && item.status !== ItemStatus.PENDING) {
+      showToast("Chỉ có thể xóa sản phẩm ở trạng thái Chờ xử lý", "error");
+      return;
+    }
     setDeleteItemId(itemId);
     setDeleteModalOpen(true);
   };

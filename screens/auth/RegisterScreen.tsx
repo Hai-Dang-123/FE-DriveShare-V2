@@ -139,15 +139,32 @@ const RegisterScreen: React.FC = () => {
             if (v !== undefined && v !== null) form.append(k, v)
           })
           
-          const uri = avatar.uri; const fileName = avatar.fileName || 'avatar.jpg'; const fileType = avatar.type || 'image/jpeg'
+          const uri = avatar.uri;
+          const fileName = avatar.fileName || 'avatar.jpg';
+          const fileType = avatar.type || 'image/jpeg';
           
-           if (Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('http')) {
+          // Cross-platform image upload handling
+          if (Platform.OS === 'web') {
+            // Web: Convert URI to File object
+            try {
+              const response = await fetch(uri);
+              const blob = await response.blob();
+              const file = new File([blob], fileName, { type: fileType });
+              form.append('AvatarFile', file);
+            } catch (error) {
+              console.error('Error converting image to File:', error);
+              // Fallback: try to append URI directly
               // @ts-ignore
-              form.append('AvatarFile', { uri: `file://${uri}`, name: fileName, type: fileType });
-           } else {
-              // @ts-ignore
-              form.append('AvatarFile', { uri: uri, name: fileName, type: fileType });
-           }
+              form.append('AvatarFile', { uri, name: fileName, type: fileType });
+            }
+          } else {
+            // Mobile: Use URI with proper file:// prefix
+            const mobileUri = Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('http')
+              ? `file://${uri}`
+              : uri;
+            // @ts-ignore
+            form.append('AvatarFile', { uri: mobileUri, name: fileName, type: fileType });
+          }
 
           if (role === Role.DRIVER) return await authService.registerDriver(form)
           if (role === Role.OWNER) return await authService.registerOwner(form)
@@ -359,24 +376,26 @@ const RegisterScreen: React.FC = () => {
                     </View>
 
                     {/* Terms Checkbox */}
-                    <TouchableOpacity 
-                        style={styles.termsContainer} 
-                        onPress={() => setAgreed(!agreed)}
-                        activeOpacity={0.8}
-                    >
-                        <View style={[styles.checkbox, agreed && styles.checkboxActive]}>
-                            {agreed && <Feather name="check" size={14} color="#FFF" />}
-                        </View>
-                        <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap' }}>
+                    <View style={styles.termsContainer}>
+                        <TouchableOpacity 
+                            style={styles.checkbox}
+                            onPress={() => setAgreed(!agreed)}
+                            activeOpacity={0.8}
+                        >
+                            <View style={[styles.checkboxBox, agreed && styles.checkboxActive]}>
+                                {agreed && <Feather name="check" size={14} color="#FFF" />}
+                            </View>
+                        </TouchableOpacity>
+                        <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
                             <Text style={styles.termsText}>Đồng ý với </Text>
-                            <TouchableOpacity onPress={(e) => {
-                                e.stopPropagation();
-                                setShowTermsModal(true);
-                            }}>
-                                <Text style={styles.linkText}>Điều khoản & Chính sách</Text>
-                            </TouchableOpacity>
+                            <Text 
+                                style={styles.linkText}
+                                onPress={() => setShowTermsModal(true)}
+                            >
+                                Điều khoản & Chính sách
+                            </Text>
                         </View>
-                    </TouchableOpacity>
+                    </View>
 
                     {/* Submit Button Gradient */}
                     <TouchableOpacity 
@@ -564,6 +583,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   checkbox: {
+    marginRight: 10,
+  },
+  checkboxBox: {
     width: 20,
     height: 20,
     borderRadius: 6,
@@ -571,7 +593,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderColor,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
     backgroundColor: COLORS.inputBg,
   },
   checkboxActive: {

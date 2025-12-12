@@ -45,6 +45,21 @@ const tripSurchargeService = {
       throw e.response?.data || e;
     }
   },
+
+  /**
+   * Owner creates surcharge (requires authentication)
+   * POST api/TripSurcharge/create
+   */
+  async createByOwner(dto: TripSurchargeCreateDTO) {
+    try {
+      console.log("📤 Owner creating surcharge:", dto);
+      const res = await api.post('api/TripSurcharge/create', dto);
+      return res.data;
+    } catch (e: any) {
+      console.error("createByOwner failed", e);
+      throw e.response?.data || e;
+    }
+  },
 };
 
 export default tripSurchargeService;

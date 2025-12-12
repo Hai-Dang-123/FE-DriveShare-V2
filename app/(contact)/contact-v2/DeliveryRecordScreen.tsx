@@ -9,6 +9,7 @@ import tripService from '@/services/tripService'
 import tripDeliveryIssueService, { DeliveryIssueType } from '@/services/tripDeliveryIssueService'
 import tripSurchargeService, { SurchargeType } from '@/services/tripSurchargeService'
 import IssueImagePicker from '@/components/shared/IssueImagePicker'
+import { DeliveryRecordDocument } from '@/components/documents/DeliveryRecordDocument'
 
 // Định dạng tiền tệ/số
 const formatNumber = (num: number) => num?.toLocaleString('vi-VN') || '0'
@@ -63,13 +64,20 @@ const DeliveryRecordScreen = () => {
   const [showIssueReportModal, setShowIssueReportModal] = useState(false)
   const [issueType, setIssueType] = useState<DeliveryIssueType>(DeliveryIssueType.DAMAGED)
   const [issueDescription, setIssueDescription] = useState('')
-  const [issueImages, setIssueImages] = useState<string[]>([])
+  const [issueImages, setIssueImages] = useState<(string | File)[]>([])
   const [submittingIssue, setSubmittingIssue] = useState(false)
   
   // Compensation/Surcharge State
   const [requestCompensation, setRequestCompensation] = useState(false)
   const [compensationAmount, setCompensationAmount] = useState('')
   const [compensationDescription, setCompensationDescription] = useState('')
+  
+  // Computed formatted display value
+  const displayCompensationAmount = useMemo(() => {
+    if (!compensationAmount) return ''
+    const num = parseFloat(compensationAmount)
+    return isNaN(num) ? '' : formatNumber(num)
+  }, [compensationAmount])
 
   // --- Effects ---
   useEffect(() => {
@@ -372,247 +380,8 @@ const DeliveryRecordScreen = () => {
           </View>
         )}
 
-        {/* --- GIẤY A4 (DOCUMENT VIEW) --- */}
-        <View style={styles.paper}>
-          
-          {/* 1. Document Header */}
-          <View style={styles.docHeader}>
-            <View style={styles.docHeaderLeft}>
-              <Text style={styles.companyName}>CÔNG TY CỔ PHẦN{"\n"}DRIVESHARE LOGISTICS</Text>
-              <Text style={styles.docRefNo}>Số: {record.tripDetail?.tripCode}</Text>
-            </View>
-            <View style={styles.docHeaderRight}>
-              <Text style={styles.govText}>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</Text>
-              <Text style={styles.govMotto}>Độc lập - Tự do - Hạnh phúc</Text>
-              <View style={styles.docLine} />
-            </View>
-          </View>
-
-          <View style={styles.docTitleWrap}>
-            <Text style={styles.docMainTitle}>{record.deliveryRecordTemplate?.templateName || 'BIÊN BẢN GIAO NHẬN'}</Text>
-            <Text style={styles.docDate}>Ngày tạo: {new Date(record.createAt).toLocaleString('vi-VN')}</Text>
-          </View>
-
-          {/* 2. Thông tin các bên */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderBox}>
-              <Text style={styles.sectionTitle}>I. THÔNG TIN CÁC BÊN</Text>
-            </View>
-            <View style={styles.partiesContainer}>
-              {/* Bên Giao */}
-              <View style={styles.partyBox}>
-                <Text style={styles.partyLabel}>BÊN GIAO (Tài xế):</Text>
-                <Text style={styles.partyName}>{record.driverPrimary?.fullName}</Text>
-                <Text style={styles.partyInfo}>SĐT: {record.driverPrimary?.phoneNumber}</Text>
-              </View>
-              {/* Đường kẻ dọc */}
-              <View style={styles.verticalDivider} />
-              {/* Bên Nhận */}
-              <View style={styles.partyBox}>
-                <Text style={styles.partyLabel}>BÊN NHẬN (Khách hàng):</Text>
-                <Text style={styles.partyName}>{record.tripContact?.fullName}</Text>
-                <Text style={styles.partyInfo}>SĐT: {record.tripContact?.phoneNumber}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* 3. Chi tiết hàng hóa */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderBox}>
-              <Text style={styles.sectionTitle}>II. CHI TIẾT HÀNG HÓA</Text>
-            </View>
-            
-            {packages.map((pkg: any, index: number) => (
-              <View key={index} style={styles.packageRow}>
-                {/* Ảnh hàng hóa */}
-                <View style={styles.packageImageContainer}>
-                  {pkg.imageUrls?.[0] || pkg.item?.imageUrls?.[0] ? (
-                    <Image 
-                      source={{ uri: pkg.imageUrls?.[0] || pkg.item?.imageUrls?.[0] }} 
-                      style={styles.packageImage} 
-                    />
-                  ) : (
-                    <View style={[styles.packageImage, styles.imagePlaceholder]}>
-                      <MaterialCommunityIcons name="package-variant" size={24} color="#9CA3AF" />
-                    </View>
-                  )}
-                </View>
-
-                {/* Thông tin hàng */}
-                <View style={styles.packageInfo}>
-                  <Text style={styles.pkgTitle}>{pkg.title || pkg.item?.name || pkg.packageCode}</Text>
-                  <Text style={styles.pkgDesc}>{pkg.description || pkg.item?.description || 'Không có mô tả'}</Text>
-                  <View style={styles.pkgMeta}>
-                    <Text style={styles.pkgBadge}>{formatNumber(pkg.weightKg)} kg</Text>
-                    <Text style={styles.pkgBadge}>{formatNumber(pkg.volumeM3)} m³</Text>
-                  </View>
-                </View>
-
-                {/* Số lượng */}
-                <View style={styles.packageQty}>
-                  <Text style={styles.qtyNumber}>x{pkg.quantity}</Text>
-                  <Text style={styles.qtyUnit}>{pkg.unit}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-
-          {/* 4. Điều khoản */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderBox}>
-              <Text style={styles.sectionTitle}>III. CAM KẾT & XÁC NHẬN</Text>
-            </View>
-            <View style={styles.termsList}>
-              {terms.map((term: any) => (
-                <View key={term.deliveryRecordTermId} style={styles.termRow}>
-                  <Text style={styles.termBullet}>•</Text>
-                  <Text style={styles.termText}>{term.content}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* 5. Sự cố đã báo cáo */}
-          {record.issues && record.issues.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.issuesHeaderBox}>
-                <Text style={styles.issuesSectionTitle}>⚠️ SỰ CỐ ĐÃ BÁO CÁO</Text>
-              </View>
-              {record.issues.map((issue: any, index: number) => {
-                const typeLabels: Record<string, string> = {
-                  DAMAGED: 'Hàng hư hỏng',
-                  LOST: 'Mất hàng',
-                  LATE: 'Giao muộn',
-                  WRONG_ITEM: 'Nhầm hàng',
-                };
-                const statusLabels: Record<string, string> = {
-                  REPORTED: 'Đã báo cáo',
-                  RESOLVED: 'Đã giải quyết',
-                  REJECTED: 'Từ chối',
-                };
-                const typeColors: Record<string, string> = {
-                  DAMAGED: '#DC2626',
-                  LOST: '#9333EA',
-                  LATE: '#F59E0B',
-                  WRONG_ITEM: '#EF4444',
-                };
-                const statusColors: Record<string, string> = {
-                  REPORTED: '#F59E0B',
-                  RESOLVED: '#10B981',
-                  REJECTED: '#6B7280',
-                };
-
-                return (
-                  <View key={issue.tripDeliveryIssueId} style={styles.issueItem}>
-                    <View style={styles.issueHeader}>
-                      <Text style={styles.issueNumber}>#{index + 1}</Text>
-                      <View style={[styles.issueTypeBadge, { backgroundColor: typeColors[issue.issueType] + '20', borderColor: typeColors[issue.issueType] }]}>
-                        <Text style={[styles.issueTypeText, { color: typeColors[issue.issueType] }]}>
-                          {typeLabels[issue.issueType] || issue.issueType}
-                        </Text>
-                      </View>
-                      <View style={[styles.issueStatusBadge, { backgroundColor: statusColors[issue.status] + '20', borderColor: statusColors[issue.status] }]}>
-                        <Text style={[styles.issueStatusText, { color: statusColors[issue.status] }]}>
-                          {statusLabels[issue.status] || issue.status}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={styles.issueDescription}>{issue.description}</Text>
-                    <Text style={styles.issueTime}>
-                      📅 {new Date(issue.createdAt).toLocaleString('vi-VN')}
-                    </Text>
-                    {issue.imageUrls && issue.imageUrls.length > 0 && (
-                      <View style={styles.issueImagesContainer}>
-                        {issue.imageUrls.map((url: string, imgIndex: number) => (
-                          <Image key={imgIndex} source={{ uri: url }} style={styles.issueImage} />
-                        ))}
-                      </View>
-                    )}
-                    
-                    {/* Display Surcharges/Compensation */}
-                    {issue.surcharges && issue.surcharges.length > 0 && (
-                      <View style={styles.surchargesContainer}>
-                        <View style={styles.surchargesHeader}>
-                          <MaterialIcons name="attach-money" size={16} color="#DC2626" />
-                          <Text style={styles.surchargesTitle}>Yêu cầu bồi thường:</Text>
-                        </View>
-                        {issue.surcharges.map((surcharge: any) => {
-                          const surchargeStatusLabels: Record<string, string> = {
-                            PENDING: 'Chờ duyệt',
-                            APPROVED: 'Đã duyệt',
-                            REJECTED: 'Từ chối',
-                          };
-                          const surchargeStatusColors: Record<string, string> = {
-                            PENDING: '#F59E0B',
-                            APPROVED: '#10B981',
-                            REJECTED: '#EF4444',
-                          };
-                          
-                          return (
-                            <View key={surcharge.tripSurchargeId} style={styles.surchargeItem}>
-                              <View style={styles.surchargeRow}>
-                                <Text style={styles.surchargeAmount}>
-                                  {formatNumber(surcharge.amount)} VNĐ
-                                </Text>
-                                <View style={[
-                                  styles.surchargeStatusBadge,
-                                  { backgroundColor: surchargeStatusColors[surcharge.status] + '20', borderColor: surchargeStatusColors[surcharge.status] }
-                                ]}>
-                                  <Text style={[styles.surchargeStatusText, { color: surchargeStatusColors[surcharge.status] }]}>
-                                    {surchargeStatusLabels[surcharge.status] || surcharge.status}
-                                  </Text>
-                                </View>
-                              </View>
-                              <Text style={styles.surchargeDescription}>{surcharge.description}</Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {/* 6. Chữ ký */}
-          <View style={styles.signatureSection}>
-            <View style={styles.signBox}>
-              <Text style={styles.signTitle}>ĐẠI DIỆN BÊN GIAO</Text>
-              <View style={styles.signArea}>
-                {record.driverSigned ? (
-                  <View style={[styles.stamp, { borderColor: '#2563EB' }]}>
-                    <Text style={[styles.stampText, { color: '#2563EB' }]}>ĐÃ KÝ</Text>
-                    <Text style={[styles.stampDate, { color: '#2563EB' }]}>
-                      {new Date(record.driverSignedAt).toLocaleDateString('vi-VN')}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={styles.pendingSign}>Chưa ký</Text>
-                )}
-              </View>
-              <Text style={styles.signerName}>{record.driverPrimary?.fullName}</Text>
-            </View>
-
-            <View style={styles.signBox}>
-              <Text style={styles.signTitle}>ĐẠI DIỆN BÊN NHẬN</Text>
-              <View style={styles.signArea}>
-                {isSigned ? (
-                  <View style={[styles.stamp, { borderColor: '#059669' }]}>
-                    <Text style={[styles.stampText, { color: '#059669' }]}>ĐÃ KÝ</Text>
-                    <Text style={[styles.stampDate, { color: '#059669' }]}>
-                      {record.contactSignedAt ? new Date(record.contactSignedAt).toLocaleDateString('vi-VN') : 'Hom nay'}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text style={styles.pendingSign}>Chờ ký...</Text>
-                )}
-              </View>
-              <Text style={styles.signerName}>{record.tripContact?.fullName}</Text>
-            </View>
-          </View>
-
-        </View>
+        {/* --- DELIVERY RECORD DOCUMENT --- */}
+        <DeliveryRecordDocument data={record} />
         
         {/* Spacer for footer */}
         <View style={{ height: 100 }} />
@@ -820,8 +589,12 @@ const DeliveryRecordScreen = () => {
                     <TextInput
                       style={styles.compensationInput}
                       placeholder="Nhập số tiền bồi thường"
-                      value={compensationAmount}
-                      onChangeText={setCompensationAmount}
+                      value={displayCompensationAmount}
+                      onChangeText={(text) => {
+                        // Remove all non-numeric characters
+                        const numericValue = text.replace(/[^0-9]/g, '')
+                        setCompensationAmount(numericValue)
+                      }}
                       keyboardType="numeric"
                     />
 
@@ -909,98 +682,6 @@ const styles = StyleSheet.create({
   waitingTitle: { fontSize: 14, fontWeight: '800', color: '#92400E', marginBottom: 4 },
   waitingText: { fontSize: 12, color: '#78350F', lineHeight: 18 },
   
-  // States
-  loadingText: { marginTop: 12, color: '#6B7280' },
-  errorText: { marginTop: 12, color: '#EF4444', textAlign: 'center', fontSize: 16 },
-  retryBtn: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#2563EB', borderRadius: 8 },
-  retryText: { color: '#FFF', fontWeight: '600' },
-
-  // A4 PAPER STYLES
-  paper: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 2, // Góc nhọn giống giấy
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    minHeight: 600,
-  },
-  
-  // Doc Header
-  docHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24 },
-  docHeaderLeft: { width: '45%' },
-  companyName: { fontSize: 10, fontWeight: '800', color: '#111827', marginBottom: 4, textTransform: 'uppercase' },
-  docRefNo: { fontSize: 11, color: '#6B7280' },
-  docHeaderRight: { width: '55%', alignItems: 'center' },
-  govText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' },
-  govMotto: { fontSize: 10, fontStyle: 'italic', fontWeight: '600', textAlign: 'center', marginTop: 2 },
-  docLine: { width: 60, height: 1, backgroundColor: '#000', marginTop: 4 },
-
-  docTitleWrap: { alignItems: 'center', marginBottom: 24 },
-  docMainTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textTransform: 'uppercase', textAlign: 'center', marginBottom: 4 },
-  docDate: { fontSize: 12, fontStyle: 'italic', color: '#6B7280' },
-
-  // Section Styles
-  section: { marginBottom: 24 },
-  sectionHeaderBox: { backgroundColor: '#F3F4F6', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#6B7280' },
-  sectionTitle: { fontSize: 12, fontWeight: '800', color: '#374151', textTransform: 'uppercase' },
-
-  // Parties
-  partiesContainer: { flexDirection: 'row', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 4, padding: 12 },
-  partyBox: { flex: 1 },
-  verticalDivider: { width: 1, backgroundColor: '#E5E7EB', marginHorizontal: 12 },
-  partyLabel: { fontSize: 10, color: '#6B7280', marginBottom: 4, fontWeight: '600' },
-  partyName: { fontSize: 13, fontWeight: '800', color: '#111827', marginBottom: 2 },
-  partyInfo: { fontSize: 12, color: '#4B5563' },
-
-  // Package List
-  packageRow: { flexDirection: 'row', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  packageImageContainer: { marginRight: 12 },
-  packageImage: { width: 56, height: 56, borderRadius: 6, backgroundColor: '#F3F4F6' },
-  imagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  packageInfo: { flex: 1, justifyContent: 'center' },
-  pkgTitle: { fontSize: 14, fontWeight: '700', color: '#1F2937' },
-  pkgDesc: { fontSize: 12, color: '#6B7280', marginVertical: 2 },
-  pkgMeta: { flexDirection: 'row', gap: 6, marginTop: 4 },
-  pkgBadge: { fontSize: 10, backgroundColor: '#EFF6FF', color: '#2563EB', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, fontWeight: '600' },
-  packageQty: { alignItems: 'center', justifyContent: 'center', paddingLeft: 8 },
-  qtyNumber: { fontSize: 16, fontWeight: '800', color: '#111827' },
-  qtyUnit: { fontSize: 10, color: '#6B7280' },
-
-  // Terms
-  termsList: { paddingHorizontal: 4 },
-  termRow: { flexDirection: 'row', marginBottom: 6 },
-  termBullet: { width: 16, fontSize: 14, color: '#374151' },
-  termText: { flex: 1, fontSize: 12, color: '#374151', lineHeight: 18, textAlign: 'justify' },
-
-  // Issues Section
-  issuesHeaderBox: { backgroundColor: '#FEF2F2', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#DC2626' },
-  issuesSectionTitle: { fontSize: 12, fontWeight: '800', color: '#991B1B', textTransform: 'uppercase' },
-  issueItem: { backgroundColor: '#FFFBEB', borderLeftWidth: 3, borderLeftColor: '#F59E0B', padding: 12, marginBottom: 12, borderRadius: 6 },
-  issueHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 },
-  issueNumber: { fontSize: 12, fontWeight: '800', color: '#6B7280', marginRight: 4 },
-  issueTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, borderWidth: 1 },
-  issueTypeText: { fontSize: 11, fontWeight: '700' },
-  issueStatusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, borderWidth: 1 },
-  issueStatusText: { fontSize: 11, fontWeight: '700' },
-  issueDescription: { fontSize: 13, color: '#374151', lineHeight: 18, marginBottom: 6 },
-  issueTime: { fontSize: 11, color: '#6B7280', fontStyle: 'italic' },
-  issueImagesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  issueImage: { width: 80, height: 80, borderRadius: 6, backgroundColor: '#F3F4F6' },
-
-  // Signatures
-  signatureSection: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
-  signBox: { flex: 1, alignItems: 'center' },
-  signTitle: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginBottom: 12 },
-  signArea: { height: 80, width: '100%', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  stamp: { borderWidth: 2, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 4, alignItems: 'center', transform: [{ rotate: '-10deg' }], backgroundColor: 'rgba(255,255,255,0.9)' },
-  stampText: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase' },
-  stampDate: { fontSize: 9, marginTop: 2 },
-  pendingSign: { fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' },
-  signerName: { fontSize: 12, fontWeight: '700', color: '#111827', textTransform: 'uppercase' },
-
   // Footer
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', padding: 16, borderTopWidth: 1, borderColor: '#E5E7EB', elevation: 10 },
   btnSign: { flexDirection: 'row', backgroundColor: '#2563EB', padding: 14, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 8 },
@@ -1012,8 +693,8 @@ const styles = StyleSheet.create({
   btnTextDisabled: { color: '#9CA3AF', fontWeight: '700', fontSize: 16 },
 
   // Modal OTP
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: 350 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContainer: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, width: '100%', maxWidth: 400 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
   modalBody: { alignItems: 'center' },
@@ -1026,11 +707,11 @@ const styles = StyleSheet.create({
   btnResendText: { color: '#2563EB', fontWeight: '600' },
 
   // Issue Report Modal
-  issueModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  issueModalContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '90%' },
+  issueModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  issueModalContainer: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, width: '100%', maxWidth: 500, maxHeight: '90%' },
   issueModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   issueModalTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
-  issueModalBody: { maxHeight: 500 },
+  issueModalBody: { flex: 1 },
   issueLabel: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 8, marginTop: 12 },
   issueTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 8 },
   issueTypeCard: { width: '47%', padding: 16, borderRadius: 12, borderWidth: 2, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', alignItems: 'center' },
@@ -1055,17 +736,6 @@ const styles = StyleSheet.create({
   compensationInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, fontSize: 16, color: '#1F2937', backgroundColor: '#FFF', fontWeight: '700' },
   compensationNote: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEF3C7', padding: 10, borderRadius: 6, marginTop: 8 },
   compensationNoteText: { flex: 1, fontSize: 12, color: '#78350F', lineHeight: 16 },
-  
-  // Surcharges Display
-  surchargesContainer: { marginTop: 12, padding: 12, backgroundColor: '#FEF2F2', borderRadius: 8, borderWidth: 1, borderColor: '#FEE2E2' },
-  surchargesHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 4 },
-  surchargesTitle: { fontSize: 13, fontWeight: '800', color: '#991B1B' },
-  surchargeItem: { backgroundColor: '#FFF', padding: 10, borderRadius: 6, marginTop: 8, borderWidth: 1, borderColor: '#FEE2E2' },
-  surchargeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  surchargeAmount: { fontSize: 16, fontWeight: '900', color: '#DC2626' },
-  surchargeStatusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, borderWidth: 1 },
-  surchargeStatusText: { fontSize: 11, fontWeight: '700' },
-  surchargeDescription: { fontSize: 12, color: '#6B7280', lineHeight: 16, fontStyle: 'italic' },
 })
 
 export default DeliveryRecordScreen

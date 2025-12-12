@@ -257,7 +257,8 @@ interface DetailFormState {
   // Giữ lại field trong state để không lỗi logic, mặc định false
   mustPickAtGarage: boolean
   mustDropAtGarage: boolean
-    bonusAmount?: string
+  bonusAmount?: string
+  depositAmount?: string
 }
 
 const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onClose, tripId, onCreated, driverAnalysis }) => {
@@ -271,9 +272,10 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
     pricePerPerson: '0',
     pickupLocation: '',
     dropoffLocation: '',
-        mustPickAtGarage: false,
-        mustDropAtGarage: false,
-        bonusAmount: ''
+    mustPickAtGarage: false,
+    mustDropAtGarage: false,
+    bonusAmount: '',
+    depositAmount: ''
   }])
   
     const [submitting, setSubmitting] = useState(false)
@@ -306,6 +308,9 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
             const bonus = d.bonusAmount ? parseFloat(d.bonusAmount.replace(/,/g, '')) : undefined
             if (typeof bonus === 'number' && (isNaN(bonus) || bonus < 0)) return Alert.alert('Lỗi nhập liệu', `Dòng ${i + 1}: Phụ phí không hợp lệ.`)
             if (typeof bonus === 'number' && bonus > 1000000000) return Alert.alert('Lỗi nhập liệu', `Dòng ${i + 1}: Phụ phí quá lớn.`)
+            const deposit = d.depositAmount ? parseFloat(d.depositAmount.replace(/,/g, '')) : undefined
+            if (typeof deposit === 'number' && (isNaN(deposit) || deposit < 0)) return Alert.alert('Lỗi nhập liệu', `Dòng ${i + 1}: Tiền đặt cọc không hợp lệ.`)
+            if (typeof deposit === 'number' && deposit > 1000000000) return Alert.alert('Lỗi nhập liệu', `Dòng ${i + 1}: Tiền đặt cọc quá lớn.`)
 
             const detail: PostTripDetailCreateDTO = {
                 Type: d.detailType,
@@ -315,12 +320,16 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                 DropoffLocation: d.dropoffLocation.trim(),
                 MustPickAtGarage: false,
                 MustDropAtGarage: false,
-                BonusAmount: bonus
+                BonusAmount: bonus,
+                DepositAmount: deposit
             }
             builtDetails.push(detail)
         }
 
-        const payload = payloadKg ? parseFloat(payloadKg.replace(/,/g, '')) : undefined
+        const payloadValue = payloadKg ? parseFloat(payloadKg.replace(/,/g, '')) : null
+        if (payloadValue !== null && (isNaN(payloadValue) || payloadValue < 0)) {
+            return Alert.alert('Lỗi nhập liệu', 'Tải trọng không hợp lệ.')
+        }
 
         setLoading(true)
         try {
@@ -328,7 +337,7 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                 Title: title.trim(),
                 Description: description.trim(),
                 TripId: tripId,
-                RequiredPayloadInKg: payload,
+                RequiredPayloadInKg: payloadValue,
                 PostTripDetails: builtDetails
             }
 
@@ -388,10 +397,11 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                 setWallet(null)
             }
 
-            // compute simple total and set sufficiency flag
+            // compute simple total and set sufficiency flag (KHÔNG tính tiền đặt cọc - do tài xế trả)
             const total = details.reduce((sum, d) => {
                 const price = parseFloat((d.pricePerPerson || '0').toString().replace(/,/g, '')) || 0
                 const bonus = parseFloat((d.bonusAmount || '0').toString().replace(/,/g, '')) || 0
+                // deposit KHÔNG tính vào thanh toán owner
                 const count = parseInt(d.requiredCount || '0', 10) || 0
                 return sum + (price + bonus) * count
             }, 0)
@@ -410,9 +420,11 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
         if (!createdPostId) return Alert.alert('Lỗi', 'Không tìm thấy ID bài đăng để thanh toán.')
         setPaymentLoading(true)
         try {
+            // Owner chỉ trả lương + bonus, KHÔNG trả tiền cọc (do tài xế trả)
             const amount = details.reduce((sum, d) => {
                 const price = parseFloat((d.pricePerPerson || '0').toString().replace(/,/g, '')) || 0
                 const bonus = parseFloat((d.bonusAmount || '0').toString().replace(/,/g, '')) || 0
+                // deposit KHÔNG tính
                 const count = parseInt(d.requiredCount || '0', 10) || 0
                 return sum + (price + bonus) * count
             }, 0)
@@ -422,7 +434,7 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                 type: 'POST_TRIP_PAYMENT',
                 // send the created postTrip id in the PostId field so backend recognizes the post resource
                 postId: createdPostId,
-                tripId: null,
+                tripId: tripId, // gửi kèm tripId
                 description: `Thanh toán cho bài đăng tìm tài xế (${createdPostId})`
             }
 
@@ -477,9 +489,31 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                       <MaterialCommunityIcons name="robot-outline" size={18} color="#4F46E5" />
                       <Text style={styles.aiTitle}>Khuyến nghị từ hệ thống</Text>
                     </View>
+                    
+                    {/* Distance & Duration Info */}
+                    <View style={styles.tripInfoRow}>
+                      <View style={styles.tripInfoItem}>
+                        <MaterialCommunityIcons name="map-marker-distance" size={14} color="#0284C7" />
+                        <Text style={styles.tripInfoText}>{driverAnalysis.suggestion.distanceKm?.toFixed(1) || 0} km</Text>
+                      </View>
+                      <View style={styles.tripInfoItem}>
+                        <MaterialCommunityIcons name="clock-outline" size={14} color="#0284C7" />
+                        <Text style={styles.tripInfoText}>{driverAnalysis.suggestion.estimatedDurationHours?.toFixed(1) || 0}h</Text>
+                      </View>
+                      <View style={styles.tripInfoItem}>
+                        <MaterialCommunityIcons name="steering" size={14} color="#0284C7" />
+                        <Text style={styles.tripInfoText}>{driverAnalysis.suggestion.requiredHoursFromQuota?.toFixed(1) || 0}h lái</Text>
+                      </View>
+                    </View>
+
                     {driverAnalysis.suggestion.systemRecommendation && (
                       <View style={styles.aiRecommendation}>
-                        <Text style={styles.aiRecommendText}>{driverAnalysis.suggestion.systemRecommendation}</Text>
+                        <Text style={styles.aiRecommendLabel}>💡 Đề xuất: </Text>
+                        <Text style={styles.aiRecommendText}>
+                          {driverAnalysis.suggestion.systemRecommendation === 'SOLO' ? '1 Tài xế (Solo)' : 
+                           driverAnalysis.suggestion.systemRecommendation === 'TEAM' ? '2 Tài xế (Team)' : 
+                           '3 Tài xế (Express)'}
+                        </Text>
                       </View>
                     )}
                     <View style={styles.scenarioRow}>
@@ -487,21 +521,21 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                         <View style={styles.miniScenario}>
                           <Ionicons name="person" size={14} color="#059669" />
                           <Text style={styles.miniScenarioLabel}>1 Tài</Text>
-                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.soloScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.soloScenario.totalElapsedHours?.toFixed(0)}h</Text>
                         </View>
                       )}
                       {driverAnalysis.suggestion.teamScenario?.isPossible && (
                         <View style={styles.miniScenario}>
                           <Ionicons name="people" size={14} color="#2563EB" />
                           <Text style={styles.miniScenarioLabel}>2 Tài</Text>
-                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.teamScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.teamScenario.totalElapsedHours?.toFixed(0)}h</Text>
                         </View>
                       )}
                       {driverAnalysis.suggestion.expressScenario?.isPossible && (
                         <View style={styles.miniScenario}>
                           <Ionicons name="flash" size={14} color="#DC2626" />
                           <Text style={styles.miniScenarioLabel}>3 Tài</Text>
-                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.expressScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                          <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.expressScenario.totalElapsedHours?.toFixed(0)}h</Text>
                         </View>
                       )}
                     </View>
@@ -557,7 +591,7 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                 <View style={styles.section}>
                     <View style={styles.sectionHeaderRow}>
                         <Text style={styles.sectionTitle}>2. CHI TIẾT YÊU CẦU ({details.length})</Text>
-                        <TouchableOpacity style={styles.addBtn} onPress={() => setDetails(prev => [...prev, { detailType:'PRIMARY', requiredCount:'1', pricePerPerson:'0', pickupLocation:'', dropoffLocation:'', mustPickAtGarage:false, mustDropAtGarage:false }])}>
+                        <TouchableOpacity style={styles.addBtn} onPress={() => setDetails(prev => [...prev, { detailType:'PRIMARY', requiredCount:'1', pricePerPerson:'0', pickupLocation:'', dropoffLocation:'', mustPickAtGarage:false, mustDropAtGarage:false, bonusAmount:'', depositAmount:'' }])}>
                             <Ionicons name="add" size={16} color="#FFF" />
                             <Text style={styles.addBtnText}>Thêm dòng</Text>
                         </TouchableOpacity>
@@ -650,6 +684,24 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                                         )}
                                     </View>
 
+                                    {/* Tiền đặt cọc */}
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.label}>Tiền đặt cọc (VND)</Text>
+                                        <View style={styles.inputWrapper}>
+                                            <Text style={styles.currencySymbol}>₫</Text>
+                                            <TextInput
+                                                value={formatMoney(d.depositAmount || '')}
+                                                onChangeText={v => updateDetail(idx, 'depositAmount', sanitizeNumber(v))}
+                                                keyboardType="numeric"
+                                                style={styles.inputNoBorder}
+                                                placeholder="0"
+                                            />
+                                        </View>
+                                        {d.depositAmount && parseFloat(d.depositAmount.replace(/,/g, '')) > 1000000000 && (
+                                            <Text style={styles.errorText}>Tiền đặt cọc quá lớn (tối đa 1,000,000,000)</Text>
+                                        )}
+                                    </View>
+
                                     {/* Địa điểm (Timeline style) - [REMOVED CHECKBOXES] */}
                                     <View style={styles.timelineContainer}>
                                         <View style={styles.timelineDecor}>
@@ -737,17 +789,20 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                                 <Text style={styles.sectionTitle}>3. THANH TOÁN</Text>
                                 <View style={styles.card}>
                                     {(() => {
+                                        // Owner chỉ thanh toán: Lương + Bonus (KHÔNG bao gồm tiền cọc)
                                         const total = details.reduce((sum, d) => {
                                             const price = parseFloat((d.pricePerPerson || '0').toString().replace(/,/g, '')) || 0
                                             const bonus = parseFloat((d.bonusAmount || '0').toString().replace(/,/g, '')) || 0
+                                            // deposit KHÔNG tính - do tài xế trả
                                             const count = parseInt(d.requiredCount || '0', 10) || 0
                                             return sum + (price + bonus) * count
                                         }, 0)
                                         return (
                                             <>
-                                                <Text style={{ fontSize: 14, fontWeight: '700' }}>Tổng cần thanh toán</Text>
+                                                <Text style={{ fontSize: 14, fontWeight: '700' }}>Tổng cần thanh toán (Lương + Bonus)</Text>
                                                 <Text style={{ fontSize: 22, fontWeight: '800', marginTop: 8 }}>₫ {formatMoney(String(total))}</Text>
-                                                <Text style={{ color: '#6B7280', marginTop: 8 }}>Phương thức: Ví nội bộ</Text>
+                                                <Text style={{ color: '#6B7280', marginTop: 8, fontSize: 12 }}>Phương thức: Ví nội bộ</Text>
+                                                <Text style={{ color: '#DC2626', marginTop: 4, fontSize: 11 }}>* Tiền cọc sẽ do tài xế thanh toán khi nhận việc</Text>
                                             </>
                                         )
                                     })()}
@@ -854,8 +909,15 @@ const styles = StyleSheet.create({
   aiSection: { margin: 16, marginBottom: 8, backgroundColor: '#EFF6FF', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#BFDBFE' },
   aiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 },
   aiTitle: { fontSize: 13, fontWeight: '700', color: '#1E40AF' },
-  aiRecommendation: { backgroundColor: '#FFF', borderRadius: 8, padding: 10, marginBottom: 10 },
-  aiRecommendText: { fontSize: 12, color: '#374151', lineHeight: 18 },
+  
+  // Trip Info Row
+  tripInfoRow: { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
+  tripInfoItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, gap: 4 },
+  tripInfoText: { fontSize: 11, color: '#0C4A6E', fontWeight: '700' },
+  
+  aiRecommendation: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderRadius: 8, padding: 8, marginBottom: 10 },
+  aiRecommendLabel: { fontSize: 12, color: '#92400E', fontWeight: '600' },
+  aiRecommendText: { fontSize: 12, color: '#B45309', fontWeight: '700' },
   scenarioRow: { flexDirection: 'row', gap: 8, justifyContent: 'flex-start' },
   miniScenario: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
   miniScenarioLabel: { fontSize: 11, color: '#6B7280', fontWeight: '600' },

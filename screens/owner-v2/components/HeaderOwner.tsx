@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { View, Text, Image, TouchableOpacity, StyleSheet, ImageBackground, Dimensions } from 'react-native'
 import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { ekycService } from '@/services/ekycService'
 
 interface HeaderProps {
   owner: any | null | undefined
@@ -12,26 +11,7 @@ const { width } = Dimensions.get('window')
 
 const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
   const router = useRouter()
-  const [isVerified, setIsVerified] = useState(false)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    checkVerifiedStatus()
-  }, [])
-
-  const checkVerifiedStatus = async () => {
-    try {
-      const response = await ekycService.checkVerifiedStatus()
-      // Backend returns: { result: boolean, message: string }
-      if (response.isSuccess) {
-        setIsVerified(response.result === true)
-      }
-    } catch (error) {
-      console.error('Failed to check verified status:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  
   const o = owner as any
   // support payload that may be wrapped in `result`, or attached as `profile`, or be the profile directly
   const profile = o?.profile ?? o?.result ?? o ?? {}
@@ -43,13 +23,16 @@ const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
   const phone = profile?.phoneNumber || 'Chưa có dữ liệu'
   const taxCode = profile?.taxCode || profile?.tax_number || null
   const status = (profile?.status || '').toString()
+  
+  // Get verification status from profile
+  const hasVerifiedCitizenId = profile?.hasVerifiedCitizenId ?? false
 
   // Logic lấy chữ cái đầu
   const initials = name
     ? name.split(' ').map((s: string) => s[0]).slice(0, 2).join('').toUpperCase()
     : 'CX'
 
-  const handleVerifyCCCD = () => {
+  const handleVerifyDocuments = () => {
     router.push('/owner/my-documents')
   }
 
@@ -111,19 +94,17 @@ const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
                 {taxCode ? <Text style={styles.profileCompany}>MST: {taxCode}</Text> : null}
                 <Text style={styles.profileContact}>{email} • {phone}</Text>
 
-                {/* Nút xác minh */}
-                {!loading && (
-                  isVerified ? (
-                    <TouchableOpacity style={styles.verifyBadge} onPress={handleVerifyCCCD}>
-                      <MaterialCommunityIcons name="shield-check" size={16} color="#047857" />
-                      <Text style={styles.verifyText}>Đã xác minh</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity style={styles.unverifiedBadge} onPress={handleVerifyCCCD}>
-                      <MaterialCommunityIcons name="shield-alert" size={16} color="#2563EB" />
-                      <Text style={styles.unverifiedText}>Xác minh tài khoản</Text>
-                    </TouchableOpacity>
-                  )
+                {/* Nút xác minh CCCD */}
+                {hasVerifiedCitizenId ? (
+                  <View style={styles.verifyBadge}>
+                    <MaterialCommunityIcons name="shield-check" size={16} color="#047857" />
+                    <Text style={styles.verifyText}>Đã xác minh CCCD</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.unverifiedBadge} onPress={handleVerifyDocuments}>
+                    <MaterialCommunityIcons name="shield-alert" size={16} color="#2563EB" />
+                    <Text style={styles.unverifiedText}>Xác minh CCCD</Text>
+                  </TouchableOpacity>
                 )}
             </View>
         </View>

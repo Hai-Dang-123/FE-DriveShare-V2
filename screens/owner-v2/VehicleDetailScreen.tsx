@@ -12,12 +12,15 @@ import {
   Alert,
   Modal,
   TextInput,
+  Dimensions,
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
-import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons'
+import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons'
 import { VehicleDetail, VehicleImageType, DocumentType, DocumentStatus } from '@/models/types'
 import vehicleService from '@/services/vehicleService'
 import ImageUploader from '@/screens/provider-v2/components/ImageUploader'
+
+const { width } = Dimensions.get('window')
 
 interface Props {
   onBack?: () => void
@@ -28,7 +31,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
   const { id } = useLocalSearchParams()
   const [vehicle, setVehicle] = useState<VehicleDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  
+
   // Upload modal states
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadDocType, setUploadDocType] = useState<DocumentType | null>(null)
@@ -46,7 +49,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
       setLoading(true)
       const res: any = await vehicleService.getVehicleById(String(id))
       const data = res?.result ?? res
-      
+
       // Map backend DTO to VehicleDetail
       const mapped: VehicleDetail = {
         vehicleId: data.vehicleId,
@@ -64,7 +67,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
         imageUrls: data.imageUrls || [],
         documents: data.documents || [],
       }
-      
+
       setVehicle(mapped)
     } catch (e: any) {
       console.error('fetchVehicleDetail error:', e)
@@ -74,41 +77,23 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
     }
   }
 
-  const getStatusColor = (status: string) => {
+  // --- Helper Functions for UI Colors ---
+  const getStatusStyle = (status: string) => {
     switch (status) {
-      case 'ACTIVE': return '#10B981'
-      case 'IN_USE': return '#F59E0B'
-      case 'INACTIVE': return '#6B7280'
-      case 'DELETED': return '#EF4444'
-      default: return '#6B7280'
+      case 'ACTIVE': return { bg: '#ECFDF5', text: '#059669', label: 'Hoạt động' }
+      case 'IN_USE': return { bg: '#FFFBEB', text: '#D97706', label: 'Đang sử dụng' }
+      case 'INACTIVE': return { bg: '#F3F4F6', text: '#4B5563', label: 'Không hoạt động' }
+      case 'DELETED': return { bg: '#FEF2F2', text: '#DC2626', label: 'Đã xóa' }
+      default: return { bg: '#F3F4F6', text: '#4B5563', label: status }
     }
   }
 
-  const getStatusLabel = (status: string) => {
+  const getDocStatusStyle = (status: DocumentStatus) => {
     switch (status) {
-      case 'ACTIVE': return 'Hoạt động'
-      case 'IN_USE': return 'Đang sử dụng'
-      case 'INACTIVE': return 'Không hoạt động'
-      case 'DELETED': return 'Đã xóa'
-      default: return status
-    }
-  }
-
-  const getDocStatusColor = (status: DocumentStatus) => {
-    switch (status) {
-      case DocumentStatus.APPROVED: return '#10B981'
-      case DocumentStatus.PENDING: return '#F59E0B'
-      case DocumentStatus.REJECTED: return '#EF4444'
-      default: return '#6B7280'
-    }
-  }
-
-  const getDocStatusLabel = (status: DocumentStatus) => {
-    switch (status) {
-      case DocumentStatus.APPROVED: return 'Đã duyệt'
-      case DocumentStatus.PENDING: return 'Chờ duyệt'
-      case DocumentStatus.REJECTED: return 'Từ chối'
-      default: return status
+      case DocumentStatus.APPROVED: return { color: '#059669', label: 'Đã duyệt', bg: '#D1FAE5', border: '#10B981' }
+      case DocumentStatus.PENDING: return { color: '#D97706', label: 'Chờ duyệt', bg: '#FEF3C7', border: '#F59E0B' }
+      case DocumentStatus.REJECTED: return { color: '#DC2626', label: 'Từ chối', bg: '#FEE2E2', border: '#EF4444' }
+      default: return { color: '#6B7280', label: status, bg: '#F3F4F6', border: '#9CA3AF' }
     }
   }
 
@@ -123,6 +108,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
     }
   }
 
+  // --- Handlers ---
   const handleUploadDocument = (docType: DocumentType) => {
     setUploadDocType(docType)
     setFrontImage(null)
@@ -139,22 +125,11 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
 
     setUploading(true)
     try {
-      // Map frontend enum to backend enum (backend has typo: VEHICLE_LINCENSE)
       let backendDocType: string = uploadDocType
-      
-      // Check if it's VEHICLE_LICENSE (need to convert to backend's typo VEHICLE_LINCENSE)
       const docTypeStr = String(uploadDocType)
       if (docTypeStr === 'VEHICLE_LICENSE' || docTypeStr.includes('VEHICLE_LICENSE')) {
-        backendDocType = 'VEHICLE_LINCENSE' // Backend typo
+        backendDocType = 'VEHICLE_LINCENSE' // Backend typo fix
       }
-
-      console.log('Uploading document:', {
-        originalType: uploadDocType,
-        backendType: backendDocType,
-        hasFront: !!frontImage,
-        hasBack: !!backImage,
-        expirationDate: expirationDate
-      })
 
       await vehicleService.addVehicleDocument(String(id), {
         documentType: backendDocType,
@@ -163,22 +138,38 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
         backFile: backImage || undefined,
       })
 
+      setShowUploadModal(false)
       Alert.alert('Thành công', 'Upload giấy tờ thành công!', [
         {
           text: 'OK',
           onPress: () => {
-            setShowUploadModal(false)
-            fetchVehicleDetail() // Refresh data
+            fetchVehicleDetail()
           }
         }
       ])
+      // Load lại ngay lập tức
+      fetchVehicleDetail()
     } catch (e: any) {
-      console.error('Upload error:', e)
       Alert.alert('Lỗi', e?.response?.data?.message || 'Không thể upload giấy tờ')
     } finally {
       setUploading(false)
     }
   }
+
+  // --- Render Components ---
+
+  // 1. Info Grid Item Component for cleaner code
+  const InfoItem = ({ icon, label, value, color = '#6B7280' }: any) => (
+    <View style={styles.infoGridItem}>
+      <View style={[styles.infoIconBox, { backgroundColor: `${color}15` }]}>
+        {icon}
+      </View>
+      <View>
+        <Text style={styles.infoGridLabel}>{label}</Text>
+        <Text style={styles.infoGridValue} numberOfLines={1}>{value || '---'}</Text>
+      </View>
+    </View>
+  )
 
   const renderUploadModal = () => {
     if (!uploadDocType) return null
@@ -193,78 +184,58 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Upload {getDocTypeLabel(uploadDocType)}</Text>
-              <TouchableOpacity onPress={() => setShowUploadModal(false)}>
-                <Ionicons name="close" size={24} color="#111827" />
+              <Text style={styles.modalTitle}>Cập nhật {getDocTypeLabel(uploadDocType)}</Text>
+              <TouchableOpacity onPress={() => setShowUploadModal(false)} style={styles.closeBtn}>
+                <Ionicons name="close" size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {/* Front Image */}
-              <Text style={styles.uploadLabel}>Mặt trước <Text style={styles.required}>*</Text></Text>
-              <ImageUploader
-                currentImage={frontImage?.uri || null}
-                onImageChange={(img) => {
-                  console.log('FrontImage changed:', {
-                    hasUri: !!img.uri,
-                    hasBase64: !!img.base64,
-                    fileName: img.fileName,
-                    type: img.type,
-                    uriPrefix: img.uri?.substring(0, 30)
-                  })
-                  setFrontImage(img)
-                }}
-              />
+              <View style={styles.uploadSection}>
+                <Text style={styles.uploadLabel}>Mặt trước <Text style={styles.required}>*</Text></Text>
+                <ImageUploader
+                  currentImage={frontImage?.uri || null}
+                  onImageChange={setFrontImage}
+                />
+              </View>
 
-              {/* Back Image */}
-              <Text style={[styles.uploadLabel, { marginTop: 16 }]}>Mặt sau (tùy chọn)</Text>
-              <ImageUploader
-                currentImage={backImage?.uri || null}
-                onImageChange={(img) => {
-                  console.log('BackImage changed:', {
-                    hasUri: !!img.uri,
-                    hasBase64: !!img.base64,
-                    fileName: img.fileName,
-                    type: img.type
-                  })
-                  setBackImage(img)
-                }}
-              />
+              <View style={styles.uploadSection}>
+                <Text style={styles.uploadLabel}>Mặt sau (Tùy chọn)</Text>
+                <ImageUploader
+                  currentImage={backImage?.uri || null}
+                  onImageChange={setBackImage}
+                />
+              </View>
 
-              {/* Expiration Date */}
-              <Text style={[styles.uploadLabel, { marginTop: 16 }]}>
-                Ngày hết hạn (dd/mm/yyyy)
-              </Text>
-              <TextInput
-                style={styles.dateInput}
-                placeholder="VD: 31/12/2025"
-                value={expirationDate}
-                onChangeText={setExpirationDate}
-              />
+              <View style={styles.uploadSection}>
+                <Text style={styles.uploadLabel}>Ngày hết hạn (dd/mm/yyyy)</Text>
+                <TextInput
+                  style={styles.dateInput}
+                  placeholder="VD: 31/12/2025"
+                  value={expirationDate}
+                  onChangeText={setExpirationDate}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
 
-              <Text style={styles.noteText}>
-                💡 Lưu ý: Giấy tờ sẽ được gửi đến quản trị viên để xét duyệt. 
-                Trạng thái mặc định là "Chờ duyệt".
-              </Text>
+              <View style={styles.noteBox}>
+                <Ionicons name="information-circle" size={18} color="#10439F" />
+                <Text style={styles.noteText}>
+                  Giấy tờ sẽ được gửi đến Admin để xét duyệt. Vui lòng đảm bảo ảnh chụp rõ nét.
+                </Text>
+              </View>
             </ScrollView>
 
             <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setShowUploadModal(false)}
-              >
-                <Text style={styles.cancelBtnText}>Hủy</Text>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowUploadModal(false)}>
+                <Text style={styles.cancelBtnText}>Hủy bỏ</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.submitBtn, (!frontImage || uploading) && styles.submitBtnDisabled]}
                 onPress={handleSubmitUpload}
                 disabled={!frontImage || uploading}
               >
-                {uploading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.submitBtnText}>Upload</Text>
-                )}
+                {uploading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Xác nhận Upload</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -275,8 +246,9 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#10439F" style={{ marginTop: 100 }} />
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#10439F" />
+        <Text style={styles.loadingText}>Đang tải thông tin xe...</Text>
       </SafeAreaView>
     )
   }
@@ -289,226 +261,217 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
     )
   }
 
-  // Separate images by type
-  const overviewImages = vehicle.imageUrls.filter(img => 
-    img.imageType === VehicleImageType.OVERVIEW || (img.imageType as any) === 'OVERVIEW'
-  )
-  const licensePlateImages = vehicle.imageUrls.filter(img => 
-    img.imageType === VehicleImageType.LICENSE_PLATE || (img.imageType as any) === 'LICENSE_PLATE'
-  )
-  const otherImages = vehicle.imageUrls.filter(img => 
-    !img.imageType || img.imageType === VehicleImageType.OTHER || (img.imageType as any) === 'OTHER'
-  )
+  // Group Images by caption (API returns caption instead of imageType)
+  const overviewImages = vehicle.imageUrls.filter(img => {
+    const caption = (img as any).caption?.toLowerCase() || ''
+    return caption.includes('toàn cảnh') || caption.includes('overview') || img.imageType === VehicleImageType.OVERVIEW || (img.imageType as any) === 'OVERVIEW'
+  })
+  const licensePlateImages = vehicle.imageUrls.filter(img => {
+    const caption = (img as any).caption?.toLowerCase() || ''
+    return caption.includes('biển số') || caption.includes('license') || caption.includes('plate') || img.imageType === VehicleImageType.LICENSE_PLATE || (img.imageType as any) === 'LICENSE_PLATE'
+  })
+  const otherImages = vehicle.imageUrls.filter(img => {
+    const caption = (img as any).caption?.toLowerCase() || ''
+    return !caption.includes('toàn cảnh') && !caption.includes('biển số') && !caption.includes('overview') && !caption.includes('license') && !caption.includes('plate') && (!img.imageType || img.imageType === VehicleImageType.OTHER || (img.imageType as any) === 'OTHER')
+  })
 
-  // Check documents (only VEHICLE_LICENSE and PHYSICAL_INSURANCE needed)
-  const vehicleLicenseDoc = vehicle.documents.find(d => 
-    d.documentType === DocumentType.VEHICLE_LICENSE || (d.documentType as any) === 'VEHICLE_LICENSE' || (d.documentType as any) === 'VEHICLE_LINCENSE'
-  )
-  const physicalInsuranceDoc = vehicle.documents.find(d => 
-    d.documentType === DocumentType.PHYSICAL_INSURANCE || (d.documentType as any) === 'PHYSICAL_INSURANCE'
-  )
+  // Documents
+  const vehicleLicenseDoc = vehicle.documents.find(d => d.documentType === DocumentType.VEHICLE_LICENSE || (d.documentType as any) === 'VEHICLE_LICENSE' || (d.documentType as any) === 'VEHICLE_LINCENSE')
+  const physicalInsuranceDoc = vehicle.documents.find(d => d.documentType === DocumentType.PHYSICAL_INSURANCE || (d.documentType as any) === 'PHYSICAL_INSURANCE')
+
+  const statusStyle = getStatusStyle(vehicle.status || '');
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
+      <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
+
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack || (() => router.back())} style={styles.headerBtn}>
-          <Ionicons name="chevron-back" size={24} color="#111827" />
-          <Text style={styles.headerBtnText}>Quay lại</Text>
+          <View style={styles.backBtnCircle}>
+            <Ionicons name="arrow-back" size={20} color="#111827" />
+          </View>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Chi tiết xe</Text>
-        <View style={{ width: 80 }} />
+        <Text style={styles.headerTitle}>Chi tiết phương tiện</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* VEHICLE INFO CARD */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.plateNumber}>{vehicle.plateNumber}</Text>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(vehicle.status || '') }]}>
-              <Text style={styles.statusText}>{getStatusLabel(vehicle.status || '')}</Text>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        
+        {/* 1. IDENTITY CARD */}
+        <View style={styles.mainCard}>
+          <View style={styles.plateContainer}>
+            <View style={styles.plateBorder}>
+              <Text style={styles.plateNumber}>{vehicle.plateNumber}</Text>
             </View>
           </View>
-
-          <View style={styles.infoRow}>
-            <Feather name="truck" size={16} color="#6B7280" />
-            <Text style={styles.infoLabel}>Hãng xe:</Text>
-            <Text style={styles.infoValue}>{vehicle.brand || 'N/A'}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <Feather name="tag" size={16} color="#6B7280" />
-            <Text style={styles.infoLabel}>Mẫu xe:</Text>
-            <Text style={styles.infoValue}>{vehicle.model || 'N/A'}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <Feather name="droplet" size={16} color="#6B7280" />
-            <Text style={styles.infoLabel}>Màu sắc:</Text>
-            <Text style={styles.infoValue}>{vehicle.color || 'N/A'}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <Feather name="calendar" size={16} color="#6B7280" />
-            <Text style={styles.infoLabel}>Năm SX:</Text>
-            <Text style={styles.infoValue}>{vehicle.yearOfManufacture || 'N/A'}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <MaterialIcons name="scale" size={16} color="#6B7280" />
-            <Text style={styles.infoLabel}>Tải trọng:</Text>
-            <Text style={styles.infoValue}>{vehicle.payloadInKg ? `${vehicle.payloadInKg} kg` : 'N/A'}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <MaterialIcons name="straighten" size={16} color="#6B7280" />
-            <Text style={styles.infoLabel}>Thể tích:</Text>
-            <Text style={styles.infoValue}>{vehicle.volumeInM3 ? `${vehicle.volumeInM3} m³` : 'N/A'}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <Feather name="package" size={16} color="#6B7280" />
-            <Text style={styles.infoLabel}>Loại xe:</Text>
-            <Text style={styles.infoValue}>{vehicle.vehicleType?.vehicleTypeName || 'N/A'}</Text>
-          </View>
-        </View>
-
-        {/* IMAGES SECTION */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Hình ảnh xe</Text>
           
-          {/* Overview Images */}
-          {overviewImages.length > 0 && (
-            <View style={styles.imageGroup}>
-              <Text style={styles.imageGroupTitle}>📸 Ảnh toàn cảnh</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {overviewImages.map((img, idx) => (
-                  <Image key={idx} source={{ uri: img.imageURL }} style={styles.vehicleImage} />
-                ))}
-              </ScrollView>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusStyle.text }]} />
+              <Text style={[styles.statusText, { color: statusStyle.text }]}>{statusStyle.label}</Text>
             </View>
-          )}
-
-          {/* License Plate Images */}
-          {licensePlateImages.length > 0 && (
-            <View style={styles.imageGroup}>
-              <Text style={styles.imageGroupTitle}>🔢 Ảnh biển số</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {licensePlateImages.map((img, idx) => (
-                  <Image key={idx} source={{ uri: img.imageURL }} style={styles.vehicleImage} />
-                ))}
-              </ScrollView>
-            </View>
-          )}
-
-          {/* Other Images */}
-          {otherImages.length > 0 && (
-            <View style={styles.imageGroup}>
-              <Text style={styles.imageGroupTitle}>🖼️ Ảnh khác</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {otherImages.map((img, idx) => (
-                  <Image key={idx} source={{ uri: img.imageURL }} style={styles.vehicleImage} />
-                ))}
-              </ScrollView>
-            </View>
-          )}
-
-          {vehicle.imageUrls.length === 0 && (
-            <Text style={styles.emptyText}>Chưa có hình ảnh nào</Text>
-          )}
-        </View>
-
-        {/* DOCUMENTS SECTION */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Giấy tờ xe</Text>
-
-          {/* REQUIRED: Vehicle License */}
-          <View style={styles.documentCard}>
-            <View style={styles.docHeader}>
-              <View style={styles.docTitleRow}>
-                <MaterialIcons name="description" size={20} color="#10439F" />
-                <Text style={styles.docTitle}>Đăng kiểm xe</Text>
-                <View style={styles.requiredBadge}>
-                  <Text style={styles.requiredText}>BẮT BUỘC</Text>
-                </View>
-              </View>
-              {vehicleLicenseDoc && (
-                <View style={[styles.docStatusBadge, { backgroundColor: getDocStatusColor(vehicleLicenseDoc.status) }]}>
-                  <Text style={styles.docStatusText}>{getDocStatusLabel(vehicleLicenseDoc.status)}</Text>
-                </View>
-              )}
-            </View>
-
-            {!vehicleLicenseDoc && (
-              <View style={styles.warningBox}>
-                <Feather name="alert-triangle" size={18} color="#F59E0B" />
-                <Text style={styles.warningText}>⚠️ Chưa có giấy tờ đăng kiểm xe. Vui lòng upload!</Text>
-              </View>
-            )}
-
-            {vehicleLicenseDoc && (
-              <View style={styles.docImages}>
-                {vehicleLicenseDoc.frontDocumentUrl && (
-                  <Image source={{ uri: vehicleLicenseDoc.frontDocumentUrl }} style={styles.docImage} />
-                )}
-                {vehicleLicenseDoc.backDocumentUrl && (
-                  <Image source={{ uri: vehicleLicenseDoc.backDocumentUrl }} style={styles.docImage} />
-                )}
-              </View>
-            )}
-
-            <TouchableOpacity 
-              style={styles.uploadBtn} 
-              onPress={() => handleUploadDocument(DocumentType.VEHICLE_LICENSE)}
-            >
-              <Feather name="upload" size={18} color="#FFFFFF" />
-              <Text style={styles.uploadBtnText}>
-                {vehicleLicenseDoc ? 'Cập nhật giấy tờ' : 'Upload giấy tờ'}
-              </Text>
-            </TouchableOpacity>
           </View>
 
-          {/* OPTIONAL: Physical Insurance */}
-          <View style={styles.documentCard}>
-            <View style={styles.docHeader}>
-              <View style={styles.docTitleRow}>
-                <MaterialIcons name="shield" size={20} color="#3B82F6" />
-                <Text style={styles.docTitle}>Bảo hiểm vật chất</Text>
-                <View style={styles.optionalBadge}>
-                  <Text style={styles.optionalText}>TÙY Ý</Text>
+          <View style={styles.divider} />
+
+          {/* SPECIFICATION GRID */}
+          <View style={styles.gridContainer}>
+            <InfoItem 
+              icon={<FontAwesome5 name="car" size={14} color="#10439F" />}
+              label="Hãng xe"
+              value={vehicle.brand}
+              color="#10439F"
+            />
+            <InfoItem 
+              icon={<FontAwesome5 name="car-side" size={14} color="#059669" />}
+              label="Mẫu xe"
+              value={vehicle.model}
+              color="#059669"
+            />
+            <InfoItem 
+              icon={<Ionicons name="color-palette" size={16} color="#7C3AED" />}
+              label="Màu sắc"
+              value={vehicle.color}
+              color="#7C3AED"
+            />
+            <InfoItem 
+              icon={<Ionicons name="calendar" size={16} color="#EA580C" />}
+              label="Năm SX"
+              value={vehicle.yearOfManufacture}
+              color="#EA580C"
+            />
+            <InfoItem 
+              icon={<FontAwesome5 name="weight-hanging" size={14} color="#DB2777" />}
+              label="Tải trọng"
+              value={vehicle.payloadInKg ? `${vehicle.payloadInKg} kg` : null}
+              color="#DB2777"
+            />
+            <InfoItem 
+              icon={<FontAwesome5 name="box-open" size={14} color="#2563EB" />}
+              label="Thể tích"
+              value={vehicle.volumeInM3 ? `${vehicle.volumeInM3} m³` : null}
+              color="#2563EB"
+            />
+          </View>
+          
+           <View style={styles.typeRow}>
+             <Text style={styles.typeLabel}>Loại phương tiện:</Text>
+             <Text style={styles.typeValue}>{vehicle.vehicleType?.vehicleTypeName || 'Chưa phân loại'}</Text>
+           </View>
+        </View>
+
+        {/* 2. DOCUMENTS SECTION */}
+        <Text style={styles.sectionHeader}>Hồ sơ pháp lý</Text>
+        
+        {/* Required Doc */}
+        <View style={styles.docContainer}>
+           <View style={[styles.docStatusIndicator, { backgroundColor: vehicleLicenseDoc ? getDocStatusStyle(vehicleLicenseDoc.status).border : '#D1D5DB' }]} />
+           <View style={styles.docContent}>
+              <View style={styles.docTopRow}>
+                <View style={styles.docTitleBlock}>
+                  <Text style={styles.docTitle}>Giấy Tờ Xe</Text>
+                  <View style={styles.badgeRequired}><Text style={styles.badgeRequiredText}>BẮT BUỘC</Text></View>
                 </View>
+                {vehicleLicenseDoc ? (
+                  <Text style={[styles.docStatusText, { color: getDocStatusStyle(vehicleLicenseDoc.status).color }]}>
+                    {getDocStatusStyle(vehicleLicenseDoc.status).label}
+                  </Text>
+                ) : (
+                   <Text style={[styles.docStatusText, { color: '#DC2626' }]}>Chưa có</Text>
+                )}
               </View>
-              {physicalInsuranceDoc && (
-                <View style={[styles.docStatusBadge, { backgroundColor: getDocStatusColor(physicalInsuranceDoc.status) }]}>
-                  <Text style={styles.docStatusText}>{getDocStatusLabel(physicalInsuranceDoc.status)}</Text>
+
+              {vehicleLicenseDoc ? (
+                <View style={styles.docPreviewRow}>
+                   {vehicleLicenseDoc.frontDocumentUrl && <Image source={{uri: vehicleLicenseDoc.frontDocumentUrl}} style={styles.miniDocImg} />}
+                   {vehicleLicenseDoc.backDocumentUrl && <Image source={{uri: vehicleLicenseDoc.backDocumentUrl}} style={styles.miniDocImg} />}
+                </View>
+              ) : (
+                <Text style={styles.missingDocText}>Vui lòng cập nhật giấy tờ để xe được phép hoạt động.</Text>
+              )}
+
+              <TouchableOpacity 
+                style={styles.actionBtn} 
+                onPress={() => handleUploadDocument(DocumentType.VEHICLE_LICENSE)}
+              >
+                <Text style={styles.actionBtnText}>{vehicleLicenseDoc ? 'Cập nhật lại' : 'Upload ngay'}</Text>
+                <Feather name="chevron-right" size={16} color="#10439F" />
+              </TouchableOpacity>
+           </View>
+        </View>
+
+        {/* Optional Doc */}
+        <View style={styles.docContainer}>
+           <View style={[styles.docStatusIndicator, { backgroundColor: physicalInsuranceDoc ? getDocStatusStyle(physicalInsuranceDoc.status).border : '#E5E7EB' }]} />
+           <View style={styles.docContent}>
+              <View style={styles.docTopRow}>
+                <View style={styles.docTitleBlock}>
+                  <Text style={styles.docTitle}>Bảo hiểm vật chất</Text>
+                  <View style={styles.badgeOptional}><Text style={styles.badgeOptionalText}>TÙY CHỌN</Text></View>
+                </View>
+                {physicalInsuranceDoc && (
+                   <Text style={[styles.docStatusText, { color: getDocStatusStyle(physicalInsuranceDoc.status).color }]}>
+                    {getDocStatusStyle(physicalInsuranceDoc.status).label}
+                  </Text>
+                )}
+              </View>
+
+               {physicalInsuranceDoc && (
+                <View style={styles.docPreviewRow}>
+                   {physicalInsuranceDoc.frontDocumentUrl && <Image source={{uri: physicalInsuranceDoc.frontDocumentUrl}} style={styles.miniDocImg} />}
+                   {physicalInsuranceDoc.backDocumentUrl && <Image source={{uri: physicalInsuranceDoc.backDocumentUrl}} style={styles.miniDocImg} />}
                 </View>
               )}
-            </View>
 
-            {physicalInsuranceDoc && (
-              <View style={styles.docImages}>
-                {physicalInsuranceDoc.frontDocumentUrl && (
-                  <Image source={{ uri: physicalInsuranceDoc.frontDocumentUrl }} style={styles.docImage} />
-                )}
-                {physicalInsuranceDoc.backDocumentUrl && (
-                  <Image source={{ uri: physicalInsuranceDoc.backDocumentUrl }} style={styles.docImage} />
-                )}
-              </View>
-            )}
-
-            <TouchableOpacity 
-              style={[styles.uploadBtn, styles.uploadBtnSecondary]} 
-              onPress={() => handleUploadDocument(DocumentType.PHYSICAL_INSURANCE)}
-            >
-              <Feather name="upload" size={18} color="#10439F" />
-              <Text style={[styles.uploadBtnText, styles.uploadBtnTextSecondary]}>
-                {physicalInsuranceDoc ? 'Cập nhật bảo hiểm' : 'Upload bảo hiểm'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity 
+                style={styles.actionBtn} 
+                onPress={() => handleUploadDocument(DocumentType.PHYSICAL_INSURANCE)}
+              >
+                <Text style={styles.actionBtnText}>{physicalInsuranceDoc ? 'Cập nhật bảo hiểm' : 'Thêm bảo hiểm'}</Text>
+                <Feather name="chevron-right" size={16} color="#10439F" />
+              </TouchableOpacity>
+           </View>
         </View>
+
+        {/* 3. IMAGES SECTION */}
+        <Text style={styles.sectionHeader}>Hình ảnh thực tế</Text>
+        
+        {overviewImages.length > 0 && (
+          <View style={styles.imageSection}>
+            <View style={styles.imageSectionHeader}>
+              <Ionicons name="camera-outline" size={18} color="#4B5563" />
+              <Text style={styles.imageSectionTitle}>Toàn cảnh</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalImages}>
+              {overviewImages.map((img, idx) => (
+                <Image key={idx} source={{ uri: img.imageURL }} style={styles.galleryImage} />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {licensePlateImages.length > 0 && (
+          <View style={styles.imageSection}>
+             <View style={styles.imageSectionHeader}>
+              <Ionicons name="scan-outline" size={18} color="#4B5563" />
+              <Text style={styles.imageSectionTitle}>Biển số</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalImages}>
+              {licensePlateImages.map((img, idx) => (
+                <Image key={idx} source={{ uri: img.imageURL }} style={styles.galleryImage} />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {vehicle.imageUrls.length === 0 && (
+          <View style={styles.emptyStateBox}>
+             <Feather name="image" size={40} color="#D1D5DB" />
+             <Text style={styles.emptyStateText}>Chưa có hình ảnh nào về phương tiện này</Text>
+          </View>
+        )}
+
       </ScrollView>
 
       {/* Upload Modal */}
@@ -518,10 +481,23 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#6B7280',
+    fontSize: 14,
+  },
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
+  
+  // HEADER
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -529,244 +505,310 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#10439F',
   },
   headerBtn: {
-    flexDirection: 'row',
+    padding: 4,
+  },
+  backBtnCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  headerBtnText: {
-    fontSize: 15,
-    fontWeight: '500',
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
     color: '#111827',
-    marginLeft: 4,
   },
+
   scrollView: {
     flex: 1,
   },
-  card: {
+  
+  // MAIN IDENTITY CARD
+  mainCard: {
     backgroundColor: '#FFFFFF',
     margin: 16,
-    padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
+    padding: 20,
     shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  plateContainer: {
     alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    marginBottom: 8,
+  },
+  plateBorder: {
+    borderWidth: 2,
+    borderColor: '#111827',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#FFF',
   },
   plateNumber: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: '#111827',
+    fontVariant: ['tabular-nums'], // Helps numbers align better
+    letterSpacing: 1,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
   },
   statusText: {
-    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
   },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginLeft: 8,
-    width: 100,
-  },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    flex: 1,
-  },
-  section: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 12,
-  },
-  imageGroup: {
-    marginBottom: 16,
-  },
-  imageGroupTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  vehicleImage: {
-    width: 200,
-    height: 150,
-    borderRadius: 8,
-    marginRight: 12,
+  divider: {
+    height: 1,
     backgroundColor: '#F3F4F6',
+    marginBottom: 16,
   },
-  emptyText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginVertical: 20,
-  },
-  documentCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  docHeader: {
+  
+  // SPECS GRID
+  gridContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
   },
-  docTitleRow: {
+  infoGridItem: {
+    width: '48%', // 2 columns
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-  },
-  docTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginLeft: 8,
-  },
-  requiredBadge: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  requiredText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#DC2626',
-  },
-  optionalBadge: {
-    backgroundColor: '#E0E7FF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  optionalText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#4F46E5',
-  },
-  docStatusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    marginBottom: 16,
+    backgroundColor: '#F9FAFB',
+    padding: 10,
     borderRadius: 10,
   },
-  docStatusText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  warningBox: {
-    flexDirection: 'row',
+  infoIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    gap: 8,
+    marginRight: 10,
   },
-  warningText: {
+  infoGridLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  infoGridValue: {
     fontSize: 13,
-    color: '#92400E',
-    fontWeight: '500',
-    flex: 1,
+    fontWeight: '600',
+    color: '#1F2937',
   },
-  docImages: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  docImage: {
-    width: 120,
-    height: 90,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-  },
-  uploadBtn: {
+  typeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#10439F',
-    paddingVertical: 12,
+    marginTop: 4,
+    backgroundColor: '#EFF6FF',
+    padding: 8,
     borderRadius: 8,
-    gap: 8,
   },
-  uploadBtnSecondary: {
-    backgroundColor: '#EEF2FF',
-    borderWidth: 1,
-    borderColor: '#10439F',
+  typeLabel: {
+    fontSize: 13,
+    color: '#10439F',
+    marginRight: 6,
   },
-  uploadBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  typeValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#10439F',
+  },
+
+  // SECTION HEADERS
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#374151',
+    marginLeft: 16,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+
+  // DOCUMENTS
+  docContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  docStatusIndicator: {
+    width: 6,
+    height: '100%',
+  },
+  docContent: {
+    flex: 1,
+    padding: 14,
+  },
+  docTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  docTitleBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  docTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  badgeRequired: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  badgeRequiredText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  badgeOptional: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  badgeOptionalText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  docStatusText: {
+    fontSize: 12,
     fontWeight: '600',
   },
-  uploadBtnTextSecondary: {
+  docPreviewRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  miniDocImg: {
+    width: 60,
+    height: 45,
+    borderRadius: 4,
+    backgroundColor: '#E5E7EB',
+  },
+  missingDocText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  actionBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: '#10439F',
+  },
+
+  // IMAGES
+  imageSection: {
+    marginHorizontal: 16,
+    marginBottom: 20,
+  },
+  imageSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  imageSectionTitle: {
+    fontSize: 13,
+    color: '#4B5563',
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  horizontalImages: {
+    flexDirection: 'row',
+  },
+  galleryImage: {
+    width: width * 0.45,
+    height: width * 0.3,
+    borderRadius: 8,
+    marginRight: 10,
+    backgroundColor: '#E5E7EB',
+  },
+  emptyStateBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30,
+    backgroundColor: '#F9FAFB',
+    marginBottom: 20,
+  },
+  emptyStateText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    marginTop: 8,
   },
   errorText: {
     fontSize: 16,
-    color: '#EF4444',
+    color: '#DC2626',
     textAlign: 'center',
-    marginTop: 40,
+    marginTop: 50,
   },
-  
-  // Modal styles
+
+  // MODAL
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
@@ -775,8 +817,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
+  closeBtn: {
+    padding: 4,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+  },
   modalBody: {
     padding: 20,
+  },
+  uploadSection: {
+    marginBottom: 20,
   },
   uploadLabel: {
     fontSize: 14,
@@ -790,47 +840,51 @@ const styles = StyleSheet.create({
   dateInput: {
     borderWidth: 1,
     borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
     color: '#111827',
+    backgroundColor: '#FFF',
+  },
+  noteBox: {
+    flexDirection: 'row',
+    backgroundColor: '#EFF6FF',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+    marginBottom: 20,
   },
   noteText: {
     fontSize: 12,
-    color: '#6B7280',
-    fontStyle: 'italic',
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 8,
+    color: '#1E40AF',
+    flex: 1,
     lineHeight: 18,
   },
   modalFooter: {
     flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    padding: 20,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
+    gap: 12,
+    paddingBottom: 30, // For iOS home bar
   },
   cancelBtn: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
   },
   cancelBtnText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#4B5563',
   },
   submitBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 10,
     backgroundColor: '#10439F',
     alignItems: 'center',
     justifyContent: 'center',

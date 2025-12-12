@@ -14,6 +14,8 @@ export interface PostTripDetailCreateDTO {
   MustDropAtGarage: boolean
   // Optional bonus / extra fee per detail line
   BonusAmount?: number
+  // Optional deposit amount
+  DepositAmount?: number
 }
 
 // Create DTO

@@ -52,7 +52,8 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
     setLoading(true)
     try {
       const res: any = await postPackageService.getPostPackageDetails(postId!)
-      setData(res?.result ?? res)
+      // Lấy dữ liệu từ result
+      setData(res?.result ?? res?.data ?? res)
     } catch (e) {
       console.warn('Fetch detail error', e)
     } finally {
@@ -135,7 +136,7 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
             {isPossible ? <Ionicons name="checkmark-circle" size={16} color={COLORS.success} /> : <Ionicons name="close-circle" size={16} color={COLORS.danger} />}
         </View>
         <Text style={styles.scenarioMsg}>{scenarioData.message}</Text>
-        <Text style={styles.scenarioTime}>⏱ {scenarioData.totalHoursNeeded}h • {scenarioData.workHoursPerDriver}h/tài</Text>
+        <Text style={styles.scenarioTime}>⏱ {scenarioData.totalElapsedHours}h • {scenarioData.drivingHoursPerDriver}h/tài</Text>
       </View>
     )
   }
@@ -288,6 +289,7 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
     if (loading) return <View style={styles.centerBox}><ActivityIndicator size="large" color={COLORS.primary} /><Text style={{marginTop: 8, color: COLORS.textLight}}>Đang tải dữ liệu...</Text></View>
     if (!data) return <View style={styles.centerBox}><Text style={styles.emptyText}>Không tải được dữ liệu.</Text></View>
 
+    // Truy cập dữ liệu từ response structure mới
     const route = data.shippingRoute || {}
     const provider = data.provider
     const suggest = data.driverSuggestion
@@ -377,14 +379,39 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
              <View style={styles.aiContainer}>
                 <View style={{flexDirection:'row', alignItems:'center', marginBottom: 8}}>
                     <MaterialCommunityIcons name="robot-outline" size={20} color={COLORS.purple} />
-                    <Text style={styles.aiTitle}>Phân tích hành trình ({suggest.distanceKm} km)</Text>
+                    <Text style={styles.aiTitle}>Phân tích hành trình</Text>
                 </View>
-                <Text style={styles.aiRec}>{suggest.systemRecommendation}</Text>
+                
+                {/* Distance & Duration Info */}
+                <View style={styles.tripInfoBox}>
+                  <View style={styles.tripInfoItem}>
+                    <MaterialCommunityIcons name="map-marker-distance" size={18} color={COLORS.primary} />
+                    <Text style={styles.tripInfoLabel}>Khoảng cách:</Text>
+                    <Text style={styles.tripInfoValue}>{suggest.distanceKm} km</Text>
+                  </View>
+                  <View style={styles.tripInfoItem}>
+                    <MaterialCommunityIcons name="clock-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.tripInfoLabel}>Ước tính:</Text>
+                    <Text style={styles.tripInfoValue}>{suggest.estimatedDurationHours} giờ</Text>
+                  </View>
+                </View>
+
+                {/* System Recommendation */}
+                <View style={styles.recommendBox}>
+                  <MaterialCommunityIcons name="lightbulb-on" size={16} color={COLORS.warning} />
+                  <Text style={styles.recommendLabel}>Đề xuất hệ thống:</Text>
+                  <Text style={styles.recommendValue}>{suggest.systemRecommendation === 'SOLO' ? '1 Tài xế' : suggest.systemRecommendation === 'TEAM' ? '2 Tài xế' : '3 Tài xế (Express)'}</Text>
+                </View>
+
+                {/* Required Hours */}
+                <View style={styles.quotaBox}>
+                  <Text style={styles.quotaText}>💼 Giờ lái yêu cầu: <Text style={styles.quotaBold}>{suggest.requiredHoursFromQuota} giờ</Text></Text>
+                </View>
                 
                 <View style={styles.scenarioGrid}>
-                    {renderScenario("1 Tài xế", suggest.soloScenario)}
-                    {renderScenario("2 Tài xế", suggest.teamScenario)}
-                    {renderScenario("Express", suggest.expressScenario)}
+                    {renderScenario("1 Tài xế (Solo)", suggest.soloScenario)}
+                    {renderScenario("2 Tài xế (Team)", suggest.teamScenario)}
+                    {renderScenario("3 Tài xế (Express)", suggest.expressScenario)}
                 </View>
              </View>
           )}
@@ -445,7 +472,11 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
           </View>
 
           {(data.packages || []).map((pkg: any, index: number) => {
-             const allImages = [...(pkg.packageImages || []), ...(pkg.item?.imageUrls || [])];
+             // Lấy ảnh từ packageImages và item.imageUrls
+             const packageImages = (pkg.packageImages || []).map((img: any) => ({ imageUrl: img.imageUrl }));
+             const itemImages = (pkg.item?.imageUrls || []).map((img: any) => ({ imageUrl: img.imageUrl }));
+             const allImages = [...packageImages, ...itemImages];
+             
              return (
                 <View key={index} style={styles.packageItem}>
                 <View style={styles.pkgHeader}>
@@ -480,7 +511,7 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
         </View>
 
         {/* --- 5. LIÊN HỆ --- */}
-        <View style={styles.card}>
+        {/* <View style={styles.card}>
           <Text style={styles.sectionTitle}>📞 Danh Bạ Liên Hệ</Text>
           
           <View style={[styles.contactRow, { backgroundColor: COLORS.senderBg }]}>
@@ -504,7 +535,7 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
                 <Ionicons name="call-outline" size={16} color={'#F97316'} />
             </TouchableOpacity>
           </View>
-        </View>
+        </View> */}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -593,13 +624,30 @@ const styles = StyleSheet.create({
   aiContainer: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderColor: COLORS.border },
   aiTitle: { fontSize: 14, fontWeight: '700', color: COLORS.purple, marginLeft: 6 },
   aiRec: { fontSize: 13, color: COLORS.text, marginBottom: 12, fontStyle:'italic' },
+  
+  // Trip Info Box
+  tripInfoBox: { flexDirection: 'row', gap: 12, marginVertical: 12 },
+  tripInfoItem: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F9FF', padding: 10, borderRadius: 8, gap: 4 },
+  tripInfoLabel: { fontSize: 12, color: COLORS.textLight, fontWeight: '500' },
+  tripInfoValue: { fontSize: 13, color: COLORS.text, fontWeight: '700' },
+  
+  // Recommendation Box
+  recommendBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', padding: 10, borderRadius: 8, marginBottom: 12, gap: 6 },
+  recommendLabel: { fontSize: 12, color: COLORS.textLight, fontWeight: '500' },
+  recommendValue: { fontSize: 13, color: COLORS.warning, fontWeight: '700' },
+  
+  // Quota Box
+  quotaBox: { backgroundColor: '#F3F4F6', padding: 10, borderRadius: 8, marginBottom: 12 },
+  quotaText: { fontSize: 12, color: COLORS.text },
+  quotaBold: { fontWeight: '700', color: COLORS.primary },
+  
   scenarioGrid: { gap: 8 },
-  scenarioBox: { padding: 8, borderRadius: 8, borderWidth: 1 },
+  scenarioBox: { padding: 10, borderRadius: 8, borderWidth: 1 },
   scenarioOk: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
   scenarioFail: { backgroundColor: '#FEF2F2', borderColor: '#FECACA', opacity: 0.7 },
-  scenarioLabel: { fontSize: 12, fontWeight: '700', color: COLORS.text },
-  scenarioMsg: { fontSize: 12, color: COLORS.textLight, marginTop: 2 },
-  scenarioTime: { fontSize: 11, fontWeight: '500', color: COLORS.text, marginTop: 4 },
+  scenarioLabel: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  scenarioMsg: { fontSize: 12, color: COLORS.textLight, marginTop: 4, lineHeight: 18 },
+  scenarioTime: { fontSize: 11, fontWeight: '600', color: COLORS.text, marginTop: 6, backgroundColor: '#fff', padding: 4, borderRadius: 4, alignSelf: 'flex-start' },
 
   // DRIVER CARD STYLE
   driverCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },

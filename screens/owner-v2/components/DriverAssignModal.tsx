@@ -71,8 +71,8 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
     try {
       const res: any = await ownerDriverLinkService.getMyDrivers(page, 10)
       if (res?.isSuccess || res?.statusCode === 200) {
-        const payload = res?.result ?? res?.data ?? res
-        const list: LinkedDriverDTO[] = payload?.items || payload?.data || []
+        const payload = res?.result ?? res
+        const list: LinkedDriverDTO[] = payload?.data || []
         const total = payload?.totalCount ?? list.length
         setDrivers(prev => (page === 1 ? list : [...prev, ...list]))
         setDriverTotal(total)
@@ -109,14 +109,8 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
       
       const result = res?.result ?? res?.data ?? {}
       const newTripStatus = result?.newTripStatus || trip.status
-      const newDriver: DriverAssignment = {
-        driverId: selectedDriver.driverId,
-        fullName: selectedDriver.fullName,
-        type: isPrimary ? 'MAIN' : 'SECONDARY',
-        assignmentStatus: 'ACCEPTED',
-        paymentStatus: 'PENDING'
-      }
-      onAssigned({ ...trip, status: newTripStatus, drivers: [...(trip.drivers || []), newDriver] })
+      
+      onAssigned({ ...trip, status: newTripStatus, drivers: [...(trip.drivers)] })
       Alert.alert('Thành công', 'Đã gán tài xế thành công.')
       onClose()
     } catch (e: any) {
@@ -129,8 +123,8 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
   // Render Item Tài xế
   const renderDriverItem = ({ item }: { item: LinkedDriverDTO }) => {
     const selected = selectedDriver?.driverId === item.driverId
-    const hoursWeek = (item as any).HoursDrivenThisWeek ?? 0
-    const canDrive = ((item as any).CanDrive ?? true)
+    const hoursWeek = (item as any).hoursDrivenThisWeek ?? 0
+    const canDrive = ((item as any).canDrive ?? true)
 
     return (
       <TouchableOpacity 
@@ -173,7 +167,7 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
                 </View>
                 <View style={[styles.statusDot, { backgroundColor: canDrive ? '#10B981' : '#EF4444' }]} />
                 <Text style={[styles.statusText, { color: canDrive ? '#10B981' : '#EF4444' }]}>
-                    {canDrive ? 'Sẵn sàng' : 'Bận'}
+                    {canDrive ? 'Sẵn sàng' : 'Không đủ giờ lái'}
                 </Text>
             </View>
           </View>
@@ -205,11 +199,33 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
               <View style={styles.aiSection}>
                 <View style={styles.aiHeader}>
                   <MaterialIcons name="auto-awesome" size={18} color="#4F46E5" />
-                  <Text style={styles.aiTitle}>Phân tích </Text>
+                  <Text style={styles.aiTitle}>Phân tích hành trình</Text>
                 </View>
+                
+                {/* Distance & Duration Info */}
+                <View style={styles.tripInfoRow}>
+                  <View style={styles.tripInfoItem}>
+                    <MaterialCommunityIcons name="map-marker-distance" size={14} color="#0284C7" />
+                    <Text style={styles.tripInfoText}>{driverAnalysis.suggestion.distanceKm?.toFixed(1) || 0} km</Text>
+                  </View>
+                  <View style={styles.tripInfoItem}>
+                    <MaterialCommunityIcons name="clock-outline" size={14} color="#0284C7" />
+                    <Text style={styles.tripInfoText}>{driverAnalysis.suggestion.estimatedDurationHours?.toFixed(1) || 0}h</Text>
+                  </View>
+                  <View style={styles.tripInfoItem}>
+                    <MaterialCommunityIcons name="steering" size={14} color="#0284C7" />
+                    <Text style={styles.tripInfoText}>{driverAnalysis.suggestion.requiredHoursFromQuota?.toFixed(1) || 0}h lái</Text>
+                  </View>
+                </View>
+
                 {driverAnalysis.suggestion.systemRecommendation && (
                   <View style={styles.aiRecommendation}>
-                    <Text style={styles.aiRecommendText}>{driverAnalysis.suggestion.systemRecommendation}</Text>
+                    <Text style={styles.aiRecommendLabel}>💡 Đề xuất: </Text>
+                    <Text style={styles.aiRecommendText}>
+                      {driverAnalysis.suggestion.systemRecommendation === 'SOLO' ? '1 Tài xế (Solo)' : 
+                       driverAnalysis.suggestion.systemRecommendation === 'TEAM' ? '2 Tài xế (Team)' : 
+                       '3 Tài xế (Express)'}
+                    </Text>
                   </View>
                 )}
                 <View style={styles.scenarioRow}>
@@ -217,21 +233,21 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
                     <View style={styles.miniScenario}>
                       <FontAwesome5 name="user" size={14} color="#059669" />
                       <Text style={styles.miniScenarioLabel}>1 Tài</Text>
-                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.soloScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.soloScenario.totalElapsedHours?.toFixed(0)}h</Text>
                     </View>
                   )}
                   {driverAnalysis.suggestion.teamScenario?.isPossible && (
                     <View style={styles.miniScenario}>
                       <FontAwesome5 name="user-friends" size={14} color="#2563EB" />
                       <Text style={styles.miniScenarioLabel}>2 Tài</Text>
-                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.teamScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.teamScenario.totalElapsedHours?.toFixed(0)}h</Text>
                     </View>
                   )}
                   {driverAnalysis.suggestion.expressScenario?.isPossible && (
                     <View style={styles.miniScenario}>
                       <MaterialCommunityIcons name="lightning-bolt" size={16} color="#DC2626" />
                       <Text style={styles.miniScenarioLabel}>3 Tài</Text>
-                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.expressScenario.totalHoursNeeded?.toFixed(0)}h</Text>
+                      <Text style={styles.miniScenarioValue}>{driverAnalysis.suggestion.expressScenario.totalElapsedHours?.toFixed(0)}h</Text>
                     </View>
                   )}
                 </View>
@@ -406,8 +422,15 @@ const styles = StyleSheet.create({
   aiSection: { margin: 16, marginBottom: 8, backgroundColor: '#EFF6FF', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#BFDBFE' },
   aiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 },
   aiTitle: { fontSize: 13, fontWeight: '700', color: '#1E40AF' },
-  aiRecommendation: { backgroundColor: '#FFF', borderRadius: 8, padding: 10, marginBottom: 10 },
-  aiRecommendText: { fontSize: 12, color: '#374151', lineHeight: 18 },
+  
+  // Trip Info Row
+  tripInfoRow: { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
+  tripInfoItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, gap: 4 },
+  tripInfoText: { fontSize: 11, color: '#0C4A6E', fontWeight: '700' },
+  
+  aiRecommendation: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderRadius: 8, padding: 8, marginBottom: 10 },
+  aiRecommendLabel: { fontSize: 12, color: '#92400E', fontWeight: '600' },
+  aiRecommendText: { fontSize: 12, color: '#B45309', fontWeight: '700' },
   scenarioRow: { flexDirection: 'row', gap: 8, justifyContent: 'flex-start' },
   miniScenario: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
   miniScenarioLabel: { fontSize: 11, color: '#6B7280', fontWeight: '600' },

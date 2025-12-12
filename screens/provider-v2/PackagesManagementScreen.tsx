@@ -97,6 +97,11 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
 
   const handleEdit = (pkg: Package) => {
     console.log("🔧 Edit package clicked:", pkg.id);
+    // Chỉ cho phép sửa khi status KHÔNG phải PENDING
+    if (pkg.status === "PENDING") {
+      showToast("Không thể sửa gói hàng đang chờ xử lý", "error");
+      return;
+    }
     setEditPackageId(pkg.id);
     setEditModalOpen(true);
     console.log("📝 Modal state:", {
@@ -121,6 +126,12 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
 
   const handleDelete = (id: string) => {
     console.log("🗑️ handleDelete called with id:", id);
+    // Tìm package để kiểm tra status
+    const pkg = packages.find((p) => p.id === id);
+    if (pkg && pkg.status === "PENDING") {
+      showToast("Không thể xóa gói hàng đang chờ xử lý", "error");
+      return;
+    }
     setDeletePackageId(id);
     setDeleteModalOpen(true);
   };

@@ -32,6 +32,17 @@ const tripProviderContractService = {
       if (e.response) console.error('response', e.response.data)
       throw e
     }
+  },
+
+  async getById(contractId: string) {
+    try {
+      const res = await api.get(`api/TripProviderContract/provider-contracts/${contractId}`)
+      return res.data as ResponseDTO
+    } catch (e: any) {
+      console.error('tripProviderContractService.getById failed', e)
+      if (e.response) console.error('response', e.response.data)
+      throw e
+    }
   }
 }
 

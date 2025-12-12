@@ -90,6 +90,24 @@ const OwnerManagementTabs: React.FC = () => {
           onPress={() => go('/(owner)/provider-posts')} 
           disabled={loading} 
         />
+        
+        {/* Card 5: Quản lý Giao dịch */}
+        <ManagementCard 
+          icon={<MaterialCommunityIcons name="receipt-text" size={28} color="#3B82F6" />}
+          label="Quản lý Giao dịch" 
+          description="Lịch sử thu chi, nạp rút." 
+          onPress={() => router.push({ pathname: '/shared/transactions', params: { roleTitle: 'Giao dịch - Chủ xe' } })} 
+          disabled={loading} 
+        />
+        
+        {/* Card 6: Quản lý Tài xế nội bộ */}
+        <ManagementCard 
+          icon={<MaterialCommunityIcons name="account-tie" size={28} color="#3B82F6" />}
+          label="Quản lý Tài xế" 
+          description="Danh sách tài xế, duyệt yêu cầu." 
+          onPress={() => go('/(owner)/my-drivers')} 
+          disabled={loading} 
+        />
       </View>
     </View>
   )

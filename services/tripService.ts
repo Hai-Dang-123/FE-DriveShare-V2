@@ -283,17 +283,101 @@ const tripService = {
       TripVehicleHandoverTermResultId: string;
       IsPassed: boolean;
       Note?: string;
-      EvidenceImageUrl?: string;
+      EvidenceImage?: string | File | null; // File for web, uri string for mobile
     }>;
   }) {
     try {
-      const res = await api.put(
-        `api/TripVehicleHandoverRecord/update-checklist`,
-        dto
+      // Build FormData if there are any images
+      const hasImages = dto.ChecklistItems.some(item => item.EvidenceImage);
+      
+      if (hasImages) {
+        const formData = new FormData();
+        
+        // Add basic fields
+        formData.append('RecordId', dto.RecordId);
+        if (dto.CurrentOdometer !== undefined) {
+          formData.append('CurrentOdometer', dto.CurrentOdometer.toString());
+        }
+        if (dto.FuelLevel !== undefined) {
+          formData.append('FuelLevel', dto.FuelLevel.toString());
+        }
+        if (dto.IsEngineLightOn !== undefined) {
+          formData.append('IsEngineLightOn', dto.IsEngineLightOn.toString());
+        }
+        if (dto.Notes) {
+          formData.append('Notes', dto.Notes);
+        }
+        
+        // Add checklist items
+        dto.ChecklistItems.forEach((item, index) => {
+          console.log(`🔍 Processing ChecklistItem ${index}:`, item);
+          if (!item.TripVehicleHandoverTermResultId) {
+            console.error(`❌ Missing TripVehicleHandoverTermResultId for item ${index}:`, item);
+            throw new Error(`ChecklistItem[${index}] missing TripVehicleHandoverTermResultId`);
+          }
+          formData.append(`ChecklistItems[${index}].TripVehicleHandoverTermResultId`, item.TripVehicleHandoverTermResultId);
+          formData.append(`ChecklistItems[${index}].IsPassed`, item.IsPassed.toString());
+          if (item.Note) {
+            formData.append(`ChecklistItems[${index}].Note`, item.Note);
+          }
+          
+          // Handle image upload
+          if (item.EvidenceImage) {
+            if (typeof item.EvidenceImage === 'string') {
+              // Mobile: uri string
+              const uriParts = item.EvidenceImage.split('.');
+              const fileType = uriParts[uriParts.length - 1];
+              formData.append(`ChecklistItems[${index}].EvidenceImage`, {
+                uri: item.EvidenceImage,
+                name: `evidence-${index}.${fileType}`,
+                type: `image/${fileType}`,
+              } as any);
+            } else {
+              // Web: File object
+              formData.append(`ChecklistItems[${index}].EvidenceImage`, item.EvidenceImage);
+            }
+          }
+        });
+        
+        const res = await api.put(
+          `api/TripVehicleHandoverRecord/update-checklist`,
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          }
+        );
+        return res.data;
+      } else {
+        // No images, send as JSON
+        const res = await api.put(
+          `api/TripVehicleHandoverRecord/update-checklist`,
+          dto
+        );
+        return res.data;
+      }
+    } catch (e: any) {
+      console.error("updateVehicleHandoverChecklist failed", e);
+      if (e.response) console.error("response", e.response.data);
+      throw e;
+    }
+  },
+
+  async reportHandoverIssue(formData: FormData) {
+    try {
+      const res = await api.post(
+        'api/TripVehicleHandoverRecord/report-issue',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
       );
       return res.data;
     } catch (e: any) {
-      console.error("updateVehicleHandoverChecklist failed", e);
+      console.error("reportHandoverIssue failed", e);
       if (e.response) console.error("response", e.response.data);
       throw e;
     }

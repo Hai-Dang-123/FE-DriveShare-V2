@@ -60,6 +60,37 @@ const driverWorkSessionService = {
       if (e?.response?.data) return e.response.data
       throw e
     }
+  },
+  async importHistory(dto: { DailyLogs: Array<{ Date: string; HoursDriven: number }> }) {
+    try {
+      const res = await api.post('api/DriverWorkSession/import-history', dto)
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  },
+  
+  // API mới: Lấy thông tin quỹ thời gian hiện tại của tài xế
+  async getMyAvailability() {
+    try {
+      const res = await api.get('api/DriverWorkSession/my-availability')
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  },
+  
+  // API mới: Kiểm tra tài xế có phù hợp với chuyến đi không
+  async checkSuitabilityForTrip(tripId: string) {
+    try {
+      const res = await api.get(`api/DriverWorkSession/check-suitability/${tripId}`)
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
   }
 }
 

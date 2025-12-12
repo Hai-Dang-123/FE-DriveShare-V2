@@ -81,6 +81,14 @@ const ManagementTabs: React.FC = () => {
           onPress={() => go('/(provider)/posts')}
           disabled={loading}
         />
+        
+        <ManagementCard
+          icon={<MaterialCommunityIcons name="receipt-text" size={28} color="#3B82F6" />}
+          label="Quản lý Giao dịch"
+          description="Lịch sử thu chi, nạp rút tiền"
+          onPress={() => router.push({ pathname: '/shared/transactions', params: { roleTitle: 'Giao dịch - Nhà cung cấp' } })}
+          disabled={loading}
+        />
       </View>
     </View>
   )

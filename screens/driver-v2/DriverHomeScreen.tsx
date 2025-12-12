@@ -33,7 +33,7 @@ const DriverHomeScreen: React.FC = () => {
 
   const loadProfileAndData = async () => {
     try {
-      // 1) Fetch profile (my profile)
+      // 1) Fetch profile (my profile) - contains verification status
       const resp: any = await userService.getMyProfile()
       const prof = resp?.result ?? resp
 
@@ -49,6 +49,9 @@ const DriverHomeScreen: React.FC = () => {
               email: prof.email ?? existing.email,
               phoneNumber: prof.phoneNumber ?? existing.phoneNumber,
               avatarUrl: prof.avatarUrl ?? existing.avatarUrl,
+              hasVerifiedCitizenId: prof.hasVerifiedCitizenId ?? false,
+              hasVerifiedDriverLicense: prof.hasVerifiedDriverLicense ?? false,
+              hasDeclaredInitialHistory: prof.hasDeclaredInitialHistory ?? false,
             }
             useAuthStore.setState({ user: merged })
             await AsyncStorage.setItem('user', JSON.stringify(merged))
@@ -70,28 +73,6 @@ const DriverHomeScreen: React.FC = () => {
         }
       } catch (e) {
         console.warn('wallet fetch failed', e)
-      }
-
-      // 2.5) Check verified status
-      try {
-        const verifyResp: any = await ekycService.checkVerifiedStatus()
-        // Backend returns: { result: boolean, message: string }
-        if (mountedRef.current) {
-          const isVerified = verifyResp?.result === true
-          const message = verifyResp?.message || ''
-          
-          const statusData = {
-            isVerified,
-            message
-          }
-          useAuthStore.setState({ 
-            isVerified: statusData.isVerified,
-            verificationMessage: statusData.message
-          })
-          await AsyncStorage.setItem('verificationStatus', JSON.stringify(statusData))
-        }
-      } catch (e) {
-        console.warn('checkVerifiedStatus failed', e)
       }
 
       // 3) Fetch driver history: daily and weekly
@@ -122,9 +103,9 @@ const DriverHomeScreen: React.FC = () => {
 
       if (mountedRef.current) {
         setDrivingStats({
-          continuous: { current: Number(continuousHours.toFixed(2)), max: 4, status: continuousHours > 4 ? 'WARNING' : 'SAFE' },
-          daily: { current: Number(dailyHours.toFixed(2)), max: 10, status: dailyHours > 10 ? 'WARNING' : 'SAFE' },
-          weekly: { current: Number(weeklyHours.toFixed(2)), max: 48, status: weeklyHours > 48 ? 'WARNING' : 'SAFE' }
+          continuous: { current: Number(continuousHours.toFixed(2)), max: 4, status: continuousHours >= 4 ? 'WARNING' : 'SAFE' },
+          daily: { current: Number(dailyHours.toFixed(2)), max: 10, status: dailyHours >= 10 ? 'WARNING' : 'SAFE' },
+          weekly: { current: Number(weeklyHours.toFixed(2)), max: 48, status: weeklyHours >= 48 ? 'WARNING' : 'SAFE' }
         })
       }
     } catch (e) {

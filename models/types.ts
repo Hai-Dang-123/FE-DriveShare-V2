@@ -300,9 +300,28 @@ export interface ProviderSummary {
 export interface DriverAssignment {
   driverId: string;
   fullName: string;
-  type: string;
+  type: string; // "PRIMARY" | "SECONDARY"
   assignmentStatus: string;
   paymentStatus: string;
+  baseAmount: number;
+  depositAmount: number;
+  depositStatus: string;
+  startAddress?: string;
+  startLat?: number;
+  startLng?: number;
+  endAddress?: string;
+  endLat?: number;
+  endLng?: number;
+  isOnBoard: boolean; // ✅ CHECK-IN STATUS - Tài xế đã lên xe chưa
+  onBoardTime: string | null;
+  onBoardLocation: string | null;
+  onBoardImage: string | null;
+  checkInNote: string | null;
+  isFinished: boolean;
+  offBoardTime: string | null;
+  offBoardLocation: string | null;
+  offBoardImage: string | null;
+  checkOutNote: string | null;
 }
 
 // 🚩 Tóm tắt Contact (Liên hệ)
@@ -334,6 +353,68 @@ export interface ContractSummary {
   ownerSignAt?: string;
   counterpartySigned?: boolean;
   counterpartySignAt?: string;
+}
+
+// 🚩 Contract Party (Bên ký kết)
+export interface ContractPartyDTO {
+  userId: string;
+  fullName: string;
+  companyName?: string;
+  taxCode?: string;
+  phoneNumber?: string;
+  email?: string;
+  address?: string;
+  role: string;
+}
+
+// 🚩 Contract Template
+export interface ContractTemplateDTO {
+  contractTemplateId: string;
+  contractTemplateName: string;
+  version: string;
+  createdAt: string;
+  type: string;
+}
+
+// 🚩 Contract Term Detail
+export interface ContractTermDTO {
+  contractTermId: string;
+  content: string;
+  order: number;
+  contractTemplateId: string;
+}
+
+// 🚩 Trip Provider Contract Detail
+export interface TripProviderContractDTO {
+  contractId: string;
+  contractCode: string;
+  tripId: string;
+  tripCode: string;
+  contractTemplateId: string;
+  templateName: string;
+  version: string;
+  contractValue: number;
+  currency: string;
+  status: string;
+  type: string;
+  ownerSigned: boolean;
+  ownerSignAt?: string;
+  providerSigned: boolean;
+  providerSignAt?: string;
+  fileURL?: string;
+  createAt: string;
+  effectiveDate?: string;
+  expirationDate?: string;
+  note?: string;
+  partyA: ContractPartyDTO;
+  partyB: ContractPartyDTO;
+}
+
+// 🚩 Trip Provider Contract Detail Response
+export interface TripProviderContractDetailDTO {
+  contract: TripProviderContractDTO;
+  template: ContractTemplateDTO;
+  terms: ContractTermDTO[];
 }
 
 // === 🚀 DTO CHÍNH CHO MÀN HÌNH CHI TIẾT ===

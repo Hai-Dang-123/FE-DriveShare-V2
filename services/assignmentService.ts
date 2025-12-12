@@ -71,6 +71,78 @@ const assignmentService = {
       throw e
     }
   }
+  ,
+  async driverCheckIn(tripId: string, latitude: number, longitude: number, currentAddress: string, evidenceImage: File | any) {
+    try {
+      const formData = new FormData()
+      formData.append('TripId', tripId)
+      formData.append('Latitude', String(latitude))
+      formData.append('Longitude', String(longitude))
+      if (currentAddress) formData.append('CurrentAddress', currentAddress)
+      
+      // Handle file upload for both Web and Mobile
+      const fileName = evidenceImage.name || evidenceImage.uri?.split('/').pop() || 'evidence.jpg'
+      
+      // Check if it's a Web File object (has instanceof File or Blob)
+      if (evidenceImage instanceof File || evidenceImage instanceof Blob) {
+        // WEB: Direct append File/Blob object
+        formData.append('EvidenceImage', evidenceImage, fileName)
+      } else if (evidenceImage.uri) {
+        // MOBILE: React Native format with uri, name, type
+        formData.append('EvidenceImage', {
+          uri: evidenceImage.uri,
+          name: fileName,
+          type: evidenceImage.type || 'image/jpeg'
+        } as any)
+      } else {
+        throw new Error('Invalid image format')
+      }
+      
+      const res = await api.post('api/TripDriverAssignments/check-in', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  },
+
+  async driverCheckOut(tripId: string, latitude: number, longitude: number, currentAddress: string, evidenceImage: File | any) {
+    try {
+      const formData = new FormData()
+      formData.append('TripId', tripId)
+      formData.append('Latitude', String(latitude))
+      formData.append('Longitude', String(longitude))
+      if (currentAddress) formData.append('CurrentAddress', currentAddress)
+      
+      // Handle file upload for both Web and Mobile
+      const fileName = evidenceImage.name || evidenceImage.uri?.split('/').pop() || 'evidence.jpg'
+      
+      // Check if it's a Web File object (has instanceof File or Blob)
+      if (evidenceImage instanceof File || evidenceImage instanceof Blob) {
+        // WEB: Direct append File/Blob object
+        formData.append('EvidenceImage', evidenceImage, fileName)
+      } else if (evidenceImage.uri) {
+        // MOBILE: React Native format with uri, name, type
+        formData.append('EvidenceImage', {
+          uri: evidenceImage.uri,
+          name: fileName,
+          type: evidenceImage.type || 'image/jpeg'
+        } as any)
+      } else {
+        throw new Error('Invalid image format')
+      }
+      
+      const res = await api.post('api/TripDriverAssignments/check-out', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.data) return e.response.data
+      throw e
+    }
+  }
 }
 
 export default assignmentService

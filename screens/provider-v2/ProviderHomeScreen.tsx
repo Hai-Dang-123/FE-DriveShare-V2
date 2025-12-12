@@ -39,7 +39,15 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
         setProfile(prof)
         const existing = useAuthStore.getState().user
         if (existing) {
-          const merged = { ...existing, profile: prof, userName: prof.fullName ?? existing.userName, email: prof.email ?? existing.email, phoneNumber: prof.phoneNumber ?? existing.phoneNumber, avatarUrl: prof.avatarUrl ?? existing.avatarUrl }
+          const merged = { 
+            ...existing, 
+            profile: prof, 
+            userName: prof.fullName ?? existing.userName, 
+            email: prof.email ?? existing.email, 
+            phoneNumber: prof.phoneNumber ?? existing.phoneNumber, 
+            avatarUrl: prof.avatarUrl ?? existing.avatarUrl,
+            hasVerifiedCitizenId: prof.hasVerifiedCitizenId ?? false,
+          }
           useAuthStore.setState({ user: merged })
           await AsyncStorage.setItem('user', JSON.stringify(merged))
         }
@@ -50,26 +58,6 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
       if (w) {
         useAuthStore.setState({ wallet: w })
         await AsyncStorage.setItem('wallet', JSON.stringify(w))
-      }
-
-      // Check verified status
-      try {
-        const verifyResp: any = await ekycService.checkVerifiedStatus()
-        // Backend returns: { result: boolean, message: string }
-        const isVerified = verifyResp?.result === true
-        const message = verifyResp?.message || ''
-        
-        const statusData = {
-          isVerified,
-          message
-        }
-        useAuthStore.setState({ 
-          isVerified: statusData.isVerified,
-          verificationMessage: statusData.message
-        })
-        await AsyncStorage.setItem('verificationStatus', JSON.stringify(statusData))
-      } catch (e) {
-        console.warn('checkVerifiedStatus failed', e)
       }
     } catch (e) {
       console.warn('ProviderHome load failed', e)

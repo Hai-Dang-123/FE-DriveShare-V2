@@ -228,13 +228,21 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
   const getDeliveryDateValidation = () => {
     if (!routeValidation?.suggestedMinDeliveryDate || !form.deliveryDate) return null
     
-    const suggestedTime = new Date(routeValidation.suggestedMinDeliveryDate).getTime()
-    const selectedTime = new Date(form.deliveryDate).getTime()
+    // So sánh NGÀY, bỏ qua giờ phút giây
+    const suggestedDate = new Date(routeValidation.suggestedMinDeliveryDate)
+    const selectedDate = new Date(form.deliveryDate)
+    
+    // Reset về đầu ngày (00:00:00) để chỉ so sánh ngày
+    suggestedDate.setHours(0, 0, 0, 0)
+    selectedDate.setHours(0, 0, 0, 0)
+    
+    const suggestedTime = suggestedDate.getTime()
+    const selectedTime = selectedDate.getTime()
     
     if (selectedTime < suggestedTime) {
       return {
         isValid: false,
-        message: `⚠️ Thời gian giao hàng quá ngắn! Vui lòng chọn sau ${new Date(suggestedTime).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+        message: `⚠️ Thời gian giao hàng quá ngắn! Vui lòng chọn từ ${new Date(suggestedTime).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })} trở đi`
       }
     }
     return { isValid: true, message: '✓ Thời gian giao hàng hợp lý' }

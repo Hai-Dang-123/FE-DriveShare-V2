@@ -32,6 +32,7 @@ import {
 // --- SERVICES & MODELS ---
 import tripService from "@/services/tripService";
 import tripProviderContractService from "@/services/tripProviderContractService";
+import tripSurchargeService, { SurchargeType } from "@/services/tripSurchargeService";
 import { TripDetailFullDTOExtended } from "@/models/types";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -47,15 +48,64 @@ import RouteProgressBar from "../../components/map/RouteProgressBar";
 import { ContractDocument } from "@/components/documents/ContractDocument";
 import { DeliveryRecordDocument } from "@/components/documents/DeliveryRecordDocument";
 import { HandoverRecordDocument } from "@/components/documents/HandoverRecordDocument";
+import HandoverChecklistEditor, { HandoverChecklistFormData } from "@/components/shared/HandoverChecklistEditor";
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// --- ENUMS ---
+// VehicleIssueType enum matching backend
+type VehicleIssueType = 
+  // Ngoại thất (Bodywork)
+  | 'SCRATCH'       // Trầy xước
+  | 'DENT'          // Móp méo
+  | 'CRACK'         // Nứt/Vỡ (Kính, đèn, gương)
+  | 'PAINT_PEELING' // Tróc sơn
+  // Vệ sinh (Cleanliness)
+  | 'DIRTY'         // Dơ bẩn/Cần vệ sinh
+  | 'ODOR'          // Có mùi hôi
+  // Vận hành & Kỹ thuật (Mechanical)
+  | 'MECHANICAL'    // Lỗi động cơ/Máy móc
+  | 'ELECTRICAL'    // Lỗi hệ thống điện
+  | 'TIRE'          // Lỗi lốp xe
+  // Tài sản (Inventory)
+  | 'MISSING_ITEM'  // Mất phụ kiện/Giấy tờ
+  // Khác
+  | 'OTHER';        // Khác
+
+// --- CROSS-PLATFORM ALERT HELPER ---
+const showAlertCrossPlatform = (title: string, message: string, onOk?: () => void) => {
+  if (Platform.OS === 'web') {
+    const confirmed = window.confirm(`${title}\n${message}`);
+    if (confirmed && onOk) onOk();
+  } else {
+    Alert.alert(title, message, onOk ? [{ text: 'OK', onPress: onOk }] : undefined);
+  }
+};
+
+// --- HELPER: GET ISSUE TYPE LABEL ---
+const getIssueTypeLabel = (type: VehicleIssueType): string => {
+  const labels: Record<VehicleIssueType, string> = {
+    SCRATCH: 'Trầy xước',
+    DENT: 'Móp méo',
+    CRACK: 'Nứt/Vỡ',
+    PAINT_PEELING: 'Tróc sơn',
+    DIRTY: 'Dơ bẩn',
+    ODOR: 'Có mùi hôi',
+    MECHANICAL: 'Lỗi động cơ',
+    ELECTRICAL: 'Lỗi điện',
+    TIRE: 'Lỗi lốp xe',
+    MISSING_ITEM: 'Mất phụ kiện',
+    OTHER: 'Khác',
+  };
+  return labels[type] || type;
+};
 
 // --- COMPONENT: STEPPER TIẾN TRÌNH ---
 const TripStepper = ({ status }: { status: string }) => {
   let currentStep = 1;
   if (['CREATED', 'PENDING', 'AWAITING_OWNER_CONTRACT'].includes(status)) currentStep = 1;
   else if (['AWAITING_DRIVER','PENDING_DRIVER_ASSIGNMENT', 'DONE_ASSIGNING_DRIVER'].includes(status)) currentStep = 2;
-  else if (['READY_FOR_VEHICLE_HANDOVER', 'VEHICLE_HANDOVERED', 'MOVING_TO_PICKUP', 'VEHICLE_RETURNED'].includes(status)) currentStep = 3;
+  else if (['READY_FOR_VEHICLE_HANDOVER', 'VEHICLE_HANDOVERED', 'MOVING_TO_PICKUP', 'VEHICLE_RETURNED','VEHICLE_RETURNING'].includes(status)) currentStep = 3;
   else if (['COMPLETED', 'CANCELLED'].includes(status)) currentStep = 4;
 
   const steps = [
@@ -143,6 +193,8 @@ const TripDetailScreen: React.FC = () => {
   // Contract Modal
   const [showContractModal, setShowContractModal] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [loadingProviderContract, setLoadingProviderContract] = useState(false);
+  const [providerContractDetail, setProviderContractDetail] = useState<any | null>(null);
 
   // Driver Contract Modal
   const [showDriverContractModal, setShowDriverContractModal] = useState(false);
@@ -157,10 +209,23 @@ const TripDetailScreen: React.FC = () => {
   const [activeHandoverRecord, setActiveHandoverRecord] = useState<any | null>(null);
   const [loadingHandoverRecord, setLoadingHandoverRecord] = useState(false);
 
-  // Edit Checklist
-  const [isEditingChecklist, setIsEditingChecklist] = useState(false);
-  const [editedTerms, setEditedTerms] = useState<any[]>([]);
-  const [savingChecklist, setSavingChecklist] = useState(false);
+  // Edit Checklist - using new HandoverChecklistEditor component
+  const [showHandoverEditor, setShowHandoverEditor] = useState(false);
+  
+  // Issue reporting states
+  const [showIssuesPanel, setShowIssuesPanel] = useState(false);
+  const [showIssueModal, setShowIssueModal] = useState(false);
+  const [issueType, setIssueType] = useState<VehicleIssueType>('SCRATCH');
+  const [issueDescription, setIssueDescription] = useState('');
+  const [issueImage, setIssueImage] = useState<File | string | null>(null);
+  const [submittingIssue, setSubmittingIssue] = useState(false);
+  
+  // Surcharge/Compensation states for handover issues
+  const [showSurchargeModal, setShowSurchargeModal] = useState(false);
+  const [selectedIssue, setSelectedIssue] = useState<any | null>(null);
+  const [surchargeAmount, setSurchargeAmount] = useState('');
+  const [surchargeDescription, setSurchargeDescription] = useState('');
+  const [submittingSurcharge, setSubmittingSurcharge] = useState(false);
 
   // OTP
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -213,29 +278,47 @@ const TripDetailScreen: React.FC = () => {
         setDriverAnalysis(analysisRes.result);
       }
     } catch (error) {
-      Alert.alert("Lỗi", "Không thể tải dữ liệu chuyến đi");
+      showAlertCrossPlatform("Lỗi", "Không thể tải dữ liệu chuyến đi");
     } finally {
       setLoading(false);
     }
   };
 
   // --- Helper Functions ---
+  const openProviderContractModal = async (contractId?: string) => {
+    if (!contractId) return showAlertCrossPlatform("Thông báo", "Không có hợp đồng để xem");
+    setLoadingProviderContract(true);
+    try {
+      const res: any = await tripProviderContractService.getById(contractId);
+      if (res?.isSuccess && res.result) {
+        setProviderContractDetail(res.result);
+        setShowContractModal(true);
+      } else {
+        showAlertCrossPlatform("Lỗi", res?.message || "Không thể tải hợp đồng");
+      }
+    } catch (e: any) {
+      showAlertCrossPlatform("Lỗi", e?.message || "Không thể tải hợp đồng");
+    } finally {
+      setLoadingProviderContract(false);
+    }
+  };
+
   const openDriverContractModal = async (contractId?: string) => {
-    if (!tripId || !contractId) return Alert.alert("Thông báo", "Không có hợp đồng để xem");
+    if (!tripId || !contractId) return showAlertCrossPlatform("Thông báo", "Không có hợp đồng để xem");
     setLoadingDriverContract(true);
     try {
       const res: any = await tripService.getById(tripId);
       if (res?.isSuccess && res.result) {
         const found = (res.result.driverContracts || []).find((c: any) => String(c.contractId) === String(contractId));
-        if (!found) return Alert.alert("Thông báo", "Không tìm thấy hợp đồng");
+        if (!found) return showAlertCrossPlatform("Thông báo", "Không tìm thấy hợp đồng");
         setActiveDriverContract(found);
         setShowDriverContractModal(true);
       }
-    } catch (e: any) { Alert.alert("Lỗi", e?.message || "Không thể tải hợp đồng"); } finally { setLoadingDriverContract(false); }
+    } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message || "Không thể tải hợp đồng"); } finally { setLoadingDriverContract(false); }
   };
 
   const openDeliveryRecordModal = async (recordId?: string) => {
-    if (!recordId) return Alert.alert("Thông báo", "Không có biên bản");
+    if (!recordId) return showAlertCrossPlatform("Thông báo", "Không có biên bản");
     setLoadingDeliveryRecord(true);
     try {
       const res: any = await tripService.getDeliveryRecordForDriver(recordId);
@@ -253,19 +336,19 @@ const TripDetailScreen: React.FC = () => {
         }
         setActiveDeliveryRecord(record);
         setShowDeliveryModal(true);
-      } else Alert.alert("Lỗi", res?.message || "Không thể tải biên bản");
-    } catch (e: any) { Alert.alert("Lỗi", e?.message || "Không thể tải biên bản"); } finally { setLoadingDeliveryRecord(false); }
+      } else showAlertCrossPlatform("Lỗi", res?.message || "Không thể tải biên bản");
+    } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message || "Không thể tải biên bản"); } finally { setLoadingDeliveryRecord(false); }
   };
 
   const openVehicleHandoverModal = async (recordId?: string) => {
-    if (!recordId) return Alert.alert("Thông báo", "Không có biên bản giao xe");
+    if (!recordId) return showAlertCrossPlatform("Thông báo", "Không có biên bản giao xe");
     setLoadingHandoverRecord(true);
     try {
       const res: any = await tripService.getVehicleHandoverRecord(recordId);
       if (res?.isSuccess && res?.result) {
         const record = res.result;
         if (record.termResults && Array.isArray(record.termResults)) {
-          // Map for editing UI
+          // Map for editing UI (used by HandoverChecklistEditor)
           record.terms = record.termResults.map((term: any, index: number) => ({
             tripVehicleHandoverTermResultId: term.tripVehicleHandoverTermResultId,
             vehicleHandoverTermId: term.tripVehicleHandoverTermResultId || term.termId || `term-${index}`,
@@ -274,19 +357,53 @@ const TripDetailScreen: React.FC = () => {
             deviation: term.note || "",
             displayOrder: index,
           }));
-          // Map for document display - add isOk and termContent
+          // Keep termResults intact with all original fields for editing
           record.termResults = record.termResults.map((term: any) => ({
-            termResultId: term.tripVehicleHandoverTermResultId,
+            tripVehicleHandoverTermResultId: term.tripVehicleHandoverTermResultId,
             termContent: term.termContent || "",
-            isOk: term.isPassed || false,
-            note: term.note || null,
+            isPassed: term.isPassed !== undefined ? term.isPassed : false,
+            note: term.note || "",
+            evidenceImageUrl: term.evidenceImageUrl || null,
+            // Also add fields for document display
+            termResultId: term.tripVehicleHandoverTermResultId,
+            isOk: term.isPassed !== undefined ? term.isPassed : false,
           }));
         } else { record.terms = []; }
+        
+        // Map issues to ensure correct field names
+        if (record.issues && Array.isArray(record.issues)) {
+          record.issues = record.issues.map((issue: any) => ({
+            vehicleHandoverIssueId: issue.vehicleHandoverIssueId || issue.tripVehicleHandoverIssueId,
+            tripVehicleHandoverIssueId: issue.tripVehicleHandoverIssueId || issue.vehicleHandoverIssueId,
+            issueType: issue.issueType || 'OTHER',
+            description: issue.description || '',
+            status: issue.status || 'REPORTED',
+            severity: issue.severity || 'MEDIUM',
+            estimatedCompensationAmount: issue.estimatedCompensationAmount || null,
+            imageUrls: issue.imageUrls || [],
+            surcharges: issue.surcharges || [],
+          }));
+        } else {
+          record.issues = [];
+        }
+        
+        // Map surcharges from root level
+        if (record.surcharges && Array.isArray(record.surcharges)) {
+          record.surcharges = record.surcharges.map((surcharge: any) => ({
+            tripSurchargeId: surcharge.tripSurchargeId,
+            type: surcharge.type || 'OTHER',
+            amount: surcharge.amount || 0,
+            description: surcharge.description || '',
+            status: surcharge.status || 'PENDING',
+          }));
+        } else {
+          record.surcharges = [];
+        }
+        
         setActiveHandoverRecord(record);
-        setEditedTerms(record.terms);
         setShowHandoverModal(true);
-      } else { Alert.alert("Lỗi", res?.message || "Không thể tải biên bản"); }
-    } catch (e: any) { Alert.alert("Lỗi", e?.message || "Không thể tải biên bản"); } finally { setLoadingHandoverRecord(false); }
+      } else { showAlertCrossPlatform("Lỗi", res?.message || "Không thể tải biên bản"); }
+    } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message || "Không thể tải biên bản"); } finally { setLoadingHandoverRecord(false); }
   };
 
   const handleConfirmDrivers = async () => {
@@ -298,9 +415,9 @@ const TripDetailScreen: React.FC = () => {
       try {
         const res: any = await tripService.changeStatus({ TripId: trip.tripId, NewStatus: "READY_FOR_VEHICLE_HANDOVER" });
         if (!res?.isSuccess) throw new Error(res?.message);
-        Alert.alert("Thành công", "Đã xác nhận đủ tài xế.");
+        showAlertCrossPlatform("Thành công", "Đã xác nhận đủ tài xế.");
         await fetchTrip(tripId);
-      } catch (e: any) { Alert.alert("Lỗi", e?.message); } finally { setConfirmingDrivers(false); }
+      } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message); } finally { setConfirmingDrivers(false); }
       return;
     }
     Alert.alert("Xác nhận", "Xác nhận rằng chuyến này đã có đủ tài xế?", [
@@ -311,9 +428,9 @@ const TripDetailScreen: React.FC = () => {
           try {
             const res: any = await tripService.changeStatus({ TripId: trip.tripId, NewStatus: "READY_FOR_VEHICLE_HANDOVER" });
             if (!res?.isSuccess) throw new Error(res?.message);
-            Alert.alert("Thành công", "Đã xác nhận đủ tài xế.");
+            showAlertCrossPlatform("Thành công", "Đã xác nhận đủ tài xế.");
             await fetchTrip(tripId);
-          } catch (e: any) { Alert.alert("Lỗi", e?.message); } finally { setConfirmingDrivers(false); }
+          } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message); } finally { setConfirmingDrivers(false); }
         }
       },
     ]);
@@ -328,9 +445,9 @@ const TripDetailScreen: React.FC = () => {
       try {
         const res: any = await tripService.changeStatus({ TripId: trip.tripId, NewStatus: "COMPLETED" });
         if (!res?.isSuccess) throw new Error(res?.message);
-        Alert.alert("Thành công", "Chuyến đi đã được hoàn tất");
+        showAlertCrossPlatform("Thành công", "Chuyến đi đã được hoàn tất");
         await fetchTrip(tripId);
-      } catch (e: any) { Alert.alert("Lỗi", e?.message); } finally { setConfirmingCompletion(false); }
+      } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message); } finally { setConfirmingCompletion(false); }
       return;
     }
     Alert.alert("Xác nhận", "Xác nhận đã trả xe và hoàn tất chuyến đi?", [
@@ -341,9 +458,9 @@ const TripDetailScreen: React.FC = () => {
           try {
             const res: any = await tripService.changeStatus({ TripId: trip.tripId, NewStatus: "COMPLETED" });
             if (!res?.isSuccess) throw new Error(res?.message);
-            Alert.alert("Thành công", "Chuyến đi đã được hoàn tất");
+            showAlertCrossPlatform("Thành công", "Chuyến đi đã được hoàn tất");
             await fetchTrip(tripId);
-          } catch (e: any) { Alert.alert("Lỗi", e?.message); } finally { setConfirmingCompletion(false); }
+          } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message); } finally { setConfirmingCompletion(false); }
         }
       },
     ]);
@@ -358,9 +475,9 @@ const TripDetailScreen: React.FC = () => {
       try {
         const res: any = await tripService.changeStatus({ TripId: trip.tripId, NewStatus: "COMPLETED" });
         if (!res?.isSuccess) throw new Error(res?.message);
-        Alert.alert("Thành công", "Hành trình đã được hoàn tất");
+        showAlertCrossPlatform("Thành công", "Hành trình đã được hoàn tất");
         await fetchTrip(tripId);
-      } catch (e: any) { Alert.alert("Lỗi", e?.message); } finally { setConfirmingTripCompletion(false); }
+      } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message); } finally { setConfirmingTripCompletion(false); }
       return;
     }
     Alert.alert("Xác nhận", "Xác nhận hoàn tất hành trình?", [
@@ -371,84 +488,124 @@ const TripDetailScreen: React.FC = () => {
           try {
             const res: any = await tripService.changeStatus({ TripId: trip.tripId, NewStatus: "COMPLETED" });
             if (!res?.isSuccess) throw new Error(res?.message);
-            Alert.alert("Thành công", "Hành trình đã được hoàn tất");
+            showAlertCrossPlatform("Thành công", "Hành trình đã được hoàn tất");
             await fetchTrip(tripId);
-          } catch (e: any) { Alert.alert("Lỗi", e?.message); } finally { setConfirmingTripCompletion(false); }
+          } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message); } finally { setConfirmingTripCompletion(false); }
         }
       },
     ]);
   };
 
   const handleSignContract = async () => {
-    if (!trip?.providerContracts?.contractId) return;
+    const contractId = providerContractDetail?.contract?.contractId || trip?.providerContracts?.contractId;
+    if (!contractId) return;
     setSigning(true);
     try {
-      const res: any = await tripProviderContractService.sendSignOtp(trip.providerContracts.contractId);
+      const res: any = await tripProviderContractService.sendSignOtp(contractId);
       if (res?.isSuccess) {
         setOtpDigits(Array(6).fill(""));
         setShowOtpModal(true);
         setTimeout(() => otpInputsRef.current?.[0]?.focus?.(), 200);
-      } else { Alert.alert("Lỗi", res?.message); }
-    } catch (e: any) { Alert.alert("Lỗi", e?.message); } finally { setSigning(false); }
+      } else { showAlertCrossPlatform("Lỗi", res?.message); }
+    } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message); } finally { setSigning(false); }
   };
 
   const submitOtp = async () => {
     const otp = otpDigits.join("");
-    if (otp.length < 6) return Alert.alert("OTP", "Vui lòng nhập đủ 6 số");
+    if (otp.length < 6) return showAlertCrossPlatform("OTP", "Vui lòng nhập đủ 6 số");
+    const contractId = providerContractDetail?.contract?.contractId || trip?.providerContracts?.contractId;
+    if (!contractId) return showAlertCrossPlatform("Lỗi", "Không tìm thấy hợp đồng");
     setOtpLoading(true);
     try {
-      const res: any = await tripProviderContractService.signContract({ ContractId: trip!.providerContracts!.contractId, Otp: otp });
+      const res: any = await tripProviderContractService.signContract({ ContractId: contractId, Otp: otp });
       if (res?.isSuccess) {
-        Alert.alert("Thành công", "Ký hợp đồng thành công");
+        showAlertCrossPlatform("Thành công", "Ký hợp đồng thành công");
         setShowOtpModal(false); setShowContractModal(false); fetchTrip(tripId);
-      } else { Alert.alert("Lỗi", res?.message); }
-    } catch (e: any) { Alert.alert("Lỗi", e?.message); } finally { setOtpLoading(false); }
+      } else { showAlertCrossPlatform("Lỗi", res?.message); }
+    } catch (e: any) { showAlertCrossPlatform("Lỗi", e?.message); } finally { setOtpLoading(false); }
   };
 
   const resendOtp = async () => {
-    if (!trip?.providerContracts?.contractId) return;
+    const contractId = providerContractDetail?.contract?.contractId || trip?.providerContracts?.contractId;
+    if (!contractId) return;
     try {
-      const res: any = await tripProviderContractService.sendSignOtp(trip.providerContracts.contractId);
-      if (res?.isSuccess) { Alert.alert("Đã gửi", "OTP đã được gửi lại"); }
+      const res: any = await tripProviderContractService.sendSignOtp(contractId);
+      if (res?.isSuccess) { showAlertCrossPlatform("Đã gửi", "OTP đã được gửi lại"); }
     } catch (e) { }
   };
 
   const openDriverContractPdf = async (contractId: any) => {
     if (!contractId) return;
-    try { const res: any = await tripService.getDriverContractPdfLink(contractId); if (res?.result) Linking.openURL(res.result); } catch (e) { Alert.alert("Lỗi", "Không mở được PDF"); }
+    try { const res: any = await tripService.getDriverContractPdfLink(contractId); if (res?.result) Linking.openURL(res.result); } catch (e) { showAlertCrossPlatform("Lỗi", "Không mở được PDF"); }
   };
   const openDeliveryRecordPdf = async (recordId: any) => {
     if (!recordId) return;
-    try { const res: any = await tripService.getDeliveryRecordPdfLink(recordId); if (res?.result) Linking.openURL(res.result); } catch (e) { Alert.alert("Lỗi", "Không mở được PDF"); }
+    try { const res: any = await tripService.getDeliveryRecordPdfLink(recordId); if (res?.result) Linking.openURL(res.result); } catch (e) { showAlertCrossPlatform("Lỗi", "Không mở được PDF"); }
   };
   const openVehicleHandoverPdf = async (recordId: any) => {
     if (!recordId) return;
-    try { const res: any = await tripService.getVehicleHandoverPdfLink(recordId); if (res?.result) Linking.openURL(res.result); } catch (e) { Alert.alert("Lỗi", "Không mở được PDF"); }
+    try { const res: any = await tripService.getVehicleHandoverPdfLink(recordId); if (res?.result) Linking.openURL(res.result); } catch (e) { showAlertCrossPlatform("Lỗi", "Không mở được PDF"); }
   };
 
-  const toggleEditChecklist = () => {
-    if (isEditingChecklist) setEditedTerms(activeHandoverRecord?.terms || []);
-    setIsEditingChecklist(!isEditingChecklist);
+  // Handover Editor handlers
+  const handleOpenHandoverEditor = () => {
+    if (activeHandoverRecord) {
+      console.log('📝 Opening editor with termResults:', activeHandoverRecord.termResults);
+    }
+    setShowHandoverEditor(true);
   };
-  const saveChecklist = async () => {
-    setSavingChecklist(true);
+
+  const handleSaveHandoverChecklist = async (formData: any) => {
     try {
-      const res: any = await tripService.updateVehicleHandoverChecklist({
-        RecordId: activeHandoverRecord.tripVehicleHandoverRecordId,
-        ChecklistItems: editedTerms.map((t: any) => ({ TripVehicleHandoverTermResultId: t.tripVehicleHandoverTermResultId, IsPassed: t.isChecked, Note: t.deviation || "" }))
+      console.log('📋 FormData received:', formData);
+      console.log('📋 ChecklistItems:', formData.checklistItems);
+      console.log('📋 RecordId:', formData.recordId);
+      formData.checklistItems.forEach((item: any, idx: number) => {
+        console.log(`📋 Item ${idx}:`, JSON.stringify(item, null, 2));
+        console.log(`📋 Item ${idx} tripVehicleHandoverTermResultId:`, item.tripVehicleHandoverTermResultId);
       });
-      if (res?.isSuccess) { setActiveHandoverRecord({ ...activeHandoverRecord, terms: editedTerms }); setIsEditingChecklist(false); fetchTrip(tripId); }
-      else Alert.alert("Lỗi", res?.message);
-    } catch (e) { } finally { setSavingChecklist(false); }
+      
+      const res: any = await tripService.updateVehicleHandoverChecklist({
+        RecordId: formData.recordId,
+        CurrentOdometer: formData.currentOdometer,
+        FuelLevel: formData.fuelLevel,
+        IsEngineLightOn: formData.isEngineLightOn,
+        Notes: formData.notes,
+        ChecklistItems: formData.checklistItems.map((item: any) => {
+          console.log('📋 Mapping item:', item);
+          const termResultId = item.tripVehicleHandoverTermResultId || item.vehicleHandoverTermId || item.id;
+          if (!termResultId) {
+            console.error('❌ Missing term result ID:', item);
+            throw new Error('Missing TripVehicleHandoverTermResultId for checklist item');
+          }
+          return {
+            TripVehicleHandoverTermResultId: termResultId,
+            IsPassed: item.isPassed,
+            Note: item.note || "",
+            EvidenceImage: item.evidenceImage,
+          };
+        })
+      });
+      
+      if (res?.isSuccess) {
+        showAlertCrossPlatform("Thành công", "Đã cập nhật biên bản giao nhận xe");
+        setShowHandoverEditor(false);
+        fetchTrip(tripId); // Refresh trip data
+      } else {
+        showAlertCrossPlatform("Lỗi", res?.message || "Không thể cập nhật biên bản");
+      }
+    } catch (e: any) {
+      console.error("Save handover checklist error:", e);
+      showAlertCrossPlatform("Lỗi", "Có lỗi xảy ra khi cập nhật biên bản");
+      throw e;
+    }
   };
-  const updateTermChecked = (i: number, c: boolean) => { const n = [...editedTerms]; n[i].isChecked = c; setEditedTerms(n); };
-  const updateTermNote = (i: number, t: string) => { const n = [...editedTerms]; n[i].deviation = t; setEditedTerms(n); };
 
   const sendOtpForSigning = async () => {
     setSendingHandoverOtp(true);
     try {
       const res: any = await tripService.sendVehicleHandoverOtp(activeHandoverRecord.tripVehicleHandoverRecordId);
-      if (res?.isSuccess) { setShowHandoverOtpModal(true); } else Alert.alert("Lỗi", res?.message);
+      if (res?.isSuccess) { setShowHandoverOtpModal(true); } else showAlertCrossPlatform("Lỗi", res?.message);
     } catch (e) { } finally { setSendingHandoverOtp(false); }
   };
 
@@ -456,8 +613,8 @@ const TripDetailScreen: React.FC = () => {
     setHandoverOtpLoading(true);
     try {
       const res: any = await tripService.signVehicleHandoverRecord({ RecordId: activeHandoverRecord.tripVehicleHandoverRecordId, Otp: handoverOtpDigits.join("") });
-      if (res?.isSuccess) { Alert.alert("Thành công", "Đã ký"); setShowHandoverOtpModal(false); openVehicleHandoverModal(activeHandoverRecord.tripVehicleHandoverRecordId); fetchTrip(tripId); }
-      else Alert.alert("Lỗi", res?.message);
+      if (res?.isSuccess) { showAlertCrossPlatform("Thành công", "Đã ký"); setShowHandoverOtpModal(false); openVehicleHandoverModal(activeHandoverRecord.tripVehicleHandoverRecordId); fetchTrip(tripId); }
+      else showAlertCrossPlatform("Lỗi", res?.message);
     } catch (e) { } finally { setHandoverOtpLoading(false); }
   };
 
@@ -468,7 +625,7 @@ const TripDetailScreen: React.FC = () => {
   };
   const toggleSimulation = () => {
     setSimulationActive(!simulationActive);
-    if (!simulationActive) Alert.alert("Demo Mode", "Đã bật chế độ mô phỏng.");
+    if (!simulationActive) showAlertCrossPlatform("Demo Mode", "Đã bật chế độ mô phỏng.");
   };
   const currentDistance = useMemo(() => {
     if (!trip?.tripRoute?.distanceKm || !routeCoords) return 0;
@@ -476,6 +633,12 @@ const TripDetailScreen: React.FC = () => {
     if (total === 0) return 0;
     return (simulatedProgressIndex / total) * trip.tripRoute.distanceKm;
   }, [simulatedProgressIndex, trip?.tripRoute?.distanceKm, routeCoords]);
+
+  const displaySurchargeAmount = useMemo(() => {
+    if (!surchargeAmount) return '';
+    const num = parseFloat(surchargeAmount);
+    return isNaN(num) ? '' : num.toLocaleString('vi-VN');
+  }, [surchargeAmount]);
 
   const handleOtpChange = (index: number, text: string) => {
     if (!/^[0-9]*$/.test(text)) return;
@@ -492,6 +655,125 @@ const TripDetailScreen: React.FC = () => {
   const handleHandoverOtpKeyPress = (index: number, key: string) => {
     if (key === "Backspace" && !handoverOtpDigits[index] && index > 0) {
       handoverOtpInputsRef.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOpenIssueModal = () => {
+    setIssueType('SCRATCH');
+    setIssueDescription('');
+    setIssueImage(null);
+    setShowIssueModal(true);
+  };
+
+  const handleSubmitIssue = async () => {
+    if (!activeHandoverRecord || !trip) return;
+    
+    if (!issueDescription.trim()) {
+      showAlertCrossPlatform('Lỗi', 'Vui lòng nhập mô tả sự cố');
+      return;
+    }
+
+    if (!issueImage) {
+      showAlertCrossPlatform('Lỗi', 'Vui lòng chọn ảnh minh chứng');
+      return;
+    }
+
+    setSubmittingIssue(true);
+    try {
+      const formData = new FormData();
+      formData.append('RecordId', activeHandoverRecord.tripVehicleHandoverRecordId);
+      formData.append('IssueType', issueType);
+      formData.append('Description', issueDescription.trim());
+      
+      if (issueImage instanceof File) {
+        formData.append('Image', issueImage);
+      } else if (typeof issueImage === 'string') {
+        const response = await fetch(issueImage);
+        const blob = await response.blob();
+        formData.append('Image', blob, 'issue.jpg');
+      }
+
+      const res = await tripService.reportHandoverIssue(formData);
+      
+      if (res.isSuccess) {
+        const newIssueId = res.result?.issueId;
+        showAlertCrossPlatform('Thành công', 'Đã báo cáo sự cố. Bạn có muốn tạo phiếu thu bồi thường?', () => {
+          setShowIssueModal(false);
+          // Reload record to get new issue
+          openVehicleHandoverModal(activeHandoverRecord.tripVehicleHandoverRecordId).then(() => {
+            // Find the new issue and open surcharge modal
+            if (newIssueId && activeHandoverRecord.issues) {
+              const issue = activeHandoverRecord.issues.find((i: any) => i.vehicleHandoverIssueId === newIssueId);
+              if (issue) {
+                handleOpenSurchargeModal(issue);
+              }
+            }
+          });
+        });
+      } else {
+        showAlertCrossPlatform('Lỗi', res.message || 'Không thể báo cáo sự cố');
+      }
+    } catch (error: any) {
+      showAlertCrossPlatform('Lỗi', error?.message || 'Có lỗi xảy ra');
+    } finally {
+      setSubmittingIssue(false);
+    }
+  };
+
+  const handleOpenSurchargeModal = (issue: any) => {
+    setSelectedIssue(issue);
+    setSurchargeAmount('');
+    setSurchargeDescription('');
+    setShowSurchargeModal(true);
+  };
+
+  const handleSubmitSurcharge = async () => {
+    if (!selectedIssue || !trip) return;
+    
+    const amount = parseFloat(surchargeAmount);
+    if (!surchargeAmount || isNaN(amount) || amount <= 0) {
+      showAlertCrossPlatform('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+      return;
+    }
+    
+    if (!surchargeDescription.trim()) {
+      showAlertCrossPlatform('Lỗi', 'Vui lòng nhập lý do bồi thường');
+      return;
+    }
+
+    setSubmittingSurcharge(true);
+    try {
+      // Map issue severity to surcharge type
+      const surchargeTypeMap: Record<string, SurchargeType> = {
+        'HIGH': SurchargeType.VEHICLE_DAMAGE,
+        'MEDIUM': SurchargeType.VEHICLE_DAMAGE,
+        'LOW': SurchargeType.CLEANING,
+      };
+
+      const dto = {
+        TripId: trip.tripId,
+        Type: surchargeTypeMap[selectedIssue.severity] || SurchargeType.VEHICLE_DAMAGE,
+        Amount: amount,
+        Description: surchargeDescription.trim(),
+        TripVehicleHandoverIssueId: selectedIssue.vehicleHandoverIssueId,
+      };
+
+      const res = await tripSurchargeService.createByOwner(dto);
+      
+      if (res.isSuccess) {
+        showAlertCrossPlatform('Thành công', `Đã tạo phiếu thu ${amount.toLocaleString('vi-VN')} VNĐ`);
+        setShowSurchargeModal(false);
+        // Reload handover record to show updated surcharges
+        if (activeHandoverRecord?.tripVehicleHandoverRecordId) {
+          await openVehicleHandoverModal(activeHandoverRecord.tripVehicleHandoverRecordId);
+        }
+      } else {
+        showAlertCrossPlatform('Lỗi', res.message || 'Không thể tạo phiếu thu');
+      }
+    } catch (error: any) {
+      showAlertCrossPlatform('Lỗi', error?.message || 'Có lỗi xảy ra');
+    } finally {
+      setSubmittingSurcharge(false);
     }
   };
   const handleOtpKeyPress = (index: number, e: any) => {
@@ -642,6 +924,27 @@ const TripDetailScreen: React.FC = () => {
 
             {['AWAITING_OWNER_CONTRACT', 'PENDING_DRIVER_ASSIGNMENT', 'DONE_ASSIGNING_DRIVER'].includes(trip.status) && (
               <>
+                {/* Trip Distance & Duration Info */}
+                {driverAnalysis.suggestion && (
+                  <View style={styles.tripInfoContainer}>
+                    <View style={styles.tripInfoItem}>
+                      <MaterialCommunityIcons name="map-marker-distance" size={18} color="#0284C7" />
+                      <Text style={styles.tripInfoLabel}>Khoảng cách</Text>
+                      <Text style={styles.tripInfoValue}>{driverAnalysis.suggestion.distanceKm?.toFixed(1) || 0} km</Text>
+                    </View>
+                    <View style={styles.tripInfoItem}>
+                      <MaterialCommunityIcons name="clock-outline" size={18} color="#0284C7" />
+                      <Text style={styles.tripInfoLabel}>Thời gian ước tính</Text>
+                      <Text style={styles.tripInfoValue}>{driverAnalysis.suggestion.estimatedDurationHours?.toFixed(1) || 0} giờ</Text>
+                    </View>
+                    <View style={styles.tripInfoItem}>
+                      <MaterialCommunityIcons name="steering" size={18} color="#0284C7" />
+                      <Text style={styles.tripInfoLabel}>Giờ lái yêu cầu</Text>
+                      <Text style={styles.tripInfoValue}>{driverAnalysis.suggestion.requiredHoursFromQuota?.toFixed(1) || 0} giờ</Text>
+                    </View>
+                  </View>
+                )}
+
                 {/* AI Recommendation */}
                 {driverAnalysis.suggestion?.systemRecommendation && (
                   <View style={styles.aiRecommendBox}>
@@ -649,7 +952,11 @@ const TripDetailScreen: React.FC = () => {
                       <MaterialCommunityIcons name="robot-outline" size={20} color="#D97706" style={{ marginRight: 6 }} />
                       <Text style={styles.aiTitle}>Đề xuất từ AI System</Text>
                     </View>
-                    <Text style={styles.aiText}>{driverAnalysis.suggestion.systemRecommendation}</Text>
+                    <Text style={styles.aiText}>
+                      {driverAnalysis.suggestion.systemRecommendation === 'SOLO' ? '1 Tài xế (Solo)' : 
+                       driverAnalysis.suggestion.systemRecommendation === 'TEAM' ? '2 Tài xế (Team)' : 
+                       '3 Tài xế (Express)'}
+                    </Text>
                   </View>
                 )}
                 {/* ScrollView Kịch Bản */}
@@ -662,8 +969,8 @@ const TripDetailScreen: React.FC = () => {
                     </View>
                     <Text style={styles.scenarioSub}>1 Tài xế (Solo)</Text>
                     <View style={styles.divider} />
-                    <Text style={styles.metricText}>⏱ {driverAnalysis.suggestion?.soloScenario?.totalHoursNeeded?.toFixed(1) || 0}h tổng</Text>
-                    <Text style={styles.metricText}>👤 {driverAnalysis.suggestion?.soloScenario?.workHoursPerDriver?.toFixed(1) || 0}h/tài</Text>
+                    <Text style={styles.metricText}>⏱ {driverAnalysis.suggestion?.soloScenario?.totalElapsedHours?.toFixed(1) || 0}h tổng</Text>
+                    <Text style={styles.metricText}>👤 {driverAnalysis.suggestion?.soloScenario?.drivingHoursPerDriver?.toFixed(1) || 0}h/tài</Text>
                     {driverAnalysis.suggestion?.soloScenario?.message && (
                       <Text style={styles.scenarioMessage}>{driverAnalysis.suggestion.soloScenario.message}</Text>
                     )}
@@ -680,8 +987,8 @@ const TripDetailScreen: React.FC = () => {
                     </View>
                     <Text style={styles.scenarioSub}>2 Tài xế (Team)</Text>
                     <View style={styles.divider} />
-                    <Text style={styles.metricText}>⏱ {driverAnalysis.suggestion?.teamScenario?.totalHoursNeeded?.toFixed(1) || 0}h tổng</Text>
-                    <Text style={styles.metricText}>👤 {driverAnalysis.suggestion?.teamScenario?.workHoursPerDriver?.toFixed(1) || 0}h/tài</Text>
+                    <Text style={styles.metricText}>⏱ {driverAnalysis.suggestion?.teamScenario?.totalElapsedHours?.toFixed(1) || 0}h tổng</Text>
+                    <Text style={styles.metricText}>👤 {driverAnalysis.suggestion?.teamScenario?.drivingHoursPerDriver?.toFixed(1) || 0}h/tài</Text>
                     {driverAnalysis.suggestion?.teamScenario?.message && (
                       <Text style={styles.scenarioMessage}>{driverAnalysis.suggestion.teamScenario.message}</Text>
                     )}
@@ -700,8 +1007,8 @@ const TripDetailScreen: React.FC = () => {
                     </View>
                     <Text style={styles.scenarioSub}>3 Tài xế (Express)</Text>
                     <View style={styles.divider} />
-                    <Text style={styles.metricText}>⏱ {driverAnalysis.suggestion?.expressScenario?.totalHoursNeeded?.toFixed(1) || 0}h tổng</Text>
-                    <Text style={styles.metricText}>👤 {driverAnalysis.suggestion?.expressScenario?.workHoursPerDriver?.toFixed(1) || 0}h/tài</Text>
+                    <Text style={styles.metricText}>⏱ {driverAnalysis.suggestion?.expressScenario?.totalElapsedHours?.toFixed(1) || 0}h tổng</Text>
+                    <Text style={styles.metricText}>👤 {driverAnalysis.suggestion?.expressScenario?.drivingHoursPerDriver?.toFixed(1) || 0}h/tài</Text>
                     {driverAnalysis.suggestion?.expressScenario?.message && (
                       <Text style={styles.scenarioMessage}>{driverAnalysis.suggestion.expressScenario.message}</Text>
                     )}
@@ -746,11 +1053,81 @@ const TripDetailScreen: React.FC = () => {
               {trip.drivers && trip.drivers.length > 0 ? (
                 <>
                   {trip.drivers.map((d, idx) => (
-                    <View key={idx} style={styles.driverRow}>
-                      <View style={styles.driverAvatar}><Text style={styles.driverAvatarText}>{d.fullName.charAt(0)}</Text></View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.driverName} numberOfLines={1}>{d.fullName}</Text>
-                        <Text style={styles.driverRole}>{d.type === "MAIN" ? "Chính" : "Phụ"}</Text>
+                    <View key={idx} style={styles.driverDetailCard}>
+                      {/* Header */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                        <View style={styles.driverAvatar}>
+                          <Text style={styles.driverAvatarText}>{d.fullName.charAt(0)}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.driverName}>{d.fullName}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <View style={[styles.badge, d.type === "PRIMARY" ? { backgroundColor: '#DBEAFE' } : { backgroundColor: '#FEF3C7' }]}>
+                              <Text style={[styles.badgeText, d.type === "PRIMARY" ? { color: '#1E40AF' } : { color: '#92400E' }]}>
+                                {d.type === "PRIMARY" ? "Chính" : "Phụ"}
+                              </Text>
+                            </View>
+                            <View style={[styles.badge, { backgroundColor: d.assignmentStatus === 'COMPLETED' ? '#D1FAE5' : '#FEE2E2' }]}>
+                              <Text style={[styles.badgeText, { color: d.assignmentStatus === 'COMPLETED' ? '#065F46' : '#991B1B' }]}>
+                                {d.assignmentStatus}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Payment Info */}
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>💰 Lương cơ bản:</Text>
+                        <Text style={styles.infoValue}>{d.baseAmount.toLocaleString('vi-VN')} đ</Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>🔒 Đặt cọc:</Text>
+                        <Text style={[styles.infoValue, { color: d.depositStatus === 'DEPOSITED' ? '#059669' : '#DC2626' }]}>
+                          {d.depositAmount.toLocaleString('vi-VN')} đ ({d.depositStatus})
+                        </Text>
+                      </View>
+
+                      {/* Check-in Info */}
+                      {d.isOnBoard && (
+                        <View style={[styles.statusSection, { backgroundColor: '#ECFDF5', borderLeftColor: '#10B981' }]}>
+                          <Text style={[styles.statusTitle, { color: '#065F46' }]}>✅ Đã Check-in</Text>
+                          {d.onBoardTime && (
+                            <Text style={styles.infoDetail}>🕐 {new Date(d.onBoardTime).toLocaleString('vi-VN')}</Text>
+                          )}
+                          {d.onBoardLocation && (
+                            <Text style={styles.infoDetail} numberOfLines={2}>📍 {d.onBoardLocation}</Text>
+                          )}
+                          {d.onBoardImage && (
+                            <Image source={{ uri: d.onBoardImage }} style={styles.evidenceImage} />
+                          )}
+                        </View>
+                      )}
+
+                      {/* Check-out Info */}
+                      {d.isFinished && (
+                        <View style={[styles.statusSection, { backgroundColor: '#F0F9FF', borderLeftColor: '#3B82F6' }]}>
+                          <Text style={[styles.statusTitle, { color: '#1E40AF' }]}>🏁 Đã Check-out</Text>
+                          {d.offBoardTime && (
+                            <Text style={styles.infoDetail}>🕐 {new Date(d.offBoardTime).toLocaleString('vi-VN')}</Text>
+                          )}
+                          {d.offBoardLocation && (
+                            <Text style={styles.infoDetail} numberOfLines={2}>📍 {d.offBoardLocation}</Text>
+                          )}
+                          {d.offBoardImage && (
+                            <Image source={{ uri: d.offBoardImage }} style={styles.evidenceImage} />
+                          )}
+                        </View>
+                      )}
+
+                      {/* Addresses */}
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>🚩 Điểm đón:</Text>
+                        <Text style={styles.infoValue} numberOfLines={1}>{d.startAddress || 'N/A'}</Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>🏁 Điểm trả:</Text>
+                        <Text style={styles.infoValue} numberOfLines={1}>{d.endAddress || 'N/A'}</Text>
                       </View>
                     </View>
                   ))}
@@ -805,7 +1182,7 @@ const TripDetailScreen: React.FC = () => {
               
               {/* Hợp đồng Provider */}
               {trip.providerContracts && (
-                <TouchableOpacity style={styles.docRowItem} onPress={() => setShowContractModal(true)}>
+                <TouchableOpacity style={styles.docRowItem} onPress={() => openProviderContractModal(trip.providerContracts.contractId)} disabled={loadingProviderContract}>
                   <View style={[styles.docIcon, { backgroundColor: '#EFF6FF' }]}><FontAwesome5 name="file-contract" size={18} color="#2563EB" /></View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.docName}>Hợp đồng vận chuyển</Text>
@@ -911,32 +1288,41 @@ const TripDetailScreen: React.FC = () => {
           <View style={styles.modalPaper}>
             <TouchableOpacity style={styles.paperCloseBtn} onPress={() => setShowContractModal(false)}><Text style={styles.paperCloseText}>×</Text></TouchableOpacity>
             <ScrollView style={styles.paperScroll}>
-              {trip.providerContracts && (
+              {loadingProviderContract ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <ActivityIndicator size="large" color="#3B82F6" />
+                  <Text style={{ marginTop: 10, color: '#6B7280' }}>Đang tải hợp đồng...</Text>
+                </View>
+              ) : providerContractDetail?.contract ? (
                 <ContractDocument
-                  contractCode={trip.providerContracts.contractCode}
+                  contractCode={providerContractDetail.contract.contractCode}
                   contractType="PROVIDER_CONTRACT"
-                  contractValue={trip.providerContracts.contractValue}
-                  currency={trip.providerContracts.currency}
-                  effectiveDate={trip.providerContracts.effectiveDate || ""}
-                  terms={trip.providerContracts.terms || []}
-                  ownerName={trip.owner?.fullName || ''}
-                  ownerCompany={trip.owner?.companyName}
-                  ownerTaxCode={trip.provider?.taxCode}
-                  counterpartyName={trip.provider?.companyName || ''}
-                  ownerSigned={trip.providerContracts.ownerSigned ?? false}
-                  ownerSignAt={trip.providerContracts.ownerSignAt ?? null}
-                  counterpartySigned={trip.providerContracts.counterpartySigned ?? false}
-                  counterpartySignAt={trip.providerContracts.counterpartySignAt ?? null}
-                  tripCode={trip.tripCode}
+                  contractValue={providerContractDetail.contract.contractValue}
+                  currency={providerContractDetail.contract.currency}
+                  effectiveDate={providerContractDetail.contract.effectiveDate || ""}
+                  terms={providerContractDetail.terms || []}
+                  ownerName={providerContractDetail.contract.partyA?.fullName || ''}
+                  ownerCompany={providerContractDetail.contract.partyA?.companyName}
+                  ownerTaxCode={providerContractDetail.contract.partyA?.taxCode}
+                  counterpartyName={providerContractDetail.contract.partyB?.companyName || providerContractDetail.contract.partyB?.fullName || ''}
+                  ownerSigned={providerContractDetail.contract.ownerSigned ?? false}
+                  ownerSignAt={providerContractDetail.contract.ownerSignAt ?? null}
+                  counterpartySigned={providerContractDetail.contract.providerSigned ?? false}
+                  counterpartySignAt={providerContractDetail.contract.providerSignAt ?? null}
+                  tripCode={providerContractDetail.contract.tripCode}
                   vehiclePlate={trip.vehicle?.plateNumber}
                   startAddress={trip.shippingRoute?.startAddress}
                   endAddress={trip.shippingRoute?.endAddress}
                 />
+              ) : (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#6B7280' }}>Không có dữ liệu hợp đồng</Text>
+                </View>
               )}
             </ScrollView>
             <View style={styles.paperFooter}>
-              <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => Linking.openURL(trip.providerContracts?.fileURL || '')}><Text style={styles.actionBtnTextSec}>Tải PDF</Text></TouchableOpacity>
-              {canSign && <TouchableOpacity style={styles.actionBtnPrimary} onPress={handleSignContract}><Text style={styles.actionBtnTextPri}>Ký xác nhận</Text></TouchableOpacity>}
+              <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => Linking.openURL(providerContractDetail?.contract?.fileURL || trip.providerContracts?.fileURL || '')} disabled={!providerContractDetail?.contract?.fileURL && !trip.providerContracts?.fileURL}><Text style={styles.actionBtnTextSec}>Tải PDF</Text></TouchableOpacity>
+              {canSign && providerContractDetail?.contract && <TouchableOpacity style={styles.actionBtnPrimary} onPress={handleSignContract}><Text style={styles.actionBtnTextPri}>Ký xác nhận</Text></TouchableOpacity>}
             </View>
           </View>
         </View>
@@ -946,7 +1332,7 @@ const TripDetailScreen: React.FC = () => {
       <DriverAssignModal visible={showDriverModal} onClose={() => setShowDriverModal(false)} trip={trip} tripId={trip.tripId} mainDriverExists={hasMainDriver} onAssigned={(u) => { setTrip(u); fetchTrip(tripId); }} driverAnalysis={driverAnalysis} />
 
       {/* 3. Modal Create Post */}
-      <CreatePostTripModal visible={showCreatePostModal} onClose={() => setShowCreatePostModal(false)} tripId={trip.tripId} onCreated={() => { Alert.alert("Thành công", "Đã tạo bài đăng"); fetchTrip(tripId); }} driverAnalysis={driverAnalysis} />
+      <CreatePostTripModal visible={showCreatePostModal} onClose={() => setShowCreatePostModal(false)} tripId={trip.tripId} onCreated={() => { showAlertCrossPlatform("Thành công", "Đã tạo bài đăng"); fetchTrip(tripId); }} driverAnalysis={driverAnalysis} />
 
       {/* 4. Modal OTP */}
       <Modal visible={showOtpModal} transparent animationType="fade" onRequestClose={() => setShowOtpModal(false)}>
@@ -1004,33 +1390,7 @@ const TripDetailScreen: React.FC = () => {
             <TouchableOpacity style={styles.paperCloseBtn} onPress={() => setShowDeliveryModal(false)}><Text style={styles.paperCloseText}>×</Text></TouchableOpacity>
             <ScrollView style={styles.paperScroll}>
               {activeDeliveryRecord && (
-                <DeliveryRecordDocument
-                  recordType={activeDeliveryRecord.recordType}
-                  note={activeDeliveryRecord.note || ""}
-                  createAt={activeDeliveryRecord.createAt}
-                  terms={activeDeliveryRecord.terms || []}
-                  driver={{
-                    driverId: activeDeliveryRecord.driverPrimary?.driverId || trip.drivers?.find(d => d.driverId === activeDeliveryRecord.driverId)?.driverId || '',
-                    fullName: activeDeliveryRecord.driverPrimary?.fullName || trip.drivers?.find(d => d.driverId === activeDeliveryRecord.driverId)?.fullName || 'Tài xế',
-                    type: activeDeliveryRecord.driverPrimary?.type || trip.drivers?.find(d => d.driverId === activeDeliveryRecord.driverId)?.type || "PRIMARY"
-                  }}
-                  contact={{
-                    tripContactId: activeDeliveryRecord.tripContact?.tripContactId || trip.contacts?.find(c => c.tripContactId === activeDeliveryRecord.tripContactId)?.tripContactId || '',
-                    type: activeDeliveryRecord.recordType === "PICKUP" ? 'SENDER' : 'RECEIVER',
-                    fullName: activeDeliveryRecord.tripContact?.fullName || trip.contacts?.find(c => c.tripContactId === activeDeliveryRecord.tripContactId)?.fullName || 'Khách hàng',
-                    phoneNumber: activeDeliveryRecord.tripContact?.phoneNumber || trip.contacts?.find(c => c.tripContactId === activeDeliveryRecord.tripContactId)?.phoneNumber || '',
-                    note: activeDeliveryRecord.tripContact?.note ?? trip.contacts?.find(c => c.tripContactId === activeDeliveryRecord.tripContactId)?.note ?? null
-                  }}
-                  driverSigned={activeDeliveryRecord.driverSigned}
-                  driverSignedAt={activeDeliveryRecord.driverSignedAt}
-                  contactSigned={activeDeliveryRecord.contactSigned}
-                  contactSignedAt={activeDeliveryRecord.contactSignedAt}
-                  status={activeDeliveryRecord.status}
-                  tripCode={trip.tripCode}
-                  vehiclePlate={trip.vehicle?.plateNumber}
-                  ownerCompany={trip.owner?.companyName}
-                  packages={activeDeliveryRecord.tripDetail?.packages?.map((p: any) => ({ packageCode: p.packageCode || p.item?.name, weight: p.weight, volume: p.volume })) || trip.packages?.map(p => ({ packageCode: p.packageCode, weight: p.weight, volume: p.volume }))}
-                />
+                <DeliveryRecordDocument data={activeDeliveryRecord} />
               )}
             </ScrollView>
             <View style={styles.paperFooter}>
@@ -1045,22 +1405,20 @@ const TripDetailScreen: React.FC = () => {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalPaper}>
             <TouchableOpacity style={styles.paperCloseBtn} onPress={() => setShowHandoverModal(false)}><Text style={styles.paperCloseText}>×</Text></TouchableOpacity>
-            <ScrollView style={styles.paperScroll}>
-              {isEditingChecklist ? (
-                <View style={styles.paperContent}>
-                  <View style={styles.docTitleSection}><Text style={styles.docTitleMain}>SỬA TÌNH TRẠNG PHƯƠNG TIỆN</Text></View>
-                  <View style={styles.docTermsSection}>
-                    {editedTerms.map((t: any, i: number) => (
-                      <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4, borderBottomWidth: 1, borderColor: '#F3F4F6' }}>
-                        <Text style={{ flex: 1, fontSize: 13 }}>{i + 1}. {t.content}</Text>
-                        <TouchableOpacity onPress={() => updateTermChecked(i, !t.isChecked)}><Text style={{ fontWeight: 'bold', color: t.isChecked ? '#10B981' : '#EF4444', fontSize: 16 }}>{t.isChecked ? '✓' : '✗'}</Text></TouchableOpacity>
-                        <TextInput style={{ flex: 1, marginLeft: 8, borderBottomWidth: 1, borderColor: '#E5E7EB', fontSize: 12 }} placeholder="Ghi chú" value={t.deviation} onChangeText={(v) => updateTermNote(i, v)} />
-                      </View>
-                    ))}
-                  </View>
+            
+            {/* Loading Overlay khi đang gửi OTP */}
+            {sendingHandoverOtp && (
+              <View style={styles.loadingOverlay}>
+                <View style={styles.loadingBox}>
+                  <ActivityIndicator size="large" color="#10439F" />
+                  <Text style={styles.loadingText}>Đang gửi OTP...</Text>
                 </View>
-              ) : (
-                activeHandoverRecord && (
+              </View>
+            )}
+            
+            <ScrollView style={styles.paperScroll}>
+              {activeHandoverRecord && (
+                <>
                   <HandoverRecordDocument
                     type={activeHandoverRecord.type}
                     status={activeHandoverRecord.status}
@@ -1080,17 +1438,23 @@ const TripDetailScreen: React.FC = () => {
                     termResults={activeHandoverRecord.termResults}
                     issues={activeHandoverRecord.issues}
                   />
-                )
+                  
+                  {/* Button to open Issues Panel - Only show for RETURN type */}
+                  {activeHandoverRecord.type === 'RETURN' && (
+                    <TouchableOpacity 
+                      style={styles.btnViewIssues}
+                      onPress={() => setShowIssuesPanel(true)}
+                    >
+                      <MaterialCommunityIcons name="alert-circle-outline" size={20} color="#DC2626" />
+                      <Text style={styles.btnViewIssuesText}>
+                        🛠️ Xem sự cố & bồi thường ({activeHandoverRecord.issues?.length || 0})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </ScrollView>
             <View style={styles.paperFooter}>
-              {isEditingChecklist ? (
-                <>
-                  <TouchableOpacity style={[styles.actionBtnSecondary, { flex: 1, backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]} onPress={toggleEditChecklist}><Text style={[styles.actionBtnTextSec, { color: '#EF4444' }]}>Hủy</Text></TouchableOpacity>
-                  <TouchableOpacity style={[styles.actionBtnPrimary, { flex: 1 }]} onPress={saveChecklist}><Text style={styles.actionBtnTextPri}>Lưu thay đổi</Text></TouchableOpacity>
-                </>
-              ) : (
-                <>
                   {(() => {
                     if (!activeHandoverRecord) return null;
                     
@@ -1104,11 +1468,11 @@ const TripDetailScreen: React.FC = () => {
                       return (
                         <>
                           {/* Edit Button - Show if no one has signed yet AND trip status is VEHICLE_HANDOVERED */}
-                          {/* {!driverHasSigned && !ownerHasSigned && canEditOrSign && (
-                            <TouchableOpacity style={[styles.actionBtnSecondary, { flex: 1 }]} onPress={toggleEditChecklist}>
+                          {!driverHasSigned && !ownerHasSigned && canEditOrSign && (
+                            <TouchableOpacity style={[styles.actionBtnSecondary, { flex: 1 }]} onPress={handleOpenHandoverEditor}>
                               <Text style={styles.actionBtnTextSec}>✏️ Sửa</Text>
                             </TouchableOpacity>
-                          )} */}
+                          )}
                           
                           <TouchableOpacity style={[styles.actionBtnSecondary, { flex: 1 }]} onPress={() => openVehicleHandoverPdf(activeHandoverRecord?.tripVehicleHandoverRecordId)}>
                             <Text style={styles.actionBtnTextSec}>📄 PDF</Text>
@@ -1116,8 +1480,16 @@ const TripDetailScreen: React.FC = () => {
                           
                           {/* Sign Button - Show only after driver has signed AND trip status is VEHICLE_HANDOVERED */}
                           {driverHasSigned && !ownerHasSigned && canEditOrSign && (
-                            <TouchableOpacity style={[styles.actionBtnPrimary, { flex: 1 }]} onPress={sendOtpForSigning}>
-                              <Text style={styles.actionBtnTextPri}>Ký biên bản</Text>
+                            <TouchableOpacity 
+                              style={[styles.actionBtnPrimary, { flex: 1 }]} 
+                              onPress={sendOtpForSigning}
+                              disabled={sendingHandoverOtp}
+                            >
+                              {sendingHandoverOtp ? (
+                                <ActivityIndicator size="small" color="#FFF" />
+                              ) : (
+                                <Text style={styles.actionBtnTextPri}>Ký biên bản</Text>
+                              )}
                             </TouchableOpacity>
                           )}
                         </>
@@ -1130,7 +1502,7 @@ const TripDetailScreen: React.FC = () => {
                         <>
                           {/* Edit Button - Show if owner hasn't signed yet */}
                           {!ownerHasSigned && (
-                            <TouchableOpacity style={[styles.actionBtnSecondary, { flex: 1 }]} onPress={toggleEditChecklist}>
+                            <TouchableOpacity style={[styles.actionBtnSecondary, { flex: 1 }]} onPress={handleOpenHandoverEditor}>
                               <Text style={styles.actionBtnTextSec}>✏️ Sửa</Text>
                             </TouchableOpacity>
                           )}
@@ -1141,28 +1513,445 @@ const TripDetailScreen: React.FC = () => {
                           
                           {/* Sign Button - Show if owner hasn't signed yet */}
                           {!ownerHasSigned && (
-                            <TouchableOpacity style={[styles.actionBtnPrimary, { flex: 1 }]} onPress={sendOtpForSigning}>
-                              <Text style={styles.actionBtnTextPri}>Ký biên bản</Text>
+                            <TouchableOpacity 
+                              style={[styles.actionBtnPrimary, { flex: 1 }]} 
+                              onPress={sendOtpForSigning}
+                              disabled={sendingHandoverOtp}
+                            >
+                              {sendingHandoverOtp ? (
+                                <ActivityIndicator size="small" color="#FFF" />
+                              ) : (
+                                <Text style={styles.actionBtnTextPri}>Ký biên bản</Text>
+                              )}
                             </TouchableOpacity>
                           )}
                         </>
                       );
                     }
                   })()}
-                </>
-              )}
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* 8. Modal OTP Handover */}
+      {/* 8. Issues Panel Modal */}
+      <Modal visible={showIssuesPanel} transparent animationType="slide" onRequestClose={() => setShowIssuesPanel(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.issuesPanelContainer}>
+            {/* Header */}
+            <View style={styles.issuesPanelHeader}>
+              <Text style={styles.issuesPanelTitle}>🛠️ XỬ LÝ SỰ CỐ & BỒI THƯỜNG</Text>
+              <TouchableOpacity onPress={() => setShowIssuesPanel(false)}>
+                <Ionicons name="close" size={28} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.issuesPanelBody}>
+              {/* Button to add new issue */}
+              <TouchableOpacity 
+                style={styles.btnAddIssueInPanel}
+                onPress={() => {
+                  setShowIssuesPanel(false);
+                  handleOpenIssueModal();
+                }}
+              >
+                <Ionicons name="add-circle" size={24} color="#FFF" />
+                <Text style={styles.btnAddIssueInPanelText}>➕ Báo cáo sự cố mới</Text>
+              </TouchableOpacity>
+
+              {/* Issues List */}
+              {activeHandoverRecord?.issues && activeHandoverRecord.issues.length > 0 ? (
+                <>
+                  {activeHandoverRecord.issues.map((issue: any) => (
+                    <View key={issue.vehicleHandoverIssueId} style={styles.issueCard}>
+                      <View style={styles.issueCardHeader}>
+                        <Text style={styles.issueSeverityBadge}>
+                          {issue.severity === 'HIGH' ? '🔴 Nghiêm trọng' : issue.severity === 'MEDIUM' ? '🟡 Trung bình' : '🟢 Nhẹ'}
+                        </Text>
+                      </View>
+                      <Text style={styles.issueCardDesc}>{issue.description}</Text>
+                      {issue.imageUrls && issue.imageUrls.length > 0 && (
+                        <Text style={styles.issueCardInfo}>📷 {issue.imageUrls.length} ảnh minh chứng</Text>
+                      )}
+                      
+                      {/* Show existing surcharges if any */}
+                      {issue.surcharges && issue.surcharges.length > 0 && (
+                        <View style={styles.existingSurchargesInPanel}>
+                          <Text style={styles.existingSurchargeLabel}>Phiếu thu đã tạo:</Text>
+                          {issue.surcharges.map((surcharge: any) => (
+                            <View key={surcharge.tripSurchargeId} style={styles.surchargeTagInPanel}>
+                              <Text style={styles.surchargeTagText}>
+                                {surcharge.amount.toLocaleString('vi-VN')} VNĐ - {surcharge.status === 'PENDING' ? '⏳ Chờ' : surcharge.status === 'PAID' ? '✅ Đã trả' : '❌'}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      
+                      <TouchableOpacity 
+                        style={styles.btnRequestCompensation}
+                        onPress={() => {
+                          setShowIssuesPanel(false);
+                          handleOpenSurchargeModal(issue);
+                        }}
+                      >
+                        <Text style={styles.btnRequestCompensationText}>💰 Yêu cầu bồi thường</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <View style={styles.noIssuesInPanel}>
+                  <MaterialCommunityIcons name="check-circle-outline" size={64} color="#10B981" />
+                  <Text style={styles.noIssuesInPanelText}>Không có sự cố nào được báo cáo</Text>
+                  <Text style={styles.noIssuesInPanelSubText}>Xe được trả về trong tình trạng tốt</Text>
+                </View>
+              )}
+              
+              {/* All Surcharges Summary */}
+              {activeHandoverRecord?.surcharges && activeHandoverRecord.surcharges.length > 0 && (
+                <View style={styles.allSurchargesSection}>
+                  <View style={styles.allSurchargesHeader}>
+                    <MaterialCommunityIcons name="cash-multiple" size={20} color="#F59E0B" />
+                    <Text style={styles.allSurchargesTitle}>Tổng hợp phiếu thu bồi thường ({activeHandoverRecord.surcharges.length})</Text>
+                  </View>
+                  {activeHandoverRecord.surcharges.map((surcharge: any, idx: number) => (
+                    <View key={surcharge.tripSurchargeId || idx} style={styles.surchargeCard}>
+                      <View style={styles.surchargeCardHeader}>
+                        <Text style={styles.surchargeType}>{getIssueTypeLabel(surcharge.type)}</Text>
+                        <View style={[styles.surchargeStatusBadge, { backgroundColor: surcharge.status === 'PAID' ? '#DCFCE7' : '#FEF3C7' }]}>
+                          <Text style={[styles.surchargeStatusText, { color: surcharge.status === 'PAID' ? '#059669' : '#F59E0B' }]}>
+                            {surcharge.status === 'PAID' ? '✅ Đã thanh toán' : '⏳ Chờ thanh toán'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.surchargeDesc}>{surcharge.description}</Text>
+                      <View style={styles.surchargeAmountBox}>
+                        <Text style={styles.surchargeAmountLabel}>Số tiền:</Text>
+                        <Text style={styles.surchargeAmountValue}>{surcharge.amount.toLocaleString('vi-VN')} đ</Text>
+                      </View>
+                    </View>
+                  ))}
+                  <View style={styles.totalSurchargeBox}>
+                    <Text style={styles.totalSurchargeLabel}>Tổng cộng:</Text>
+                    <Text style={styles.totalSurchargeValue}>
+                      {activeHandoverRecord.surcharges.reduce((sum: number, s: any) => sum + (s.amount || 0), 0).toLocaleString('vi-VN')} đ
+                    </Text>
+                  </View>
+                </View>
+              )}
+              
+              {/* Quick add surcharge without issue */}
+              <View style={styles.quickSurchargeInPanel}>
+                <Text style={styles.quickSurchargeTitle}>💰 Phát sinh phí khác</Text>
+                <Text style={styles.quickSurchargeDesc}>Tạo phiếu thu trực tiếp (vệ sinh, nhiên liệu, v.v.)</Text>
+                <TouchableOpacity 
+                  style={styles.btnQuickSurchargeInPanel}
+                  onPress={() => {
+                    setShowIssuesPanel(false);
+                    handleOpenSurchargeModal(null);
+                  }}
+                >
+                  <MaterialCommunityIcons name="plus-circle" size={20} color="#FFF" />
+                  <Text style={styles.btnQuickSurchargeInPanelText}>Tạo phiếu thu</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 9. Modal OTP Handover */}
       <Modal visible={showHandoverOtpModal} transparent animationType="fade" onRequestClose={() => setShowHandoverOtpModal(false)}>
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { width: '90%' }]}>
             <Text style={styles.otpModalTitle}>OTP Biên Bản</Text>
             <View style={styles.otpRow}>{handoverOtpDigits.map((d, i) => <TextInput key={i} ref={r => { handoverOtpInputsRef.current[i] = r; }} style={styles.otpInput} value={d} onChangeText={t => handleHandoverOtpChange(i, t)} keyboardType="numeric" maxLength={1} />)}</View>
             <TouchableOpacity style={[styles.actionBtnPrimary, { marginTop: 20 }]} onPress={submitOtpSignature}><Text style={styles.actionBtnTextPri}>Ký xác nhận</Text></TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 9. Modal Handover Checklist Editor */}
+      <Modal visible={showHandoverEditor && !!activeHandoverRecord} transparent animationType="slide" onRequestClose={() => setShowHandoverEditor(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalFullscreen}>
+            {activeHandoverRecord && (() => {
+              console.log('🔍 activeHandoverRecord.termResults:', activeHandoverRecord.termResults);
+              activeHandoverRecord.termResults?.forEach((term: any, idx: number) => {
+                console.log(`🔍 Term ${idx}:`, {
+                  id: term.tripVehicleHandoverTermResultId,
+                  content: term.termContent,
+                  isPassed: term.isPassed,
+                  note: term.note
+                });
+              });
+              
+              const initialData = {
+                recordId: activeHandoverRecord.tripVehicleHandoverRecordId,
+                currentOdometer: activeHandoverRecord.currentOdometer || 0,
+                fuelLevel: activeHandoverRecord.fuelLevel || 0,
+                isEngineLightOn: activeHandoverRecord.isEngineLightOn || false,
+                notes: activeHandoverRecord.notes || '',
+                checklistItems: (activeHandoverRecord.termResults || []).map((term: any) => {
+                  const item = {
+                    tripVehicleHandoverTermResultId: term.tripVehicleHandoverTermResultId,
+                    content: term.termContent || term.content,
+                    isPassed: term.isPassed,
+                    note: term.note || '',
+                    evidenceImageUrl: term.evidenceImageUrl,
+                  };
+                  console.log('🔍 Mapped item:', item);
+                  return item;
+                }),
+              };
+              console.log('📝 Passing initialData to HandoverChecklistEditor:', initialData);
+              console.log('📝 ChecklistItems count:', initialData.checklistItems.length);
+              return (
+                <HandoverChecklistEditor
+                  initialData={initialData}
+                  onSave={handleSaveHandoverChecklist}
+                  onCancel={() => setShowHandoverEditor(false)}
+                  saving={false}
+                />
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Issue Reporting Modal */}
+      <Modal visible={showIssueModal} transparent animationType="slide" onRequestClose={() => setShowIssueModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.issueModalContainer}>
+            <View style={styles.issueModalHeader}>
+              <Text style={styles.issueModalTitle}>🚨 Báo cáo sự cố</Text>
+              <TouchableOpacity onPress={() => setShowIssueModal(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.issueModalBody}>
+              <Text style={styles.issueLabel}>Loại sự cố: *</Text>
+              <View style={styles.issueTypeGrid}>
+                {[
+                  // Ngoại thất (Bodywork)
+                  { value: 'SCRATCH', label: 'Trầy xước', icon: 'color-wand-outline', emoji: '🔴' },
+                  { value: 'DENT', label: 'Móp méo', icon: 'hammer-outline', emoji: '🟡' },
+                  { value: 'CRACK', label: 'Nứt/Vỡ', icon: 'water-outline', emoji: '🔴' },
+                  { value: 'PAINT_PEELING', label: 'Tróc sơn', icon: 'brush-outline', emoji: '🟠' },
+                  
+                  // Vệ sinh (Cleanliness)
+                  { value: 'DIRTY', label: 'Dơ bẩn', icon: 'sparkles-outline', emoji: '🧹' },
+                  { value: 'ODOR', label: 'Có mùi hôi', icon: 'nose-outline', emoji: '👃' },
+                  
+                  // Vận hành & Kỹ thuật (Mechanical)
+                  { value: 'MECHANICAL', label: 'Lỗi động cơ', icon: 'build-outline', emoji: '🔧' },
+                  { value: 'ELECTRICAL', label: 'Lỗi điện', icon: 'flash-outline', emoji: '⚡' },
+                  { value: 'TIRE', label: 'Lỗi lốp xe', icon: 'ellipse-outline', emoji: '⭕' },
+                  
+                  // Tài sản (Inventory)
+                  { value: 'MISSING_ITEM', label: 'Mất phụ kiện', icon: 'cube-outline', emoji: '📦' },
+                  
+                  // Khác
+                  { value: 'OTHER', label: 'Khác', icon: 'ellipsis-horizontal', emoji: '❓' },
+                ].map((type) => (
+                  <TouchableOpacity
+                    key={type.value}
+                    style={[
+                      styles.issueTypeCard,
+                      issueType === type.value && styles.issueTypeCardActive,
+                    ]}
+                    onPress={() => setIssueType(type.value as any)}
+                  >
+                    <View style={styles.issueTypeIconWrapper}>
+                      <Text style={styles.issueTypeEmoji}>{type.emoji}</Text>
+                      <Ionicons
+                        name={type.icon as any}
+                        size={24}
+                        color={issueType === type.value ? '#DC2626' : '#6B7280'}
+                      />
+                    </View>
+                    <Text style={[
+                      styles.issueTypeLabel,
+                      issueType === type.value && styles.issueTypeLabelActive,
+                    ]}>
+                      {type.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.issueLabel}>Mô tả chi tiết: *</Text>
+              <TextInput
+                style={styles.issueDescInput}
+                placeholder="Nhập mô tả sự cố (bắt buộc)"
+                value={issueDescription}
+                onChangeText={setIssueDescription}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+
+              <Text style={styles.issueLabel}>Ảnh minh chứng: *</Text>
+              <TouchableOpacity 
+                style={styles.issueImagePicker}
+                onPress={async () => {
+                  if (Platform.OS === 'web') {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.onchange = (e: any) => {
+                      const file = e.target.files[0];
+                      if (file) setIssueImage(file);
+                    };
+                    input.click();
+                  }
+                }}
+              >
+                {issueImage ? (
+                  <View style={styles.issueImagePreview}>
+                    <Image
+                      source={{ uri: issueImage instanceof File ? URL.createObjectURL(issueImage) : issueImage }}
+                      style={styles.issueImagePreviewImg}
+                    />
+                    <TouchableOpacity
+                      style={styles.issueImageRemove}
+                      onPress={() => setIssueImage(null)}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.issueImagePlaceholder}>
+                    <Ionicons name="camera-outline" size={32} color="#9CA3AF" />
+                    <Text style={styles.issueImagePlaceholderText}>Chụp ảnh hoặc chọn từ thư viện</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.issueNote}>
+                <MaterialCommunityIcons name="information-outline" size={20} color="#F59E0B" />
+                <Text style={styles.issueNoteText}>
+                  Sau khi báo cáo sự cố, bạn có thể tạo phiếu thu bồi thường
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View style={styles.issueModalFooter}>
+              <TouchableOpacity
+                style={[styles.btnSecondary, { flex: 1 }]}
+                onPress={() => setShowIssueModal(false)}
+                disabled={submittingIssue}
+              >
+                <Text style={styles.btnSecondaryText}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.btnPrimary,
+                  { flex: 1 },
+                  (!issueDescription.trim() || !issueImage || submittingIssue) && styles.btnPrimaryDisabled,
+                ]}
+                onPress={handleSubmitIssue}
+                disabled={!issueDescription.trim() || !issueImage || submittingIssue}
+              >
+                {submittingIssue ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.btnPrimaryText}>Báo cáo sự cố</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Surcharge/Compensation Modal */}
+      <Modal visible={showSurchargeModal} transparent animationType="slide" onRequestClose={() => setShowSurchargeModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.surchargeModalContainer}>
+            <View style={styles.surchargeModalHeader}>
+              <Text style={styles.surchargeModalTitle}>
+                {selectedIssue ? '💰 Yêu cầu bồi thường' : '📝 Tạo phiếu thu'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowSurchargeModal(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.surchargeModalBody}>
+              {selectedIssue ? (
+                <View style={styles.selectedIssueCard}>
+                  <Text style={styles.selectedIssueLabel}>Sự cố:</Text>
+                  <Text style={styles.selectedIssueText}>{selectedIssue.description}</Text>
+                  <Text style={styles.selectedIssueSeverity}>
+                    Mức độ: {selectedIssue.severity === 'HIGH' ? '🔴 Nghiêm trọng' : selectedIssue.severity === 'MEDIUM' ? '🟡 Trung bình' : '🟢 Nhẹ'}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.selectedIssueCard}>
+                  <Text style={styles.selectedIssueLabel}>Loại phí:</Text>
+                  <Text style={styles.selectedIssueText}>Phát sinh phí khác (vệ sinh, nhiên liệu, v.v.)</Text>
+                </View>
+              )}
+
+              <Text style={styles.surchargeLabel}>Số tiền (VNĐ): *</Text>
+              <TextInput
+                style={styles.surchargeInput}
+                placeholder="Nhập số tiền"
+                value={displaySurchargeAmount}
+                onChangeText={(text) => {
+                  const numericValue = text.replace(/[^0-9]/g, '');
+                  setSurchargeAmount(numericValue);
+                }}
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.surchargeLabel}>Lý do yêu cầu bồi thường: *</Text>
+              <TextInput
+                style={styles.surchargeDescInput}
+                placeholder="Nhập lý do chi tiết (bắt buộc)"
+                value={surchargeDescription}
+                onChangeText={setSurchargeDescription}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+
+              <View style={styles.surchargeNote}>
+                <MaterialCommunityIcons name="information-outline" size={20} color="#F59E0B" />
+                <Text style={styles.surchargeNoteText}>
+                  Phiếu thu sẽ được tạo và gửi cho tài xế để thanh toán
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View style={styles.surchargeModalFooter}>
+              <TouchableOpacity
+                style={[styles.btnSecondary, { flex: 1 }]}
+                onPress={() => setShowSurchargeModal(false)}
+                disabled={submittingSurcharge}
+              >
+                <Text style={styles.btnSecondaryText}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.btnPrimary,
+                  { flex: 1 },
+                  (!surchargeAmount || !surchargeDescription.trim() || submittingSurcharge) && styles.btnPrimaryDisabled,
+                ]}
+                onPress={handleSubmitSurcharge}
+                disabled={!surchargeAmount || !surchargeDescription.trim() || submittingSurcharge}
+              >
+                {submittingSurcharge ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.btnPrimaryText}>Tạo phiếu thu</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1227,6 +2016,13 @@ const styles = StyleSheet.create({
   assignmentValue: { fontSize: 18, fontWeight: "800", color: "#1E3A8A" },
   recommendationBanner: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#DBEAFE", padding: 8, borderRadius: 8, marginTop: 8 },
   recommendationText: { fontSize: 12, color: "#1E40AF", fontWeight: "600", flex: 1 },
+  
+  // Trip Info Container
+  tripInfoContainer: { backgroundColor: "#F0F9FF", padding: 12, borderRadius: 12, marginBottom: 12, gap: 8 },
+  tripInfoItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  tripInfoLabel: { fontSize: 12, color: "#0369A1", fontWeight: "500", flex: 1 },
+  tripInfoValue: { fontSize: 13, color: "#0C4A6E", fontWeight: "700" },
+  
   aiRecommendBox: { backgroundColor: "#FFFBEB", padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: "#FCD34D" },
   aiTitle: { fontSize: 13, fontWeight: "700", color: "#92400E" },
   aiText: { fontSize: 13, color: "#B45309", lineHeight: 18 },
@@ -1255,10 +2051,18 @@ const styles = StyleSheet.create({
   plateNumberBig: { fontSize: 15, fontWeight: "800", color: "#1E40AF", textAlign: "center" },
   vehicleDetail: { fontSize: 11, color: "#6B7280", textAlign: "center" },
   driverRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, backgroundColor: '#F9FAFB', padding: 6, borderRadius: 8 },
-  driverAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center', marginRight: 8 },
-  driverAvatarText: { fontSize: 12, fontWeight: '700', color: '#1E40AF' },
-  driverName: { fontSize: 12, fontWeight: '600', color: '#1F2937' },
+  driverDetailCard: { backgroundColor: '#FAFAFA', borderRadius: 10, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  driverAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  driverAvatarText: { fontSize: 14, fontWeight: '700', color: '#1E40AF' },
+  driverName: { fontSize: 14, fontWeight: '700', color: '#1F2937', marginBottom: 2 },
   driverRole: { fontSize: 10, color: '#6B7280' },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderColor: '#F3F4F6' },
+  infoLabel: { fontSize: 11, color: '#6B7280', fontWeight: '500' },
+  infoValue: { fontSize: 11, color: '#1F2937', fontWeight: '600', flex: 1, textAlign: 'right' },
+  infoDetail: { fontSize: 11, color: '#4B5563', marginTop: 2, lineHeight: 16 },
+  statusSection: { marginTop: 8, padding: 10, borderRadius: 8, borderLeftWidth: 3 },
+  statusTitle: { fontSize: 12, fontWeight: '700', marginBottom: 4 },
+  evidenceImage: { width: '100%', height: 120, borderRadius: 8, marginTop: 8, backgroundColor: '#F3F4F6' },
   dashedBtn: { borderWidth: 1, borderColor: '#D1D5DB', borderStyle: 'dashed', borderRadius: 8, height: 40, alignItems: 'center', justifyContent: 'center' },
   outlineBtn: { borderWidth: 1, borderColor: "#E5E7EB", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, alignItems: "center" },
   outlineBtnText: { fontSize: 12, color: "#374151", fontWeight: "600" },
@@ -1294,6 +2098,7 @@ const styles = StyleSheet.create({
   // Modal Styles (Keeping existing styles for modals)
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 16 },
   modalPaper: { width: "100%", height: "90%", backgroundColor: "#FFFFFF", borderRadius: 8, overflow: "hidden" },
+  modalFullscreen: { width: "100%", height: "95%", backgroundColor: "#FFFFFF", borderRadius: 12, overflow: "hidden", marginTop: 20 },
   paperCloseBtn: { position: "absolute", top: 10, right: 10, zIndex: 10, backgroundColor: "#F3F4F6", width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   paperCloseText: { fontSize: 20, fontWeight: "bold", color: "#6B7280", marginTop: -2 },
   paperScroll: { flex: 1 },
@@ -1338,6 +2143,36 @@ const styles = StyleSheet.create({
   contractActions: { flexDirection: "row", gap: 10 },
   completedSign: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#ECFDF5", padding: 10, borderRadius: 8 },
 
+  // Loading Overlay
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+  },
+
   // OTP Modal
   modalCard: { backgroundColor: "#FFF", borderRadius: 16, padding: 20 },
   otpModalTitle: { fontSize: 20, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 12 },
@@ -1347,6 +2182,496 @@ const styles = StyleSheet.create({
   otpInput: { fontSize: 20, fontWeight: "800", color: "#111827", padding: 0, height: 50, width: 40, textAlign: 'center', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8 },
   otpBox: { width: 44, height: 52, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FFF", justifyContent: "center", alignItems: "center" },
   otpModalButtons: { flexDirection: "row", gap: 12 },
+
+  // Issue Reporting Modal
+  issueModalContainer: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, width: '100%', maxWidth: 500, maxHeight: '85%' },
+  issueModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  issueModalTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
+  issueModalBody: { flex: 1, marginBottom: 16 },
+  issueLabel: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 8, marginTop: 12 },
+  issueTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  issueTypeCard: { 
+    width: '31%', 
+    aspectRatio: 1, 
+    borderWidth: 2, 
+    borderColor: '#E5E7EB', 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: '#FFF',
+    padding: 8
+  },
+  issueTypeCardActive: { 
+    borderColor: '#DC2626', 
+    backgroundColor: '#FEF2F2'
+  },
+  issueTypeIconWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginBottom: 4
+  },
+  issueTypeEmoji: {
+    fontSize: 20,
+  },
+  issueTypeLabel: { 
+    fontSize: 11, 
+    color: '#6B7280', 
+    fontWeight: '600', 
+    marginTop: 2, 
+    textAlign: 'center' 
+  },
+  issueTypeLabelActive: { 
+    color: '#DC2626', 
+    fontWeight: '700' 
+  },
+  issueDescInput: { 
+    borderWidth: 1, 
+    borderColor: '#D1D5DB', 
+    borderRadius: 8, 
+    padding: 12, 
+    fontSize: 14, 
+    color: '#1F2937', 
+    backgroundColor: '#F9FAFB', 
+    minHeight: 100, 
+    textAlignVertical: 'top' 
+  },
+  issueImagePicker: { 
+    borderWidth: 2, 
+    borderColor: '#D1D5DB', 
+    borderStyle: 'dashed', 
+    borderRadius: 12, 
+    padding: 20, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    backgroundColor: '#F9FAFB', 
+    minHeight: 120 
+  },
+  issueImagePreview: { 
+    width: '100%', 
+    height: 200, 
+    borderRadius: 12, 
+    position: 'relative', 
+    overflow: 'hidden' 
+  },
+  issueImagePlaceholder: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 24, 
+    backgroundColor: '#E5E7EB', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginBottom: 8 
+  },
+  issueImageRemove: { 
+    position: 'absolute', 
+    top: 8, 
+    right: 8, 
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
+    backgroundColor: 'rgba(0,0,0,0.7)', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  issueNote: { 
+    flexDirection: 'row', 
+    alignItems: 'flex-start', 
+    gap: 8, 
+    backgroundColor: '#EFF6FF', 
+    padding: 12, 
+    borderRadius: 8, 
+    marginTop: 16, 
+    borderLeftWidth: 3, 
+    borderLeftColor: '#3B82F6' 
+  },
+  issueNoteText: { 
+    flex: 1, 
+    fontSize: 12, 
+    color: '#1E40AF', 
+    lineHeight: 18 
+  },
+  issueImagePreviewImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover'
+  },
+  issueImagePlaceholderText: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 4
+  },
+  issueModalFooter: { 
+    flexDirection: 'row', 
+    gap: 12, 
+    paddingTop: 16, 
+    borderTopWidth: 1, 
+    borderColor: '#E5E7EB' 
+  },
+  btnAddIssue: { 
+    backgroundColor: '#3B82F6', 
+    paddingVertical: 10, 
+    paddingHorizontal: 16, 
+    borderRadius: 8, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6 
+  },
+  btnAddIssueText: { 
+    color: '#FFF', 
+    fontSize: 13, 
+    fontWeight: '700' 
+  },
+  btnViewIssues: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 2,
+    borderColor: '#FCA5A5',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8
+  },
+  btnViewIssuesText: {
+    color: '#DC2626',
+    fontSize: 15,
+    fontWeight: '700'
+  },
+  issuesPanelContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 0,
+    width: '100%',
+    maxWidth: 600,
+    maxHeight: '90%',
+    overflow: 'hidden'
+  },
+  issuesPanelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2'
+  },
+  issuesPanelTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#991B1B'
+  },
+  issuesPanelBody: {
+    flex: 1,
+    padding: 16
+  },
+  btnAddIssueInPanel: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 16
+  },
+  btnAddIssueInPanelText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700'
+  },
+  issueCard: {
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: '#FCA5A5',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2
+  },
+  issueCardHeader: {
+    marginBottom: 8
+  },
+  issueSeverityBadge: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626'
+  },
+  issueCardDesc: {
+    fontSize: 14,
+    color: '#1F2937',
+    marginBottom: 8,
+    lineHeight: 20
+  },
+  issueCardInfo: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 12
+  },
+  existingSurchargesInPanel: {
+    marginTop: 8,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B'
+  },
+  existingSurchargeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 6
+  },
+  surchargeTagInPanel: {
+    backgroundColor: '#FFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#FCD34D'
+  },
+  surchargeTagText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#78350F'
+  },
+  btnRequestCompensation: {
+    backgroundColor: '#DC2626',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center'
+  },
+  btnRequestCompensationText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  noIssuesInPanel: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20
+  },
+  noIssuesInPanelText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#059669',
+    marginTop: 16,
+    marginBottom: 8
+  },
+  noIssuesInPanelSubText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center'
+  },
+  quickSurchargeInPanel: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B'
+  },
+  btnQuickSurchargeInPanel: {
+    backgroundColor: '#F59E0B',
+    borderRadius: 8,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6
+  },
+  btnQuickSurchargeInPanelText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  allSurchargesSection: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: '#FCD34D',
+  },
+  allSurchargesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  allSurchargesTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  surchargeCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  surchargeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  surchargeType: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#78350F',
+  },
+  surchargeStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  surchargeStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  surchargeDesc: {
+    fontSize: 13,
+    color: '#4B5563',
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  surchargeAmountBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+  },
+  surchargeAmountLabel: {
+    fontSize: 13,
+    color: '#78350F',
+    fontWeight: '600',
+  },
+  surchargeAmountValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#F59E0B',
+  },
+  totalSurchargeBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    padding: 14,
+    borderRadius: 10,
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: '#F59E0B',
+  },
+  totalSurchargeLabel: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#78350F',
+    textTransform: 'uppercase',
+  },
+  totalSurchargeValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#DC2626',
+  },
+  noIssuesContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed'
+  },
+  noIssuesText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#059669',
+    marginTop: 8,
+    marginBottom: 4
+  },
+  noIssuesSubText: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center'
+  },
+  quickSurchargeSection: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B'
+  },
+  quickSurchargeTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 4
+  },
+  quickSurchargeDesc: {
+    fontSize: 12,
+    color: '#78350F',
+    marginBottom: 12,
+    lineHeight: 18
+  },
+  btnQuickSurcharge: {
+    backgroundColor: '#F59E0B',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6
+  },
+  btnQuickSurchargeText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+
+  // Surcharge Modal
+  surchargeModalContainer: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, width: '100%', maxWidth: 500, maxHeight: '80%' },
+  surchargeModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  surchargeModalTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
+  surchargeModalBody: { flex: 1, marginBottom: 16 },
+  selectedIssueCard: { padding: 12, backgroundColor: '#FEF2F2', borderRadius: 8, marginBottom: 16, borderWidth: 1, borderColor: '#FCA5A5' },
+  selectedIssueLabel: { fontSize: 11, fontWeight: '700', color: '#991B1B', marginBottom: 4 },
+  selectedIssueText: { fontSize: 13, color: '#1F2937', marginBottom: 6 },
+  selectedIssueSeverity: { fontSize: 12, fontWeight: '600', color: '#DC2626' },
+  surchargeLabel: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 8, marginTop: 12 },
+  surchargeInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, fontSize: 16, color: '#1F2937', backgroundColor: '#FFF', fontWeight: '700' },
+  surchargeDescInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, fontSize: 14, color: '#1F2937', backgroundColor: '#F9FAFB', minHeight: 100 },
+  surchargeNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF3C7', padding: 12, borderRadius: 8, marginTop: 16 },
+  surchargeNoteText: { flex: 1, fontSize: 12, color: '#78350F', lineHeight: 18 },
+  surchargeModalFooter: { flexDirection: 'row', gap: 12, paddingTop: 16, borderTopWidth: 1, borderColor: '#E5E7EB' },
+  btnSecondary: { paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#D1D5DB' },
+  btnSecondaryText: { color: '#374151', fontWeight: '700', fontSize: 16 },
+  btnPrimary: { paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: '#DC2626' },
+  btnPrimaryDisabled: { backgroundColor: '#9CA3AF', opacity: 0.6 },
+  btnPrimaryText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
 });
 
 export default TripDetailScreen;

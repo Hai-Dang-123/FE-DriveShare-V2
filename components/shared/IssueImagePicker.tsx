@@ -6,13 +6,14 @@ import {
   Image,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
 interface IssueImagePickerProps {
-  images: string[];
-  onImagesChange: (images: string[]) => void;
+  images: (string | File)[];
+  onImagesChange: (images: (string | File)[]) => void;
   maxImages?: number;
 }
 
@@ -43,8 +44,22 @@ const IssueImagePicker: React.FC<IssueImagePickerProps> = ({
     });
 
     if (!result.canceled && result.assets) {
-      const newImages = result.assets.map((asset) => asset.uri);
-      onImagesChange([...images, ...newImages]);
+      // Handle Web vs Mobile
+      if (Platform.OS === 'web') {
+        // Convert URIs to File objects on Web
+        const filePromises = result.assets.map(async (asset) => {
+          const response = await fetch(asset.uri);
+          const blob = await response.blob();
+          const fileName = asset.uri.split('/').pop() || `issue_${Date.now()}.jpg`;
+          return new File([blob], fileName, { type: 'image/jpeg' });
+        });
+        const newFiles = await Promise.all(filePromises);
+        onImagesChange([...images, ...newFiles]);
+      } else {
+        // Keep URI strings on Mobile
+        const newImages = result.assets.map((asset) => asset.uri);
+        onImagesChange([...images, ...newImages]);
+      }
     }
   };
 
@@ -58,17 +73,21 @@ const IssueImagePicker: React.FC<IssueImagePickerProps> = ({
       {/* Image Grid */}
       {images.length > 0 && (
         <View style={styles.imageGrid}>
-          {images.map((uri, index) => (
-            <View key={index} style={styles.imageWrapper}>
-              <Image source={{ uri }} style={styles.imagePreview} />
-              <TouchableOpacity
-                style={styles.removeBtn}
-                onPress={() => removeImage(index)}
-              >
-                <Ionicons name="close-circle" size={24} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          ))}
+          {images.map((item, index) => {
+            // Get URI for display - either from string or File object
+            const uri = typeof item === 'string' ? item : URL.createObjectURL(item);
+            return (
+              <View key={index} style={styles.imageWrapper}>
+                <Image source={{ uri }} style={styles.imagePreview} />
+                <TouchableOpacity
+                  style={styles.removeBtn}
+                  onPress={() => removeImage(index)}
+                >
+                  <Ionicons name="close-circle" size={24} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </View>
       )}
 

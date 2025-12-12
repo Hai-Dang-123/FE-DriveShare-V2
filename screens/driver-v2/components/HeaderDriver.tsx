@@ -1,10 +1,9 @@
 
 
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { View, Text, Image, TouchableOpacity, StyleSheet, ImageBackground, Dimensions } from 'react-native'
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { ekycService } from '@/services/ekycService'
 
 interface HeaderProps {
   driver: any
@@ -12,35 +11,23 @@ interface HeaderProps {
 
 const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
   const router = useRouter()
-  const [isVerified, setIsVerified] = useState(false)
-  const [verificationMessage, setVerificationMessage] = useState('')
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    checkVerifiedStatus()
-  }, [])
-
-  const checkVerifiedStatus = async () => {
-    try {
-      const response = await ekycService.checkVerifiedStatus()
-      // Backend returns: { result: boolean, message: string }
-      if (response.isSuccess) {
-        setIsVerified(response.result === true)
-        setVerificationMessage(response.message || '')
-      }
-    } catch (error) {
-      console.error('Failed to check verified status:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  
   const name = driver?.fullName || 'N/A'
   const license = driver?.licenseClass || 'Chưa cập nhật'
   const experience = driver?.experienceYears || 0
   const avatar = driver?.avatarUrl
+  
+  // Get verification status from profile
+  const hasVerifiedCitizenId = driver?.hasVerifiedCitizenId ?? false
+  const hasVerifiedDriverLicense = driver?.hasVerifiedDriverLicense ?? false
+  const hasDeclaredInitialHistory = driver?.hasDeclaredInitialHistory ?? false
 
-  const handleVerifyCCCD = () => {
+  const handleVerifyDocuments = () => {
     router.push('/driver/my-documents')
+  }
+
+  const handleDeclareHistory = () => {
+    router.push('/driver/import-history')
   }
 
   return (
@@ -92,22 +79,34 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
           </View>
         </View>
 
-        {/* Verification Status (CCCD + GPLX for drivers) */}
+        {/* Verification Status (CCCD + GPLX + Initial History for drivers) */}
         <View style={styles.verifySection}>
-          {!loading && (
-            isVerified ? (
-              <TouchableOpacity style={styles.verifiedBadgeContainer} onPress={handleVerifyCCCD}>
-                <MaterialCommunityIcons name="shield-check" size={16} color="#10B981" />
-                <Text style={styles.verifiedText}>Đã xác minh đầy đủ</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyCCCD}>
-                <MaterialCommunityIcons name="shield-alert" size={16} color="#EF4444" />
-                <Text style={styles.verifyButtonText}>
-                  {verificationMessage || 'Xác minh CCCD & GPLX'}
-                </Text>
-              </TouchableOpacity>
-            )
+          {hasVerifiedCitizenId && hasVerifiedDriverLicense && hasDeclaredInitialHistory ? (
+            <View style={styles.verifiedBadgeContainer}>
+              <MaterialCommunityIcons name="shield-check" size={16} color="#10B981" />
+              <Text style={styles.verifiedText}>Đã xác minh đầy đủ</Text>
+            </View>
+          ) : (
+            <View style={styles.verifyButtonsContainer}>
+              {!hasVerifiedCitizenId && (
+                <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyDocuments}>
+                  <MaterialCommunityIcons name="card-account-details" size={16} color="#EF4444" />
+                  <Text style={styles.verifyButtonText}>Xác minh CCCD</Text>
+                </TouchableOpacity>
+              )}
+              {!hasVerifiedDriverLicense && (
+                <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyDocuments}>
+                  <MaterialCommunityIcons name="card-account-details-outline" size={16} color="#EF4444" />
+                  <Text style={styles.verifyButtonText}>Xác minh GPLX</Text>
+                </TouchableOpacity>
+              )}
+              {!hasDeclaredInitialHistory && (
+                <TouchableOpacity style={styles.verifyButton} onPress={handleDeclareHistory}>
+                  <MaterialCommunityIcons name="history" size={16} color="#F59E0B" />
+                  <Text style={styles.verifyButtonText}>Import giờ khởi tạo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
         </View>
       </View>
@@ -118,19 +117,19 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
 const styles = StyleSheet.create({
   backgroundImage: {
     width: '100%',
-    height: 240, 
+    height: 280, 
     paddingTop: 40,
   },
   overlay: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     backgroundColor: 'rgba(0,0,0,0.3)', // Lớp phủ đen mờ để chữ nổi bật
   },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   brandText: {
     color: 'rgba(255,255,255,0.9)',
@@ -210,8 +209,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   verifySection: {
-    marginTop: 16,
-    paddingHorizontal: 20,
+    marginTop: 12,
+    paddingHorizontal: 0,
   },
   verifiedBadgeContainer: {
     flexDirection: 'row',
@@ -228,19 +227,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  verifyButtonsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    alignItems: 'center',
+  },
   verifyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 6,
-    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    gap: 4,
   },
   verifyButtonText: {
     color: '#EF4444',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
   },
 })

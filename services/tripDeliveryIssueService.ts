@@ -15,7 +15,7 @@ export interface TripDeliveryIssueCreateDTO {
 }
 
 const tripDeliveryIssueService = {
-  async reportIssue(dto: TripDeliveryIssueCreateDTO, imageUris: string[]) {
+  async reportIssue(dto: TripDeliveryIssueCreateDTO, images: (string | File)[]) {
     try {
       const formData = new FormData();
       
@@ -27,19 +27,26 @@ const tripDeliveryIssueService = {
       formData.append("IssueType", dto.IssueType);
       formData.append("Description", dto.Description);
       
-      // Append image files as "Images" (List<IFormFile> Images)
-      imageUris.forEach((imageUri, index) => {
-        const fileName = imageUri.split("/").pop() || `image_${index}.jpg`;
-        const fileType = fileName.split(".").pop() || "jpg";
-        
-        formData.append("Images", {
-          uri: imageUri,
-          name: fileName,
-          type: `image/${fileType}`,
-        } as any);
+      // Append image files - support both Web File objects and Mobile URI strings
+      images.forEach((image, index) => {
+        if ((image as any) instanceof File || (image as any) instanceof Blob) {
+          // Web: Direct File/Blob object
+          const fileName = (image as any) instanceof File ? (image as any).name : `image_${index}.jpg`;
+          formData.append("Images", image as any, fileName);
+        } else if (typeof image === 'string') {
+          // Mobile: URI string
+          const fileName = image.split("/").pop() || `image_${index}.jpg`;
+          const fileType = fileName.split(".").pop() || "jpg";
+          
+          formData.append("Images", {
+            uri: image,
+            name: fileName,
+            type: `image/${fileType}`,
+          } as any);
+        }
       });
 
-      console.log("📤 Driver sending FormData with", imageUris.length, "images");
+      console.log("📤 Driver sending FormData with", images.length, "images");
       const res = await api.post("api/TripDeliveryIssue/create", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
@@ -53,7 +60,7 @@ const tripDeliveryIssueService = {
     }
   },
 
-  async reportIssueByContact(dto: TripDeliveryIssueCreateDTO, imageUris: string[], accessToken: string) {
+  async reportIssueByContact(dto: TripDeliveryIssueCreateDTO, images: (string | File)[], accessToken: string) {
     try {
       const formData = new FormData();
       
@@ -65,19 +72,26 @@ const tripDeliveryIssueService = {
       formData.append("IssueType", dto.IssueType);
       formData.append("Description", dto.Description);
       
-      // Append image files as "Images" (List<IFormFile> Images)
-      imageUris.forEach((imageUri, index) => {
-        const fileName = imageUri.split("/").pop() || `image_${index}.jpg`;
-        const fileType = fileName.split(".").pop() || "jpg";
-        
-        formData.append("Images", {
-          uri: imageUri,
-          name: fileName,
-          type: `image/${fileType}`,
-        } as any);
+      // Append image files - support both Web File objects and Mobile URI strings
+      images.forEach((image, index) => {
+        if ((image as any) instanceof File || (image as any) instanceof Blob) {
+          // Web: Direct File/Blob object
+          const fileName = (image as any) instanceof File ? (image as any).name : `image_${index}.jpg`;
+          formData.append("Images", image as any, fileName);
+        } else if (typeof image === 'string') {
+          // Mobile: URI string
+          const fileName = image.split("/").pop() || `image_${index}.jpg`;
+          const fileType = fileName.split(".").pop() || "jpg";
+          
+          formData.append("Images", {
+            uri: image,
+            name: fileName,
+            type: `image/${fileType}`,
+          } as any);
+        }
       });
 
-      console.log("📤 Contact sending FormData with", imageUris.length, "images");
+      console.log("📤 Contact sending FormData with", images.length, "images");
       const res = await api.post(`api/TripDeliveryIssue/contact-report?accessToken=${accessToken}`, formData, {
         headers: {
           "Content-Type": "multipart/form-data",

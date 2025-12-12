@@ -20,6 +20,9 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onEdit, onDelete, onPack, del
   
   // Use custom status color if provided, otherwise use default
   const statusColor = getStatusColor ? getStatusColor(status) : '#F59E0B'
+  
+  // Chỉ cho phép edit/delete khi status là PENDING
+  const canEditOrDelete = status === ItemStatus.PENDING
 
   return (
     <View style={styles.cardContainer}>
@@ -64,11 +67,19 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onEdit, onDelete, onPack, del
 
         <View style={styles.footerRow}>
           <View style={styles.iconGroup}>
-            <TouchableOpacity onPress={onEdit} style={styles.iconButton}>
-              <Feather name="edit-2" size={16} color="#6B7280" />
+            <TouchableOpacity 
+              onPress={onEdit} 
+              style={[styles.iconButton, !canEditOrDelete && styles.iconButtonDisabled]} 
+              disabled={!canEditOrDelete}
+            >
+              <Feather name="edit-2" size={16} color={canEditOrDelete ? "#6B7280" : "#D1D5DB"} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} style={styles.iconButton} disabled={Boolean(deleting)}>
-              {deleting ? <ActivityIndicator size="small" color="#EF4444" /> : <Feather name="trash-2" size={16} color="#EF4444" />}
+            <TouchableOpacity 
+              onPress={onDelete} 
+              style={[styles.iconButton, (!canEditOrDelete || deleting) && styles.iconButtonDisabled]} 
+              disabled={!canEditOrDelete || Boolean(deleting)}
+            >
+              {deleting ? <ActivityIndicator size="small" color="#EF4444" /> : <Feather name="trash-2" size={16} color={canEditOrDelete ? "#EF4444" : "#D1D5DB"} />}
             </TouchableOpacity>
           </View>
 
@@ -115,6 +126,7 @@ const styles = StyleSheet.create({
   footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   iconGroup: { flexDirection: 'row', gap: 8 },
   iconButton: { padding: 8, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1, borderColor: '#EEF2FF' },
+  iconButtonDisabled: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB', opacity: 0.5 },
   packButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4F46E5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   packButtonDisabled: { backgroundColor: '#9CA3AF' },
   packIcon: { width: 18, height: 18, color: '#fff', marginRight: 8 },

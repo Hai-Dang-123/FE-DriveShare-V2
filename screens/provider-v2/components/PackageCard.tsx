@@ -64,6 +64,9 @@ const PackageCard: React.FC<PackageCardProps> = ({
     status,
   } = pkg;
 
+  // Chỉ cho phép edit/delete khi status KHÔNG phải PENDING
+  const canEditOrDelete = status !== PackageStatus.PENDING;
+
   // Resolve image URL defensively: packageImages may contain objects with different keys or plain strings
   let imageUrl = "https://via.placeholder.com/400";
   if (images && images.length > 0) {
@@ -160,21 +163,29 @@ const PackageCard: React.FC<PackageCardProps> = ({
         {/* FOOTER ACTIONS */}
         <View style={styles.footer}>
           <View style={styles.actionGroup}>
-            <TouchableOpacity onPress={onEdit} style={styles.iconBtn}>
-              <Feather name="edit-2" size={16} color="#4B5563" />
+            <TouchableOpacity 
+              onPress={onEdit} 
+              style={[styles.iconBtn, !canEditOrDelete && styles.iconBtnDisabled]}
+              disabled={!canEditOrDelete}
+            >
+              <Feather name="edit-2" size={16} color={canEditOrDelete ? "#4B5563" : "#D1D5DB"} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} style={styles.iconBtn}>
-              <Feather name="trash-2" size={16} color="#EF4444" />
+            <TouchableOpacity 
+              onPress={onDelete} 
+              style={[styles.iconBtn, !canEditOrDelete && styles.iconBtnDisabled]}
+              disabled={!canEditOrDelete}
+            >
+              <Feather name="trash-2" size={16} color={canEditOrDelete ? "#EF4444" : "#D1D5DB"} />
             </TouchableOpacity>
           </View>
 
           {/* Nút Đăng Tin (chỉ hiện khi Pending) */}
-          {status === PackageStatus.PENDING && (
+          {/* {status === PackageStatus.PENDING && (
             <TouchableOpacity onPress={onPost} style={styles.postBtn}>
               <Text style={styles.postBtnText}>Đăng tin</Text>
               <Feather name="send" size={12} color="#fff" />
             </TouchableOpacity>
-          )}
+          )} */}
         </View>
       </View>
     </View>
@@ -247,6 +258,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
+  },
+  iconBtnDisabled: {
+    backgroundColor: "#F9FAFB",
+    opacity: 0.5,
   },
 
   postBtn: {
