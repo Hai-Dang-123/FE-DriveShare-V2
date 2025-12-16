@@ -147,7 +147,9 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
         setDeleteModalOpen(false);
         setDeleteItemId(null);
         setTimeout(async () => {
-          await fetchPage(1, 20, search, sortBy, sortOrder, statusFilter);
+          // Nếu đang sort theo status thì không truyền sortBy vào API
+          const apiSortBy = sortBy === "status" ? "itemname" : sortBy;
+          await fetchPage(1, 20, search, apiSortBy, sortOrder, statusFilter);
           showToast("Đã xóa sản phẩm thành công", "success");
         }, 200);
       } else {
@@ -173,11 +175,12 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
 
   const handleSearchChange = (text: string) => {
     setSearch(text);
-    // Debounce search - trigger fetch after user stops typing
-    const timer = setTimeout(() => {
-      fetchPage(1, 20, text, sortBy, sortOrder, statusFilter);
-    }, 500);
-    return () => clearTimeout(timer);
+  };
+
+  const handleSearchSubmit = () => {
+    // Nếu đang sort theo status thì không truyền sortBy vào API
+    const apiSortBy = sortBy === "status" ? "itemname" : sortBy;
+    fetchPage(1, 20, search, apiSortBy, sortOrder, statusFilter);
   };
 
   const onOpenSort = () => {
@@ -188,12 +191,17 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
     setSortBy(field);
     setSortOrder(order);
     setIsSortModalOpen(false);
-    fetchPage(1, 20, search, field, order, statusFilter);
+    // Nếu sort theo status thì sort local trên FE, không gọi API
+    if (field !== "status") {
+      fetchPage(1, 20, search, field, order, statusFilter);
+    }
   };
 
   const handleStatusFilter = (status: string) => {
     setStatusFilter(status);
-    fetchPage(1, 20, search, sortBy, sortOrder, status);
+    // Nếu đang sort theo status thì không truyền sortBy vào API
+    const apiSortBy = sortBy === "status" ? "itemname" : sortBy;
+    fetchPage(1, 20, search, apiSortBy, sortOrder, status);
   };
 
   const handleSaveItem = async (itemToSave: any) => {
@@ -242,7 +250,9 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
     }
     setItemModalOpen(false);
     setSelectedItem(null);
-    fetchPage(1, 20, search, sortBy, sortOrder);
+    // Nếu đang sort theo status thì không truyền sortBy vào API
+    const apiSortBy = sortBy === "status" ? "itemname" : sortBy;
+    fetchPage(1, 20, search, apiSortBy, sortOrder);
   };
 
   const handleCreatePackage = (
@@ -252,17 +262,24 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
       try {
         // Build DTO, include ItemId from selectedItem
         const dto: any = {
-          Title: packageDetails.title,
-          Description: packageDetails.description,
-          Quantity: packageDetails.quantity,
-          Unit: packageDetails.unit,
-          WeightKg: packageDetails.weightKg,
-          VolumeM3: packageDetails.volumeM3,
-          OtherRequirements: "",
-          HandlingAttributes: [],
+          title: packageDetails.title,
+          description: packageDetails.description,
+          quantity: packageDetails.quantity,
+          unit: packageDetails.unit,
+          weightKg: packageDetails.weightKg,
+          volumeM3: packageDetails.volumeM3,
+          otherRequirements: (packageDetails as any).otherRequirements || "",
+          // Boolean handling attributes
+          isFragile: (packageDetails as any).isFragile || false,
+          isLiquid: (packageDetails as any).isLiquid || false,
+          isRefrigerated: (packageDetails as any).isRefrigerated || false,
+          isFlammable: (packageDetails as any).isFlammable || false,
+          isHazardous: (packageDetails as any).isHazardous || false,
+          isBulky: (packageDetails as any).isBulky || false,
+          isPerishable: (packageDetails as any).isPerishable || false,
           // images
-          PackageImages: packageDetails.images ?? [],
-          ItemId: (selectedItem as any)?.id ?? (selectedItem as any)?.itemId,
+          images: packageDetails.images ?? [],
+          itemId: (selectedItem as any)?.id ?? (selectedItem as any)?.itemId,
         };
 
         const res = await packageService.createPackage(dto);
@@ -273,7 +290,9 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
           //   const updatedItem = { ...selectedItem, status: ItemStatus.PACKAGED }
           //   updateItem(updatedItem)
           // }
-          fetchPage(1, 20, search, sortBy, sortOrder);
+          // Nếu đang sort theo status thì không truyền sortBy vào API
+          const apiSortBy = sortBy === "status" ? "itemname" : sortBy;
+          fetchPage(1, 20, search, apiSortBy, sortOrder);
         } else {
           showToast(res?.message || "Tạo gói không thành công", "error");
         }
@@ -331,7 +350,22 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
 
     return (
       <ItemList
-        items={items}
+        items={(() => {
+          // Sort trên FE nếu sortBy là "status"
+          if (sortBy === "status") {
+            const sorted = [...items].sort((a, b) => {
+              const statusA = a.status || "";
+              const statusB = b.status || "";
+              if (sortOrder === "ASC") {
+                return statusA.localeCompare(statusB);
+              } else {
+                return statusB.localeCompare(statusA);
+              }
+            });
+            return sorted;
+          }
+          return items;
+        })()}
         onEdit={handleEditItem}
         onDelete={handleDeleteItem}
         onPack={handlePackItem}
@@ -383,7 +417,11 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
             placeholderTextColor="#9CA3AF"
             style={styles.searchInput}
             returnKeyType="search"
+            onSubmitEditing={handleSearchSubmit}
           />
+          <TouchableOpacity onPress={handleSearchSubmit} style={styles.searchButton}>
+            <Ionicons name="arrow-forward" size={20} color="#4F46E5" />
+          </TouchableOpacity>
         </View>
         <TouchableOpacity style={styles.filterButton} onPress={onOpenSort}>
           <Ionicons name="options-outline" size={22} color="#374151" />
@@ -690,6 +728,10 @@ const styles = StyleSheet.create({
     height: 40,
   },
   searchInput: { flex: 1, paddingHorizontal: 10, color: "#111827" },
+  searchButton: {
+    padding: 4,
+    marginRight: 4,
+  },
   filterButton: {
     marginLeft: 12,
     width: 44,

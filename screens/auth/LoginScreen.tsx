@@ -100,10 +100,10 @@ const LoginScreen: React.FC = () => {
             />
             
             <Text style={styles.headerTitle}>Đăng Nhập</Text>
-            <Text style={styles.headerSubtitle}>Vui lòng chọn vai trò của bạn:</Text>
+            {/* <Text style={styles.headerSubtitle}>Vui lòng chọn vai trò của bạn:</Text> */}
 
             {/* --- BỘ CHỌN VAI TRÒ --- */}
-            <View style={styles.roleContainer}>
+            {/* <View style={styles.roleContainer}>
               <RoleItem 
                 itemRole={Role.OWNER} 
                 title="Chủ Xe" 
@@ -122,7 +122,7 @@ const LoginScreen: React.FC = () => {
                 subTitle="(Driver)" 
                 iconSource={require('../../assets/icons/driver.png')} 
               />
-            </View>
+            </View> */}
 
             {/* Form nhập liệu */}
             <View style={styles.form}>

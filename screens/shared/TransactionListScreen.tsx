@@ -92,18 +92,33 @@ const TransactionListScreen = () => {
 
   const getTransactionTypeConfig = (type: string) => {
     const configs: any = {
-      OWNER_PAYOUT: { icon: 'cash-check', color: '#059669', label: 'Doanh thu', bg: '#DCFCE7' },
-      DRIVER_PAYOUT: { icon: 'cash-check', color: '#059669', label: 'Thanh toán lương', bg: '#DCFCE7' },
-      COMPENSATION: { icon: 'cash-refund', color: '#10B981', label: 'Bồi thường', bg: '#D1FAE5' },
-      POST_TRIP_PAYMENT: { icon: 'credit-card-outline', color: '#F59E0B', label: 'Thanh toán', bg: '#FEF3C7' },
-      DEPOSIT: { icon: 'plus-circle', color: '#059669', label: 'Nạp tiền', bg: '#DCFCE7' },
-      WITHDRAW: { icon: 'minus-circle', color: '#DC2626', label: 'Rút tiền', bg: '#FEE2E2' },
-      PAYMENT: { icon: 'credit-card', color: '#F59E0B', label: 'Thanh toán', bg: '#FEF3C7' },
+      // === CỘNG TIỀN (System -> User) ===
+      TOPUP: { icon: 'wallet-plus', color: '#059669', label: 'Nạp tiền', bg: '#DCFCE7' },
+      OWNER_PAYOUT: { icon: 'cash-check', color: '#059669', label: 'Thanh toán cho chủ xe', bg: '#DCFCE7' },
+      DRIVER_PAYOUT: { icon: 'cash-check', color: '#059669', label: 'Thanh toán cho tài xế', bg: '#DCFCE7' },
       REFUND: { icon: 'cash-refund', color: '#3B82F6', label: 'Hoàn tiền', bg: '#DBEAFE' },
+      COMPENSATION: { icon: 'shield-check', color: '#10B981', label: 'Bồi thường', bg: '#D1FAE5' },
+      
+      // === TRỪ TIỀN (User -> System) ===
+      WITHDRAWAL: { icon: 'cash-minus', color: '#DC2626', label: 'Rút tiền', bg: '#FEE2E2' },
+      POST_TRIP_PAYMENT: { icon: 'credit-card-outline', color: '#F59E0B', label: 'Thanh toán chuyến đi', bg: '#FEF3C7' },
+      POST_PAYMENT: { icon: 'file-document', color: '#F59E0B', label: 'Phí đăng bài', bg: '#FEF3C7' },
+      PLATFORM_FEE: { icon: 'receipt', color: '#DC2626', label: 'Phí nền tảng', bg: '#FEE2E2' },
+      DRIVER_SERVICE_PAYMENT: { icon: 'account-cash', color: '#8B5CF6', label: 'Thuê tài xế', bg: '#EDE9FE' },
+      PENALTY: { icon: 'alert-octagon', color: '#DC2626', label: 'Phạt vi phạm', bg: '#FEE2E2' },
+      DEPOSIT: { icon: 'shield-lock', color: '#F59E0B', label: 'Tiền cọc', bg: '#FEF3C7' },
+      OUTSTANDING_PAYMENT: { icon: 'clock-alert', color: '#EF4444', label: 'Công nợ', bg: '#FEE2E2' },
+      PLATFORM_PAYMENT: { icon: 'bank', color: '#8B5CF6', label: 'Thanh toán nền tảng', bg: '#EDE9FE' },
+      
+      // Legacy/Other types
+      PAYMENT: { icon: 'credit-card', color: '#F59E0B', label: 'Thanh toán', bg: '#FEF3C7' },
       TRANSFER: { icon: 'bank-transfer', color: '#8B5CF6', label: 'Chuyển khoản', bg: '#EDE9FE' },
-      SURCHARGE: { icon: 'cash-multiple', color: '#DC2626', label: 'Phí bồi thường', bg: '#FEE2E2' },
+      SURCHARGE: { icon: 'cash-multiple', color: '#DC2626', label: 'Phụ phí', bg: '#FEE2E2' },
       BONUS: { icon: 'gift', color: '#10B981', label: 'Thưởng', bg: '#D1FAE5' },
       FEE: { icon: 'receipt', color: '#EF4444', label: 'Phí dịch vụ', bg: '#FEE2E2' },
+      
+      // Alias for compatibility
+      WITHDRAW: { icon: 'cash-minus', color: '#DC2626', label: 'Rút tiền', bg: '#FEE2E2' },
     };
     return configs[type] || { icon: 'cash', color: '#6B7280', label: type, bg: '#F3F4F6' };
   };

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { 
     View, Text, StyleSheet, FlatList, TouchableOpacity, 
-    ActivityIndicator, RefreshControl, StatusBar 
+    ActivityIndicator, RefreshControl, StatusBar, TextInput, AppState 
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons'
@@ -11,7 +11,6 @@ import postTripService from '@/services/postTripService'
 
 type AnyObj = Record<string, any>
 
-// Hàm an toàn để lấy dữ liệu từ object (xử lý null/undefined)
 function get(obj: AnyObj, ...keys: string[]) {
   for (const k of keys) {
     if (obj == null) return undefined
@@ -20,7 +19,6 @@ function get(obj: AnyObj, ...keys: string[]) {
   return obj
 }
 
-// Hàm chuẩn hóa dữ liệu từ API về format chuẩn cho UI
 function normalizePost(raw: AnyObj) {
   const id = raw.postTripId || raw.PostTripId || raw.id || raw.Id
   const title = raw.title || raw.Title || ''
@@ -28,7 +26,6 @@ function normalizePost(raw: AnyObj) {
   const status = raw.status || raw.Status || 'UNKNOWN'
   const requiredPayloadInKg = raw.requiredPayloadInKg ?? raw.RequiredPayloadInKg
   
-  // Xử lý Route (Điểm đi - Điểm đến)
   const trip = raw.trip || raw.Trip
   const sRaw = get(trip || {}, 'StartLocationName') || get(trip || {}, 'startLocationName') || ''
   const eRaw = get(trip || {}, 'EndLocationName') || get(trip || {}, 'endLocationName') || ''
@@ -38,13 +35,12 @@ function normalizePost(raw: AnyObj) {
   const details = raw.postTripDetails || raw.PostTripDetails || []
   const createdAt = raw.createAt || raw.CreateAt
   
-  // Tính tổng số tài xế cần tuyển
   const totalDrivers = details.reduce((s: number, d: AnyObj) => s + (d.requiredCount ?? d.RequiredCount ?? 0), 0)
 
   return { id, title, description, status, requiredPayloadInKg, startName, endName, details, createdAt, totalDrivers }
 }
 
-// --- 2. COMPONENT: POST TRIP CARD (UI ONLY) ---
+// --- 2. POST TRIP CARD ---
 
 interface CardProps {
     item: ReturnType<typeof normalizePost>;
@@ -53,12 +49,7 @@ interface CardProps {
 
 const PostTripCard: React.FC<CardProps> = ({ item, onPress }) => {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.9} // Hiệu ứng bấm mượt hơn
-      style={styles.card}
-    >
-        {/* Header: Status Badge & Date */}
+    <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={styles.card}>
         <View style={styles.cardHeaderRow}>
             <View style={[styles.statusBadge, { backgroundColor: '#ECFDF5' }]}>
                 <Text style={[styles.statusText, { color: '#059669' }]}>ĐANG MỞ</Text>
@@ -71,12 +62,9 @@ const PostTripCard: React.FC<CardProps> = ({ item, onPress }) => {
             </View>
         </View>
 
-        {/* Title */}
         <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
 
-        {/* Route Timeline (Visual A -> B) */}
         <View style={styles.routeContainer}>
-            {/* Start Point */}
             <View style={styles.routeRow}>
                 <View style={styles.routeDotStart}>
                     <View style={styles.innerDot} />
@@ -86,12 +74,10 @@ const PostTripCard: React.FC<CardProps> = ({ item, onPress }) => {
                 </Text>
             </View>
             
-            {/* Connector Line (Dotted simulation) */}
             <View style={styles.connectorContainer}>
                 <View style={styles.connectorLine} />
             </View>
 
-            {/* End Point */}
             <View style={styles.routeRow}>
                 <View style={styles.routeDotEnd}>
                     <MaterialCommunityIcons name="map-marker" size={12} color="#FFF" />
@@ -104,9 +90,7 @@ const PostTripCard: React.FC<CardProps> = ({ item, onPress }) => {
 
         <View style={styles.divider} />
 
-        {/* Stats Grid (Thông số quan trọng) */}
         <View style={styles.statsGrid}>
-            {/* Tải trọng */}
             <View style={styles.statItem}>
                 <View style={[styles.iconBox, {backgroundColor: '#EEF2FF'}]}>
                     <MaterialCommunityIcons name="weight-kilogram" size={18} color="#4F46E5" />
@@ -119,10 +103,8 @@ const PostTripCard: React.FC<CardProps> = ({ item, onPress }) => {
                 </View>
             </View>
 
-            {/* Vertical Divider */}
             <View style={styles.verticalLine} />
 
-            {/* Số lượng tài xế */}
             <View style={styles.statItem}>
                 <View style={[styles.iconBox, {backgroundColor: '#FEF3C7'}]}>
                     <Ionicons name="people" size={18} color="#D97706" />
@@ -137,25 +119,34 @@ const PostTripCard: React.FC<CardProps> = ({ item, onPress }) => {
   )
 }
 
-// --- 3. MAIN SCREEN: LIST LOGIC ---
+// --- 3. MAIN SCREEN ---
 
 const OpenPostTripsScreen: React.FC = () => {
   const router = useRouter()
   
-  // States
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [items, setItems] = useState<any[]>([])
   const [pageNumber, setPageNumber] = useState(1)
   const [hasMore, setHasMore] = useState(true)
+  
+  const [searchText, setSearchText] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortField, setSortField] = useState<string>('CreateAt')
+  const [sortDirection, setSortDirection] = useState<'ASC' | 'DESC'>('DESC')
+  const [showSearchBar, setShowSearchBar] = useState(false)
 
-  // API Call
   const fetchPage = async (page: number, append = false) => {
     try {
       if (!append) setLoading(true)
       
-      // Gọi API lấy danh sách bài đăng OPEN
-      const res: any = await postTripService.getOpen(page, 10)
+      const res: any = await postTripService.getOpen(
+        page, 
+        10, 
+        searchQuery || undefined,
+        sortField,
+        sortDirection
+      )
       
       const ok = res?.isSuccess ?? (res?.statusCode === 200)
       const payload = res?.result || res?.data || res
@@ -175,45 +166,105 @@ const OpenPostTripsScreen: React.FC = () => {
     }
   }
 
-  // Initial Load
   useEffect(() => {
     fetchPage(1)
-  }, [])
+    
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        setPageNumber(1)
+        fetchPage(1)
+      }
+    })
+    
+    return () => {
+      subscription?.remove()
+    }
+  }, [searchQuery, sortField, sortDirection])
 
-  // Handlers
   const onRefresh = useCallback(() => {
     setRefreshing(true)
     setPageNumber(1)
     fetchPage(1)
-  }, [])
+  }, [searchQuery, sortField, sortDirection])
 
   const loadMore = useCallback(() => {
     if (loading || !hasMore) return
     const next = pageNumber + 1
     setPageNumber(next)
     fetchPage(next, true)
-  }, [loading, hasMore, pageNumber])
+  }, [loading, hasMore, pageNumber, searchQuery, sortField, sortDirection])
 
   const navigateToDetail = (id: string) => {
     router.push({ pathname: '/(driver)/trip-post/[postTripId]', params: { postTripId: id } })
+  }
+
+  const handleSearch = () => {
+    setSearchQuery(searchText.trim())
+    setPageNumber(1)
+  }
+
+  const handleClearSearch = () => {
+    setSearchText('')
+    setSearchQuery('')
+    setPageNumber(1)
+  }
+
+  const toggleSort = () => {
+    setSortDirection(prev => prev === 'ASC' ? 'DESC' : 'ASC')
+    setPageNumber(1)
   }
 
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" backgroundColor="#F3F4F6" />
       
-      {/* Custom Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Tìm Chuyến Mới</Text>
-        <TouchableOpacity style={styles.filterBtn}>
-            <Ionicons name="filter" size={20} color="#4B5563" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={styles.iconBtn} 
+            onPress={() => setShowSearchBar(!showSearchBar)}
+          >
+            <Ionicons name="search" size={20} color="#4B5563" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn} onPress={toggleSort}>
+            <MaterialCommunityIcons 
+              name={sortDirection === 'ASC' ? 'sort-ascending' : 'sort-descending'} 
+              size={20} 
+              color="#4B5563" 
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Content */}
+      {showSearchBar && (
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputWrapper}>
+            <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Tìm chuyến theo tiêu đề, địa điểm..."
+              placeholderTextColor="#9CA3AF"
+              value={searchText}
+              onChangeText={setSearchText}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+            />
+            {searchText.length > 0 && (
+              <TouchableOpacity onPress={handleClearSearch} style={styles.clearBtn}>
+                <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity style={styles.searchBtn} onPress={handleSearch}>
+            <Text style={styles.searchBtnText}>Tìm</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {loading && items.length === 0 ? (
         <View style={styles.center}>
             <ActivityIndicator size="large" color="#4F46E5" />
@@ -260,7 +311,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F3F4F6' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   
-  // Header
   header: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -271,22 +321,60 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#E5E7EB',
     elevation: 2,
-    shadowColor: '#000', shadowOpacity: 0.05, shadowOffset: {width:0, height:2}
+    shadowColor: '#000', 
+    shadowOpacity: 0.05, 
+    shadowOffset: {width:0, height:2}
   },
   backBtn: { padding: 4 },
-  filterBtn: { padding: 8, backgroundColor: '#F9FAFB', borderRadius: 8 },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#111827', flex: 1 },
+  headerActions: { flexDirection: 'row', gap: 8 },
+  iconBtn: { padding: 8, backgroundColor: '#F9FAFB', borderRadius: 8 },
+
+  searchContainer: { 
+    flexDirection: 'row', 
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    backgroundColor: '#FFF', 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#E5E7EB',
+    gap: 8,
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  searchIcon: { marginRight: 8 },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    fontSize: 14,
+    color: '#1F2937',
+  },
+  clearBtn: { padding: 4 },
+  searchBtn: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 
   listContent: { padding: 16, paddingBottom: 32 },
   loadingText: { marginTop: 12, color: '#6B7280', fontSize: 14 },
 
-  // --- CARD STYLES ---
   card: { 
     backgroundColor: '#FFFFFF', 
     borderRadius: 16, 
     padding: 16, 
     borderWidth: 1, 
-    borderColor: '#F3F4F6', // Viền rất nhạt
+    borderColor: '#F3F4F6',
     shadowColor: '#000', 
     shadowOffset: { width: 0, height: 4 }, 
     shadowOpacity: 0.06, 
@@ -294,7 +382,6 @@ const styles = StyleSheet.create({
     elevation: 3 
   },
   
-  // Card Header
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   statusText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
@@ -302,26 +389,21 @@ const styles = StyleSheet.create({
 
   cardTitle: { fontSize: 16, fontWeight: '800', color: '#111827', lineHeight: 24, marginBottom: 14 },
 
-  // Timeline Route
   routeContainer: { marginBottom: 8 },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 24 },
   
-  // Start Dot
   routeDotStart: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center' },
   innerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB' },
   
-  // End Dot
   routeDotEnd: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
   
   routeText: { fontSize: 14, color: '#374151', flex: 1, fontWeight: '500' },
   
-  // Connector Line
   connectorContainer: { paddingLeft: 8.5, height: 16, justifyContent: 'center' },
-  connectorLine: { width: 1, height: '100%', backgroundColor: '#D1D5DB', borderStyle: 'dotted' }, // Có thể dùng dashed border nếu view hỗ trợ
+  connectorLine: { width: 1, height: '100%', backgroundColor: '#D1D5DB' },
 
   divider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 14 },
 
-  // Stats Grid
   statsGrid: { flexDirection: 'row', alignItems: 'center' },
   statItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   iconBox: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -329,7 +411,6 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 14, fontWeight: '700', color: '#111827' },
   verticalLine: { width: 1, height: 30, backgroundColor: '#F3F4F6', marginHorizontal: 8 },
 
-  // Empty State
   emptyContainer: { alignItems: 'center', marginTop: 80 },
   emptyText: { color: '#374151', marginTop: 16, fontSize: 16, fontWeight: '600' },
   emptySubText: { color: '#9CA3AF', marginTop: 4, fontSize: 14 },

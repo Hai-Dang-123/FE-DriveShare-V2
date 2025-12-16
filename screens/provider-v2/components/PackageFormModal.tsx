@@ -11,6 +11,8 @@ import {
   Alert,
   Image,
   ActivityIndicator,
+  Switch,
+  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -80,6 +82,14 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
     weightKg: 0,
     volumeM3: 0,
     images: [],
+    isFragile: false,
+    isLiquid: false,
+    isRefrigerated: false,
+    isFlammable: false,
+    isHazardous: false,
+    isBulky: false,
+    isPerishable: false,
+    otherRequirements: "",
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -93,6 +103,15 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
         weightKg: 0,
         volumeM3: 0,
         images: [],
+        isFragile: false,
+        isLiquid: false,
+        isRefrigerated: false,
+        isFlammable: false,
+        isHazardous: false,
+        isBulky: false,
+        isPerishable: false,
+        otherRequirements: "",
+        itemId: (item as any).id || (item as any).itemId, // Thêm itemId vào formData
       });
     }
   }, [visible, item]);
@@ -107,18 +126,29 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
-      base64: true,
     });
 
     if (!result.canceled && result.assets[0]) {
-      const newImg = {
-        uri: result.assets[0].uri,
-        packageImageURL: result.assets[0].base64
-          ? `data:image/jpeg;base64,${result.assets[0].base64}`
-          : result.assets[0].uri,
-        status: ImageStatus.ACTIVE,
-      };
-      setFormData((p: any) => ({ ...p, images: [...p.images, newImg] }));
+      if (Platform.OS === 'web') {
+        // Web: Convert URI to File object
+        try {
+          const response = await fetch(result.assets[0].uri);
+          const blob = await response.blob();
+          const fileName = result.assets[0].uri.split('/').pop() || `package_${Date.now()}.jpg`;
+          const file = new File([blob], fileName, { type: 'image/jpeg' });
+          setFormData((p: any) => ({ ...p, images: [...p.images, file] }));
+        } catch (error) {
+          console.error('Error converting image to File:', error);
+          Alert.alert("Lỗi", "Không thể xử lý ảnh");
+        }
+      } else {
+        // Mobile: Keep URI string
+        const newImg = {
+          uri: result.assets[0].uri,
+          status: ImageStatus.ACTIVE,
+        };
+        setFormData((p: any) => ({ ...p, images: [...p.images, newImg] }));
+      }
     }
   };
 
@@ -227,6 +257,83 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
             </View>
 
             <View style={styles.divider} />
+            <Text style={styles.sectionTitle}>Đặc tính vận chuyển</Text>
+
+            <View style={styles.checkboxGrid}>
+              <View style={styles.checkboxItem}>
+                <Text style={styles.checkboxLabel}>Dễ vỡ</Text>
+                <Switch
+                  value={formData.isFragile}
+                  onValueChange={(v) => handleChange("isFragile", v)}
+                  trackColor={{ false: "#E5E7EB", true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={styles.checkboxItem}>
+                <Text style={styles.checkboxLabel}>Chất lỏng</Text>
+                <Switch
+                  value={formData.isLiquid}
+                  onValueChange={(v) => handleChange("isLiquid", v)}
+                  trackColor={{ false: "#E5E7EB", true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={styles.checkboxItem}>
+                <Text style={styles.checkboxLabel}>Cần lạnh</Text>
+                <Switch
+                  value={formData.isRefrigerated}
+                  onValueChange={(v) => handleChange("isRefrigerated", v)}
+                  trackColor={{ false: "#E5E7EB", true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={styles.checkboxItem}>
+                <Text style={styles.checkboxLabel}>Dễ cháy</Text>
+                <Switch
+                  value={formData.isFlammable}
+                  onValueChange={(v) => handleChange("isFlammable", v)}
+                  trackColor={{ false: "#E5E7EB", true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={styles.checkboxItem}>
+                <Text style={styles.checkboxLabel}>Nguy hiểm</Text>
+                <Switch
+                  value={formData.isHazardous}
+                  onValueChange={(v) => handleChange("isHazardous", v)}
+                  trackColor={{ false: "#E5E7EB", true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={styles.checkboxItem}>
+                <Text style={styles.checkboxLabel}>Cồng kềnh</Text>
+                <Switch
+                  value={formData.isBulky}
+                  onValueChange={(v) => handleChange("isBulky", v)}
+                  trackColor={{ false: "#E5E7EB", true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={styles.checkboxItem}>
+                <Text style={styles.checkboxLabel}>Dễ hỏng</Text>
+                <Switch
+                  value={formData.isPerishable}
+                  onValueChange={(v) => handleChange("isPerishable", v)}
+                  trackColor={{ false: "#E5E7EB", true: COLORS.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+            </View>
+
+            <InputField
+              label="Yêu cầu khác"
+              value={formData.otherRequirements}
+              onChange={(v: string) => handleChange("otherRequirements", v)}
+              placeholder="Nhập các yêu cầu đặc biệt khác..."
+              multiline
+            />
+
+            <View style={styles.divider} />
             <Text style={styles.sectionTitle}>Hình ảnh kiện hàng</Text>
 
             <ScrollView
@@ -242,17 +349,24 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
                 />
                 <Text style={styles.addImageText}>Thêm ảnh</Text>
               </TouchableOpacity>
-              {formData.images.map((img: any, idx: number) => (
-                <View key={idx} style={styles.imageWrapper}>
-                  <Image source={{ uri: img.uri }} style={styles.thumbnail} />
-                  <TouchableOpacity
-                    style={styles.removeBtn}
-                    onPress={() => removeImage(idx)}
-                  >
-                    <Ionicons name="close" size={10} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              ))}
+              {formData.images.map((img: any, idx: number) => {
+                // Handle both File objects (Web) and URI strings (Mobile)
+                const imageUri = img instanceof File || img instanceof Blob 
+                  ? URL.createObjectURL(img) 
+                  : (img.uri || img.packageImageURL || img);
+                
+                return (
+                  <View key={idx} style={styles.imageWrapper}>
+                    <Image source={{ uri: imageUri }} style={styles.thumbnail} />
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => removeImage(idx)}
+                    >
+                      <Ionicons name="close" size={10} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
             </ScrollView>
           </ScrollView>
 
@@ -398,6 +512,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   btnSubmitText: { fontWeight: "600", color: "#fff" },
+  checkboxGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 16,
+  },
+  checkboxItem: {
+    width: "48%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  checkboxLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#374151",
+  },
 });
 
 export default PackageFormModal;

@@ -78,6 +78,107 @@ const WebCccdScanner: React.FC<WebCccdScannerProps> = ({ config, onResult, onErr
 
   useEffect(() => {
     isMounted.current = true;
+    
+    // WORKAROUND: Intercept cả fetch và XMLHttpRequest để block upload
+    const originalFetch = window.fetch;
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+    
+    // Intercept fetch - SDK có thể đọc hash từ nhiều nơi khác nhau
+    window.fetch = async function(...args: any[]) {
+      const [url] = args;
+      if (typeof url === 'string' && url.includes('/file-service/v1/addFile')) {
+        console.log('🚫 Blocked fetch to VNPT:', url);
+        const timestamp = Date.now();
+        const mockHash = 'mock-hash-' + timestamp;
+        
+        // Try many possible structures that SDK might expect
+        const mockData = { 
+          code: '00',
+          msg: 'Success',
+          message: 'Success',
+          hash: mockHash,
+          file_hash: mockHash,
+          fileHash: mockHash,
+          data: { 
+            fileId: 'mock-file-' + timestamp,
+            file_id: 'mock-file-' + timestamp,
+            hash: mockHash,
+            file_hash: mockHash,
+            fileHash: mockHash,
+            url: 'data:image/png;base64,mock',
+            image_url: 'data:image/png;base64,mock'
+          },
+          result: {
+            hash: mockHash,
+            fileId: 'mock-file-' + timestamp
+          }
+        };
+        
+        console.log('📦 Mock response structure:', JSON.stringify(mockData, null, 2));
+        
+        // Create proper Response object with reusable json()
+        let jsonCalled = false;
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => {
+            console.log('📦 SDK called response.json()', jsonCalled ? '(again)' : '(first time)');
+            jsonCalled = true;
+            return mockData;
+          },
+          text: async () => JSON.stringify(mockData),
+          blob: async () => new Blob([JSON.stringify(mockData)], { type: 'application/json' }),
+          headers: new Headers({ 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }),
+          redirected: false,
+          type: 'basic',
+          url: url
+        } as Response;
+      }
+      return originalFetch.apply(this, args as any);
+    };
+    
+    // Intercept XMLHttpRequest
+    XMLHttpRequest.prototype.open = function(method: string, url: string | URL, ...rest: any[]) {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      if (urlStr.includes('/file-service/v1/addFile')) {
+        console.log('🚫 Blocked XHR to VNPT:', urlStr);
+        (this as any)._intercepted = true;
+      }
+      return originalXHROpen.call(this, method, urlStr, ...rest);
+    };
+    
+    XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
+      if ((this as any)._intercepted) {
+        console.log('🚫 Blocked XHR send to VNPT');
+        setTimeout(() => {
+          Object.defineProperty(this, 'status', { value: 200, writable: false });
+          Object.defineProperty(this, 'statusText', { value: 'OK', writable: false });
+          Object.defineProperty(this, 'readyState', { value: 4, writable: false });
+          Object.defineProperty(this, 'responseText', { 
+            value: JSON.stringify({ 
+              code: '00',
+              message: 'Success',
+              hash: 'mock-hash-' + Date.now(),
+              data: { 
+                fileId: 'mock-file-' + Date.now(),
+                hash: 'mock-hash-' + Date.now()
+              }
+            }), 
+            writable: false 
+          });
+          this.dispatchEvent(new Event('load'));
+          if (this.onload) this.onload(new Event('load') as any);
+        }, 100);
+        return;
+      }
+      return originalXHRSend.call(this, body);
+    };
+    
     const initSdk = async () => {
       try {
         if (!config.accessToken) throw new Error("Thiếu Access Token");
@@ -91,11 +192,20 @@ const WebCccdScanner: React.FC<WebCccdScannerProps> = ({ config, onResult, onErr
         
         const dataConfig = {
           CALL_BACK_END_FLOW: (result: any) => {
+            console.log('✅ VNPT SDK Result:', result);
             if (isMounted.current) onResult(result);
           },
-          HAS_BACKGROUND_IMAGE: false, 
-          MAX_SIZE_IMAGE: 1, 
+          HAS_BACKGROUND_IMAGE: false,
+          MAX_SIZE_IMAGE: 1,
           LIST_TYPE_DOCUMENT: [-1, 4, 5, 6, 7],
+          // Thử config khác để tắt upload
+          IS_UPLOAD_IMAGE: false,
+          IS_SAVE_IMAGE: false, 
+          RETURN_BASE64: true,
+          // Thêm config mới
+          AUTO_CAPTURE: false, // Không tự động capture
+          IS_CHECK_FACE: false, // Không check face để tránh upload
+          IS_LIVENESS: false, // Không check liveness
         };
 
         if (isMounted.current) {

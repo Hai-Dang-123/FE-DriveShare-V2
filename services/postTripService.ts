@@ -62,8 +62,19 @@ const postTripService = {
     const res = await api.get(`api/PostTrip/my-posts?pageNumber=${pageNumber}&pageSize=${pageSize}`)
     return res.data
   },
-  async getOpen(pageNumber = 1, pageSize = 10) {
-    const res = await api.get(`api/PostTrip/open?pageNumber=${pageNumber}&pageSize=${pageSize}`)
+  async getOpen(
+    pageNumber = 1, 
+    pageSize = 10, 
+    search?: string, 
+    sortField?: string, 
+    sortDirection?: string
+  ) {
+    let url = `api/PostTrip/open?pageNumber=${pageNumber}&pageSize=${pageSize}`
+    if (search) url += `&search=${encodeURIComponent(search)}`
+    if (sortField) url += `&sortField=${sortField}`
+    if (sortDirection) url += `&sortDirection=${sortDirection}`
+    
+    const res = await api.get(url)
     return res.data
   }
   ,

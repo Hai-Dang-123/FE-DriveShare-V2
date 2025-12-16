@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -28,21 +28,29 @@ interface Props {
 const STATUS_COLORS: Record<string, string> = {
   ALL: "#0284C7",
   PENDING: "#F59E0B", // orange
+  APPROVED: "#10B981", // green
+  REJECTED: "#EF4444", // red
   IN_TRANSIT: "#3B82F6", // blue
   DELIVERED: "#10B981", // green
   COMPLETED: "#6B7280", // gray
   DELETED: "#EF4444", // red
+  OPEN: "#10B981", // green
+  CLOSED: "#6B7280", // gray
 };
 
 // Status label mapping
 const getStatusLabel = (status: string): string => {
   const labels: Record<string, string> = {
     ALL: "Tất cả",
-    PENDING: "Chờ xử lý",
+    PENDING: "Chờ duyệt",
+    APPROVED: "Đã duyệt",
+    REJECTED: "Từ chối",
     IN_TRANSIT: "Đang vận chuyển",
     DELIVERED: "Đã giao",
     COMPLETED: "Hoàn thành",
     DELETED: "Đã xóa",
+    OPEN: "Đang mở",
+    CLOSED: "Đã đóng",
   };
   return labels[status] || status;
 };
@@ -95,11 +103,19 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
     setTimeout(() => setToast((t) => ({ ...t, visible: false })), duration);
   };
 
+  // ✅ Gọi API mỗi khi component mount hoặc quay lại màn hình
+  useEffect(() => {
+    console.log("🔄 [PackagesManagementScreen] Component mounted, fetching packages...");
+    // Nếu đang sort theo status thì không truyền sortField vào API
+    const apiSortField = sortField === "status" ? "title" : sortField;
+    fetchPage(1, 20, search, apiSortField, sortOrder, statusFilter);
+  }, []);
+
   const handleEdit = (pkg: Package) => {
     console.log("🔧 Edit package clicked:", pkg.id);
-    // Chỉ cho phép sửa khi status KHÔNG phải PENDING
-    if (pkg.status === "PENDING") {
-      showToast("Không thể sửa gói hàng đang chờ xử lý", "error");
+    // CHỈ cho phép sửa khi status là PENDING
+    if (pkg.status !== "PENDING") {
+      showToast("Chỉ có thể sửa gói hàng đang chờ duyệt", "error");
       return;
     }
     setEditPackageId(pkg.id);
@@ -119,7 +135,9 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
       statusFilter,
     });
     // Force refresh with current filters
-    await fetchPage(1, 20, search, sortField, sortOrder, statusFilter);
+    // Nếu đang sort theo status thì không truyền sortField vào API
+    const apiSortField = sortField === "status" ? "title" : sortField;
+    await fetchPage(1, 20, search, apiSortField, sortOrder, statusFilter);
     console.log("✅ Packages list refreshed");
     showToast("Đã cập nhật gói hàng thành công", "success");
   };
@@ -128,8 +146,8 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
     console.log("🗑️ handleDelete called with id:", id);
     // Tìm package để kiểm tra status
     const pkg = packages.find((p) => p.id === id);
-    if (pkg && pkg.status === "PENDING") {
-      showToast("Không thể xóa gói hàng đang chờ xử lý", "error");
+    if (pkg && pkg.status !== "PENDING") {
+      showToast("Chỉ có thể xóa gói hàng đang chờ duyệt", "error");
       return;
     }
     setDeletePackageId(id);
@@ -160,7 +178,9 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
         setDeletePackageId(null);
         // Refresh data
         setTimeout(async () => {
-          await fetchPage(1, 20, search, sortField, sortOrder, statusFilter);
+          // Nếu đang sort theo status thì không truyền sortField vào API
+          const apiSortField = sortField === "status" ? "title" : sortField;
+          await fetchPage(1, 20, search, apiSortField, sortOrder, statusFilter);
           showToast("Đã xóa gói hàng thành công", "success");
         }, 200);
       } else {
@@ -176,22 +196,29 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
 
   const handleSearchChange = (text: string) => {
     setSearch(text);
-    const timer = setTimeout(() => {
-      fetchPage(1, 20, text, sortField, sortOrder, statusFilter);
-    }, 500);
-    return () => clearTimeout(timer);
+  };
+
+  const handleSearchSubmit = () => {
+    // Nếu đang sort theo status thì không truyền sortField vào API
+    const apiSortField = sortField === "status" ? "title" : sortField;
+    fetchPage(1, 20, search, apiSortField, sortOrder, statusFilter);
   };
 
   const handleApplySort = (field: string, order: "ASC" | "DESC") => {
     setSortField(field);
     setSortOrder(order);
     setIsSortModalOpen(false);
-    fetchPage(1, 20, search, field, order, statusFilter);
+    // Nếu sort theo status thì sort local trên FE, không gọi API
+    if (field !== "status") {
+      fetchPage(1, 20, search, field, order, statusFilter);
+    }
   };
 
   const handleStatusFilter = (status: string) => {
     setStatusFilter(status);
-    fetchPage(1, 20, search, sortField, sortOrder, status);
+    // Nếu đang sort theo status thì không truyền sortField vào API
+    const apiSortField = sortField === "status" ? "title" : sortField;
+    fetchPage(1, 20, search, apiSortField, sortOrder, status);
   };
 
   const handleOpenCreate = () => {
@@ -203,11 +230,41 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
     setModalOpen(true);
   };
 
-  const handleCreatePackage = (data: any) => {
-    console.log("Create Package Data:", data);
-    setModalOpen(false);
-    showToast("Đã tạo gói hàng thành công", "success");
-    fetchPage(1, 20, search, sortField, sortOrder, statusFilter);
+  const handleCreatePackage = async (data: any) => {
+    try {
+      console.log("📦 Creating package with data:", data);
+      
+      // Thêm itemId từ selectedItem nếu chưa có
+      const payload = {
+        ...data,
+        itemId: data.itemId || (selectedItem as any)?.id || (selectedItem as any)?.itemId,
+      };
+      
+      console.log("📦 Payload with itemId:", payload);
+      
+      // Call API to create package
+      const response = await packageService.createPackage(payload);
+      console.log("✅ Package created, response:", response);
+      
+      setModalOpen(false);
+      
+      // Check if creation was successful
+      const isSuccess = response.isSuccess || response.statusCode === 200 || response.result;
+      
+      if (isSuccess) {
+        showToast("Đã tạo gói hàng thành công", "success");
+        // Refresh packages list
+        // Nếu đang sort theo status thì không truyền sortField vào API
+        const apiSortField = sortField === "status" ? "title" : sortField;
+        await fetchPage(1, 20, search, apiSortField, sortOrder, statusFilter);
+      } else {
+        showToast(response.message || "Không thể tạo gói hàng", "error");
+      }
+    } catch (error) {
+      console.error("❌ Error creating package:", error);
+      setModalOpen(false);
+      showToast("Đã xảy ra lỗi khi tạo gói hàng", "error");
+    }
   };
 
   return (
@@ -241,7 +298,12 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
             style={styles.searchInput}
             value={search}
             onChangeText={handleSearchChange}
+            onSubmitEditing={handleSearchSubmit}
+            returnKeyType="search"
           />
+          <TouchableOpacity onPress={handleSearchSubmit} style={styles.searchButton}>
+            <Ionicons name="arrow-forward" size={20} color="#0284C7" />
+          </TouchableOpacity>
         </View>
         <TouchableOpacity
           style={styles.filterButton}
@@ -253,7 +315,7 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
 
       {/* STATUS FILTER CHIPS */}
       <View style={styles.statusFilterRow}>
-        {["ALL", "PENDING", "IN_TRANSIT", "DELIVERED", "COMPLETED"].map(
+        {["ALL", "PENDING", "APPROVED", "REJECTED", "IN_TRANSIT", "DELIVERED", "COMPLETED"].map(
           (status) => (
             <TouchableOpacity
               key={status}
@@ -284,6 +346,15 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
 
       {/* LIST */}
       <View style={styles.listContainer}>
+        {(() => {
+          console.log('🔍 [PackagesManagementScreen] Render state:', {
+            loading,
+            error,
+            packagesLength: packages?.length,
+            packages: packages
+          });
+          return null;
+        })()}
         {loading ? (
           <ActivityIndicator
             size="large"
@@ -310,7 +381,22 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
           </View>
         ) : (
           <PackageList
-            packages={packages}
+            packages={(() => {
+              // Sort trên FE nếu sortField là "status"
+              if (sortField === "status") {
+                const sorted = [...packages].sort((a, b) => {
+                  const statusA = a.status || "";
+                  const statusB = b.status || "";
+                  if (sortOrder === "ASC") {
+                    return statusA.localeCompare(statusB);
+                  } else {
+                    return statusB.localeCompare(statusA);
+                  }
+                });
+                return sorted;
+              }
+              return packages;
+            })()}
             onEdit={handleEdit}
             onDelete={handleDelete}
             onPost={() => {}}
@@ -561,6 +647,10 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
   },
   searchInput: { flex: 1, fontSize: 14, color: "#111827" },
+  searchButton: {
+    padding: 4,
+    marginRight: 4,
+  },
   filterButton: {
     marginLeft: 12,
     width: 44,

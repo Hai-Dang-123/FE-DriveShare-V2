@@ -37,7 +37,7 @@ export interface DriverTeamInfoDTO {
 }
 
 export interface CreateOwnerDriverLinkDTO {
-  ownerId: string
+  OwnerId: string  // Backend yêu cầu chữ O viết hoa
 }
 
 export interface ChangeStatusOwnerDriverLinkDTO {
@@ -86,7 +86,47 @@ class OwnerDriverLinkService {
     }
   }
 
-  // Driver: Kiểm tra đang thuộc đội xe nào
+  // Driver: Lấy danh sách tất cả các team đang tham gia
+  async getMyTeams() {
+    try {
+      const response = await api.get<{
+        isSuccess: boolean
+        result?: DriverTeamInfoDTO
+        message?: string
+        statusCode?: number
+      }>('/api/OwnerDriverLink/my-team')
+
+      if (response.data.isSuccess && response.data.result) {
+        // Backend trả về single team, wrap thành array để consistent với UI
+        return {
+          success: true,
+          data: [response.data.result],
+        }
+      }
+
+      // Không có team nào
+      return {
+        success: true,
+        data: [],
+      }
+    } catch (error: any) {
+      // 404 = chưa thuộc đội nào
+      if (error.response?.status === 404) {
+        return {
+          success: true,
+          data: [],
+        }
+      }
+      
+      console.error('Error fetching my teams:', error)
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Lỗi kết nối',
+      }
+    }
+  }
+
+  // Driver: Kiểm tra đang thuộc đội xe nào (deprecated - dùng getMyTeams)
   async getMyTeamInfo() {
     try {
       const response = await api.get<{

@@ -111,14 +111,36 @@ const ImportHistoryScreen: React.FC = () => {
       const response: any = await driverWorkSessionService.importHistory(dto)
 
       if (response?.isSuccess) {
-        showAlert('Thành công', 'Đã import lịch sử giờ lái thành công!')
-        router.back()
+        if (Platform.OS === 'web') {
+          window.alert('Thành công\n\nĐã import lịch sử giờ lái thành công!')
+          router.replace('/driver')
+        } else {
+          Alert.alert('Thành công', 'Đã import lịch sử giờ lái thành công!', [
+            { text: 'OK', onPress: () => router.replace('/(driver)/home') }
+          ])
+        }
       } else {
-        showAlert('Lỗi', response?.message || 'Không thể import lịch sử')
+        const errorMsg = response?.message || 'Không thể import lịch sử'
+        if (Platform.OS === 'web') {
+          window.alert(`Lỗi\n\n${errorMsg}`)
+          router.replace('/driver')
+        } else {
+          Alert.alert('Lỗi', errorMsg, [
+            { text: 'OK', onPress: () => router.replace('/driver') }
+          ])
+        }
       }
     } catch (error: any) {
       console.error('Import history error:', error)
-      showAlert('Lỗi', error?.message || 'Có lỗi xảy ra khi import lịch sử')
+      const errorMsg = error?.message || 'Có lỗi xảy ra khi import lịch sử'
+      if (Platform.OS === 'web') {
+        window.alert(`Lỗi\n\n${errorMsg}`)
+        router.replace('/driver')
+      } else {
+        Alert.alert('Lỗi', errorMsg, [
+          { text: 'OK', onPress: () => router.replace('/driver') }
+        ])
+      }
     } finally {
       setLoading(false)
     }

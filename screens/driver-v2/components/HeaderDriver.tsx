@@ -4,6 +4,7 @@ import React from 'react'
 import { View, Text, Image, TouchableOpacity, StyleSheet, ImageBackground, Dimensions } from 'react-native'
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
+import { useNotification } from '@/hooks/useNotification'
 
 interface HeaderProps {
   driver: any
@@ -11,6 +12,7 @@ interface HeaderProps {
 
 const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
   const router = useRouter()
+  const { unreadCount } = useNotification()
   
   const name = driver?.fullName || 'N/A'
   const license = driver?.licenseClass || 'Chưa cập nhật'
@@ -21,6 +23,7 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
   const hasVerifiedCitizenId = driver?.hasVerifiedCitizenId ?? false
   const hasVerifiedDriverLicense = driver?.hasVerifiedDriverLicense ?? false
   const hasDeclaredInitialHistory = driver?.hasDeclaredInitialHistory ?? false
+  const hasVerifiedHealthCheck = driver?.hasVerifiedHealthCheck ?? false
 
   const handleVerifyDocuments = () => {
     router.push('/driver/my-documents')
@@ -28,6 +31,10 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
 
   const handleDeclareHistory = () => {
     router.push('/driver/import-history')
+  }
+
+  const handleHealthCheck = () => {
+    router.push('/driver/verify-health-check')
   }
 
   return (
@@ -42,9 +49,13 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
            <Text style={styles.brandText}>DriveShare Driver</Text>
            
            <View style={styles.actions}>
-              <TouchableOpacity style={styles.iconBtn}>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/notifications')}>
                 <Ionicons name="notifications-outline" size={24} color="#FFF" />
-                <View style={styles.dot} />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconBtn}>
                 <Ionicons name="settings-outline" size={24} color="#FFF" />
@@ -69,7 +80,7 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
           
           <View style={styles.infoText}>
             <Text style={styles.name}>{name}</Text>
-            <Text style={styles.subInfo}>Bằng lái {license} • {experience} năm kinh nghiệm</Text>
+            <Text style={styles.subInfo}>Bằng lái {license}</Text>
             <View style={styles.badgeRow}>
               <View style={styles.ratingBadge}>
                 <MaterialCommunityIcons name="star" size={12} color="#F59E0B" />
@@ -79,9 +90,9 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
           </View>
         </View>
 
-        {/* Verification Status (CCCD + GPLX + Initial History for drivers) */}
+        {/* Verification Status (CCCD + GPLX + Initial History + Health Check for drivers) */}
         <View style={styles.verifySection}>
-          {hasVerifiedCitizenId && hasVerifiedDriverLicense && hasDeclaredInitialHistory ? (
+          {hasVerifiedCitizenId && hasVerifiedDriverLicense && hasDeclaredInitialHistory && hasVerifiedHealthCheck ? (
             <View style={styles.verifiedBadgeContainer}>
               <MaterialCommunityIcons name="shield-check" size={16} color="#10B981" />
               <Text style={styles.verifiedText}>Đã xác minh đầy đủ</Text>
@@ -104,6 +115,12 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
                 <TouchableOpacity style={styles.verifyButton} onPress={handleDeclareHistory}>
                   <MaterialCommunityIcons name="history" size={16} color="#F59E0B" />
                   <Text style={styles.verifyButtonText}>Import giờ khởi tạo</Text>
+                </TouchableOpacity>
+              )}
+              {!hasVerifiedHealthCheck && (
+                <TouchableOpacity style={styles.verifyButton} onPress={handleHealthCheck}>
+                  <MaterialCommunityIcons name="heart-pulse" size={16} color="#10B981" />
+                  <Text style={styles.verifyButtonText}>Xác minh sức khỏe</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -151,6 +168,23 @@ const styles = StyleSheet.create({
     width: 8, height: 8,
     borderRadius: 4,
     backgroundColor: '#EF4444',
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
   profileRow: {
     flexDirection: 'row',
