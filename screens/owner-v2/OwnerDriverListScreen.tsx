@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
@@ -10,8 +10,9 @@ import {
   Image,
   Alert,
 } from 'react-native'
-import { MaterialCommunityIcons } from '@expo/vector-icons'
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 import ownerDriverLinkService, { LinkedDriverDTO } from '@/services/ownerDriverLinkService'
 
 const OwnerDriverListScreen: React.FC = () => {
@@ -22,10 +23,24 @@ const OwnerDriverListScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
+  const [confirmModal, setConfirmModal] = useState<{
+    visible: boolean
+    linkId: string
+    action: 'APPROVED' | 'REJECTED'
+    driverName: string
+  } | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    loadDrivers()
-  }, [])
+  useFocusEffect(
+    useCallback(() => {
+      // Reset state and load fresh data every time screen is focused
+      setDrivers([])
+      setPage(1)
+      setHasMore(true)
+      setError(null)
+      loadDrivers(1)
+    }, [])
+  )
 
   const loadDrivers = async (pageNum: number = 1, isRefresh: boolean = false) => {
     try {
@@ -90,6 +105,43 @@ const OwnerDriverListScreen: React.FC = () => {
     return canDrive
       ? { text: 'Có thể lái', icon: 'check-circle', color: '#10B981' }
       : { text: 'Đạt giới hạn', icon: 'alert-circle', color: '#EF4444' }
+  }
+
+  const handleStatusAction = (linkId: string, action: 'APPROVED' | 'REJECTED', driverName: string) => {
+    setConfirmModal({ visible: true, linkId, action, driverName })
+  }
+
+  const confirmStatusChange = async () => {
+    if (!confirmModal) return
+
+    setSubmitting(true)
+    try {
+      const response = await ownerDriverLinkService.changeStatus({
+        ownerDriverLinkId: confirmModal.linkId,
+        status: confirmModal.action as any,
+      })
+
+      if (response.success) {
+        Alert.alert(
+          'Thành công',
+          confirmModal.action === 'APPROVED' 
+            ? `Đã duyệt ${confirmModal.driverName} vào đội xe`
+            : `Đã từ chối ${confirmModal.driverName}`,
+          [{ text: 'OK' }]
+        )
+        // Reload data
+        setDrivers([])
+        setPage(1)
+        loadDrivers(1)
+      } else {
+        Alert.alert('Lỗi', response.error || 'Không thể cập nhật trạng thái')
+      }
+    } catch (err) {
+      Alert.alert('Lỗi', 'Có lỗi xảy ra khi cập nhật trạng thái')
+    } finally {
+      setSubmitting(false)
+      setConfirmModal(null)
+    }
   }
 
   const renderDriverCard = ({ item }: { item: LinkedDriverDTO }) => {
@@ -162,13 +214,40 @@ const OwnerDriverListScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Drive Status */}
-        <View style={styles.driveStatusContainer}>
-          <MaterialCommunityIcons name={canDriveStatus.icon} size={18} color={canDriveStatus.color} />
-          <Text style={[styles.driveStatusText, { color: canDriveStatus.color }]}>
-            {canDriveStatus.text}
-          </Text>
-        </View>
+        {/* Drive Status or Action Buttons */}
+        {item.status === 'PENDING' ? (
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={styles.rejectButton}
+              onPress={(e) => {
+                e.stopPropagation()
+                handleStatusAction(item.ownerDriverLinkId, 'REJECTED', item.fullName)
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons name="close-circle" size={18} color="#fff" />
+              <Text style={styles.rejectButtonText}>Từ chối</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.approveButton}
+              onPress={(e) => {
+                e.stopPropagation()
+                handleStatusAction(item.ownerDriverLinkId, 'APPROVED', item.fullName)
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialCommunityIcons name="check-circle" size={18} color="#fff" />
+              <Text style={styles.approveButtonText}>Duyệt</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.driveStatusContainer}>
+            <MaterialCommunityIcons name={canDriveStatus.icon} size={18} color={canDriveStatus.color} />
+            <Text style={[styles.driveStatusText, { color: canDriveStatus.color }]}>
+              {canDriveStatus.text}
+            </Text>
+          </View>
+        )}
       </TouchableOpacity>
     )
   }
@@ -208,7 +287,13 @@ const OwnerDriverListScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Tài xế của tôi</Text>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Tài xế của tôi</Text>
+          <View style={{ width: 32 }} />
+        </View>
         <Text style={styles.headerSubtitle}>
           {drivers.length} tài xế {drivers.filter((d) => d.canDrive).length} có thể lái
         </Text>
@@ -232,6 +317,54 @@ const OwnerDriverListScreen: React.FC = () => {
           ) : null
         }
       />
+
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={[styles.modalIcon, { backgroundColor: confirmModal.action === 'APPROVED' ? '#D1FAE5' : '#FEE2E2' }]}>
+              <MaterialCommunityIcons
+                name={confirmModal.action === 'APPROVED' ? 'check-circle' : 'close-circle'}
+                size={40}
+                color={confirmModal.action === 'APPROVED' ? '#10B981' : '#EF4444'}
+              />
+            </View>
+            <Text style={styles.modalTitle}>
+              {confirmModal.action === 'APPROVED' ? 'Duyệt tài xế?' : 'Từ chối tài xế?'}
+            </Text>
+            <Text style={styles.modalMessage}>
+              {confirmModal.action === 'APPROVED'
+                ? `Bạn có chắc muốn duyệt ${confirmModal.driverName} vào đội xe?`
+                : `Bạn có chắc muốn từ chối ${confirmModal.driverName}?`}
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setConfirmModal(null)}
+                disabled={submitting}
+              >
+                <Text style={styles.modalCancelText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalConfirmButton,
+                  { backgroundColor: confirmModal.action === 'APPROVED' ? '#10B981' : '#EF4444' },
+                ]}
+                onPress={confirmStatusChange}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>
+                    {confirmModal.action === 'APPROVED' ? 'Duyệt' : 'Từ chối'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   )
 }
@@ -249,15 +382,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  backBtn: {
+    padding: 4,
+  },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#0F172A',
-    marginBottom: 4,
+    flex: 1,
+    textAlign: 'center',
   },
   headerSubtitle: {
     fontSize: 14,
     color: '#64748B',
+    textAlign: 'center',
   },
   listContainer: {
     padding: 16,
@@ -411,6 +555,113 @@ const styles = StyleSheet.create({
   footerLoader: {
     paddingVertical: 20,
     alignItems: 'center',
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  rejectButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+  },
+  rejectButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  approveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10B981',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+  },
+  approveButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  modalIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  modalConfirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalConfirmText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
 })
 

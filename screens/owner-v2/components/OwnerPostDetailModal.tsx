@@ -360,6 +360,11 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
               <View style={styles.routeContent}>
                 <Text style={styles.routeLabel}>Điểm đi ({formatDate(route.expectedPickupDate)})</Text>
                 <Text style={styles.routeAddress}>{route.startLocation?.address}</Text>
+                {route.pickupTimeWindow?.startTime && route.pickupTimeWindow?.endTime && (
+                  <Text style={styles.timeWindowText}>
+                    ⏰ Khoảng thời gian: {route.pickupTimeWindow.startTime} - {route.pickupTimeWindow.endTime}
+                  </Text>
+                )}
               </View>
             </View>
 
@@ -371,6 +376,11 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
               <View style={styles.routeContent}>
                 <Text style={styles.routeLabel}>Điểm đến ({formatDate(route.expectedDeliveryDate)})</Text>
                 <Text style={styles.routeAddress}>{route.endLocation?.address}</Text>
+                {route.deliveryTimeWindow?.startTime && route.deliveryTimeWindow?.endTime && (
+                  <Text style={styles.timeWindowText}>
+                    ⏰ Khoảng thời gian: {route.deliveryTimeWindow.startTime} - {route.deliveryTimeWindow.endTime}
+                  </Text>
+                )}
               </View>
             </View>
           </View>
@@ -490,6 +500,45 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
                     <Text style={styles.specText}>🏷️ {pkg.status}</Text>
                 </View>
 
+                {/* Package Special Properties */}
+                <View style={styles.specialPropsContainer}>
+                  {pkg.isFragile && (
+                    <View style={[styles.propBadge, {backgroundColor: '#FEF3C7', borderColor: '#F59E0B'}]}>
+                      <Text style={[styles.propText, {color: '#D97706'}]}>👌 Dễ vỡ</Text>
+                    </View>
+                  )}
+                  {pkg.isLiquid && (
+                    <View style={[styles.propBadge, {backgroundColor: '#DBEAFE', borderColor: '#3B82F6'}]}>
+                      <Text style={[styles.propText, {color: '#2563EB'}]}>💧 Chất lỏng</Text>
+                    </View>
+                  )}
+                  {pkg.isRefrigerated && (
+                    <View style={[styles.propBadge, {backgroundColor: '#DBEAFE', borderColor: '#0EA5E9'}]}>
+                      <Text style={[styles.propText, {color: '#0284C7'}]}>❄️ Cần lạnh</Text>
+                    </View>
+                  )}
+                  {pkg.isFlammable && (
+                    <View style={[styles.propBadge, {backgroundColor: '#FED7AA', borderColor: '#F97316'}]}>
+                      <Text style={[styles.propText, {color: '#EA580C'}]}>🔥 Dễ cháy</Text>
+                    </View>
+                  )}
+                  {pkg.isHazardous && (
+                    <View style={[styles.propBadge, {backgroundColor: '#FECACA', borderColor: '#EF4444'}]}>
+                      <Text style={[styles.propText, {color: '#DC2626'}]}>⚠️ Nguy hiểm</Text>
+                    </View>
+                  )}
+                  {pkg.isBulky && (
+                    <View style={[styles.propBadge, {backgroundColor: '#E9D5FF', borderColor: '#A855F7'}]}>
+                      <Text style={[styles.propText, {color: '#9333EA'}]}>📦 Cồng kềnh</Text>
+                    </View>
+                  )}
+                  {pkg.isPerishable && (
+                    <View style={[styles.propBadge, {backgroundColor: '#BBF7D0', borderColor: '#22C55E'}]}>
+                      <Text style={[styles.propText, {color: '#16A34A'}]}>⏳ Dễ hỏng</Text>
+                    </View>
+                  )}
+                </View>
+
                 {pkg.item && (
                     <View style={styles.itemMeta}>
                         <Text style={styles.itemName}>{pkg.item.itemName}</Text>
@@ -511,31 +560,37 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
         </View>
 
         {/* --- 5. LIÊN HỆ --- */}
-        {/* <View style={styles.card}>
+        <View style={styles.card}>
           <Text style={styles.sectionTitle}>📞 Danh Bạ Liên Hệ</Text>
           
-          <View style={[styles.contactRow, { backgroundColor: COLORS.senderBg }]}>
-            <View style={styles.roleBox}><Text style={[styles.roleText, {color: COLORS.primary}]}>GỬI</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.contactName}>{sender?.fullName}</Text>
-              <Text style={styles.contactPhone}>{sender?.phoneNumber}</Text>
+          {sender && (
+            <View style={[styles.contactRow, { backgroundColor: COLORS.senderBg }]}>
+              <View style={styles.roleBox}><Text style={[styles.roleText, {color: COLORS.primary}]}>GỬI</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.contactName}>{sender.fullName}</Text>
+                <Text style={styles.contactPhone}>{sender.phoneNumber}</Text>
+                {sender.email && <Text style={styles.contactEmail}>{sender.email}</Text>}
+              </View>
+              <TouchableOpacity onPress={() => handleCall(sender.phoneNumber)} style={styles.miniCallBtn}>
+                  <Ionicons name="call-outline" size={16} color={COLORS.primary} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => handleCall(sender?.phoneNumber)} style={styles.miniCallBtn}>
-                <Ionicons name="call-outline" size={16} color={COLORS.primary} />
-            </TouchableOpacity>
-          </View>
+          )}
 
-          <View style={[styles.contactRow, { backgroundColor: COLORS.receiverBg, marginTop: 8 }]}>
-             <View style={[styles.roleBox, {borderColor: '#F97316'}]}><Text style={[styles.roleText, {color: '#F97316'}]}>NHẬN</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.contactName}>{receiver?.fullName}</Text>
-              <Text style={styles.contactPhone}>{receiver?.phoneNumber}</Text>
+          {receiver && (
+            <View style={[styles.contactRow, { backgroundColor: COLORS.receiverBg, marginTop: 8 }]}>
+               <View style={[styles.roleBox, {borderColor: '#F97316'}]}><Text style={[styles.roleText, {color: '#F97316'}]}>NHẬN</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.contactName}>{receiver.fullName}</Text>
+                <Text style={styles.contactPhone}>{receiver.phoneNumber}</Text>
+                {receiver.email && <Text style={styles.contactEmail}>{receiver.email}</Text>}
+              </View>
+              <TouchableOpacity onPress={() => handleCall(receiver.phoneNumber)} style={[styles.miniCallBtn, {borderColor:'#F97316'}]}>
+                  <Ionicons name="call-outline" size={16} color={'#F97316'} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => handleCall(receiver?.phoneNumber)} style={[styles.miniCallBtn, {borderColor:'#F97316'}]}>
-                <Ionicons name="call-outline" size={16} color={'#F97316'} />
-            </TouchableOpacity>
-          </View>
-        </View> */}
+          )}
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -679,7 +734,16 @@ const styles = StyleSheet.create({
   roleText: { fontSize: 10, fontWeight: '800' },
   contactName: { fontSize: 14, fontWeight: '700', color: COLORS.text },
   contactPhone: { fontSize: 13, color: COLORS.textLight },
+  contactEmail: { fontSize: 12, color: COLORS.textLight, marginTop: 2 },
   miniCallBtn: { padding: 8, borderWidth:1, borderColor: COLORS.primary, borderRadius: 20 },
+  
+  // Time Window
+  timeWindowText: { fontSize: 12, color: COLORS.primary, marginTop: 4, fontWeight: '600' },
+  
+  // Special Properties
+  specialPropsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  propBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },
+  propText: { fontSize: 11, fontWeight: '700' },
   
   // BOTTOM BAR
   bottomBar: {

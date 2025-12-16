@@ -556,6 +556,29 @@ const vehicleService = {
       const vehicleId = payload.vehicleId || payload.VehicleId;
       if (!vehicleId) throw new Error("vehicleId is required for update");
 
+  // Update vehicle
+  updateVehicle: async (vehicleId: string, dto: any) => {
+    try {
+      const res = await api.put(`api/vehicle/${vehicleId}`, dto)
+      return res.data
+    } catch (e: any) {
+      console.error('updateVehicle failed', e)
+      throw e
+    }
+  },
+
+  // Soft delete vehicle
+  deleteVehicle: async (vehicleId: string) => {
+    try {
+      const res = await api.delete(`api/vehicle/${vehicleId}`)
+      return res.data
+    } catch (e: any) {
+      console.error('deleteVehicle failed', e)
+      throw e
+    }
+  },
+
+
       const dto = {
         VehicleId: vehicleId,
         Model: payload.model || payload.Model,

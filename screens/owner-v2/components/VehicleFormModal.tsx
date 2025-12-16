@@ -24,7 +24,7 @@ interface Props {
   onClose: () => void;
   onCreate: (dto: any) => void;
   initialData?: any;
-  isEditMode?: boolean;
+  isEdit?: boolean;
 }
 
 // Màu sắc chủ đạo theo thiết kế
@@ -110,13 +110,7 @@ const getImageTypeLabel = (type: VehicleImageType): string => {
   }
 };
 
-const VehicleFormModal: React.FC<Props> = ({
-  visible,
-  onClose,
-  onCreate,
-  initialData,
-  isEditMode = false,
-}) => {
+const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
   const [form, setForm] = useState<any>({
     VehicleTypeId: "",
     PlateNumber: "",
@@ -155,24 +149,6 @@ const VehicleFormModal: React.FC<Props> = ({
       return;
     }
 
-    // Load initial data when in edit mode
-    if (isEditMode && initialData) {
-      setForm({
-        VehicleTypeId: initialData.vehicleType?.vehicleTypeId || "",
-        PlateNumber: initialData.plateNumber || "",
-        Model: initialData.model || "",
-        Brand: initialData.brand || "",
-        YearOfManufacture:
-          initialData.yearOfManufacture || new Date().getFullYear(),
-        Color: initialData.color || "",
-        PayloadInKg: initialData.payloadInKg || 0,
-        VolumeInM3: initialData.volumeInM3 || 0,
-        Features: initialData.features || [],
-        VehicleImages: [],
-        Documents: [],
-      });
-    }
-
     let mounted = true;
     (async () => {
       try {
@@ -194,7 +170,7 @@ const VehicleFormModal: React.FC<Props> = ({
     return () => {
       mounted = false;
     };
-  }, [visible, isEditMode, initialData]);
+  }, [visible]);
 
   const handleChange = (k: string, v: any) =>
     setForm((p: any) => ({ ...p, [k]: v }));
@@ -315,9 +291,7 @@ const VehicleFormModal: React.FC<Props> = ({
           onPress={(e) => e.stopPropagation()}
         >
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>
-              {isEditMode ? "Chỉnh Sửa Xe" : "Thêm Xe Mới"}
-            </Text>
+            <Text style={styles.headerTitle}>Thêm Xe Mới</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={24} color={COLORS.textLight} />
             </TouchableOpacity>
@@ -720,9 +694,7 @@ const VehicleFormModal: React.FC<Props> = ({
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.btnSubmitText}>
-                  {isEditMode ? "Cập Nhật" : "Tạo Xe"}
-                </Text>
+                <Text style={styles.btnSubmitText}>Tạo Xe</Text>
               )}
             </TouchableOpacity>
           </View>

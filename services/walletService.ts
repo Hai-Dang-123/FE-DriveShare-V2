@@ -21,19 +21,28 @@ const walletService = {
   },
   async requestWithdrawal(amount: number, description: string) {
     try {
-      const res = await api.post('api/wallets/my-wallet/withdraw', { amount, description })
+      // Backend expects PascalCase: Amount, Description
+      const payload = {
+        Amount: amount,
+        Description: description
+      }
+      const res = await api.post('api/wallets/withdraw', payload)
       return res.data
     } catch (e: any) {
       if (e?.response?.data) return e.response.data
       throw e
     }
   },
-  async topup(amount: number, description?: string) {
+  async createTopup(amount: number, description?: string) {
     try {
+      // Backend expects PascalCase: Amount, Type, Description, etc.
       const payload = {
-        amount,
-        type: 'TOPUP',
-        description: description || 'Top-up qua ứng dụng',
+        Amount: amount,
+        Type: 'TOPUP',
+        Description: description || 'Nạp tiền qua ứng dụng',
+        TripId: null,
+        PostId: null,
+        ExternalCode: null
       }
       const res = await api.post('api/wallets/topup', payload)
       return res.data
@@ -41,6 +50,10 @@ const walletService = {
       if (e?.response?.data) return e.response.data
       throw e
     }
+  },
+  // Legacy method for backward compatibility
+  async topup(amount: number, description?: string) {
+    return this.createTopup(amount, description)
   },
   async payForTrip(tripId: string, amount: number, description?: string) {
     try {

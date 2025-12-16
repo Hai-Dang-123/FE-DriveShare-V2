@@ -11,7 +11,9 @@ import {
   StatusBar,
   Alert,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Image,
+  Modal
 } from 'react-native'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import walletService from '@/services/walletService'
@@ -43,6 +45,13 @@ export default function WalletOperationsScreen({ onBack, prefilledAmount = '' }:
   const [amountInput, setAmountInput] = useState(prefilledAmount)
   const [description, setDescription] = useState('')
   const [processing, setProcessing] = useState(false)
+  const [toast, setToast] = useState<{ visible: boolean; type: 'success' | 'error'; message: string }>({ visible: false, type: 'success', message: '' })
+  const [qrModal, setQrModal] = useState<{ visible: boolean; qrUrl: string; amount: number; transferContent: string; transactionId: string } | null>(null)
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ visible: true, type, message })
+    setTimeout(() => setToast(t => ({ ...t, visible: false })), 3000)
+  }
 
   useEffect(() => {
     fetchWallet()
@@ -70,30 +79,44 @@ export default function WalletOperationsScreen({ onBack, prefilledAmount = '' }:
   const handleTopup = async () => {
     const amount = Math.floor(Number(amountInput || '0'))
     if (!amount || amount <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ.')
+      showToast('error', 'Vui lòng nhập số tiền hợp lệ.')
       return
     }
     if (amount < 10000) {
-      Alert.alert('Lỗi', 'Số tiền nạp tối thiểu là 10,000 VND.')
+      showToast('error', 'Số tiền nạp tối thiểu là 10,000 VND.')
       return
     }
 
     setProcessing(true)
     try {
       const desc = description.trim() || 'Nạp tiền qua ứng dụng'
-      const res: any = await walletService.topup(amount, desc)
+      const res: any = await walletService.createTopup(amount, desc)
       const ok = res?.isSuccess ?? res?.statusCode === 200
-      if (!ok) throw new Error(res?.message || 'Nạp tiền thất bại')
       
-      Alert.alert('Thành công', 'Nạp tiền vào ví thành công!', [
-        { text: 'OK', onPress: () => {
-          setAmountInput('')
-          setDescription('')
-          fetchWallet()
-        }}
-      ])
+      if (!ok) {
+        const errorMsg = res?.message || 'Nạp tiền thất bại'
+        showToast('error', errorMsg)
+        await fetchWallet()
+        return
+      }
+      
+      // Success: Show QR modal with transaction details
+      const result = res.result
+      setQrModal({
+        visible: true,
+        qrUrl: result.qrUrl,
+        amount: result.amount,
+        transferContent: result.transferContent,
+        transactionId: result.transactionId
+      })
+      
+      // Clear form
+      setAmountInput('')
+      setDescription('')
     } catch (err: any) {
-      Alert.alert('Lỗi', err?.message || 'Không thể nạp tiền')
+      const errorMsg = err?.message || err?.response?.data?.message || 'Không thể nạp tiền'
+      showToast('error', errorMsg)
+      await fetchWallet()
     } finally {
       setProcessing(false)
     }
@@ -131,21 +154,30 @@ export default function WalletOperationsScreen({ onBack, prefilledAmount = '' }:
     try {
       const desc = description.trim() || 'Rút tiền qua ứng dụng'
       const res: any = await walletService.requestWithdrawal(amount, desc)
-      const ok = res?.isSuccess ?? res?.statusCode === 200
-      if (!ok) throw new Error(res?.message || 'Yêu cầu rút tiền thất bại')
       
-      Alert.alert('Thành công', 'Yêu cầu rút tiền đã được gửi. Vui lòng chờ xét duyệt.', [
-        { text: 'OK', onPress: () => {
-          setAmountInput('')
-          setDescription('')
-          fetchWallet()
-        }}
-      ])
+      // Check response success
+      const ok = res?.isSuccess ?? res?.statusCode === 200
+      if (!ok) {
+        const errorMsg = res?.message || 'Yêu cầu rút tiền thất bại'
+        throw new Error(errorMsg)
+      }
+      
+      // Success: Rút tiền thành công (backend đã trừ tiền ngay)
+      showToast('success', `Rút ${formatVND(amount)} thành công! Tiền sẽ được chuyển về tài khoản.`)
+      setAmountInput('')
+      setDescription('')
+      await fetchWallet()
     } catch (err: any) {
-      Alert.alert('Lỗi', err?.message || 'Không thể rút tiền')
+      const errorMessage = err?.message || err?.response?.data?.message || 'Không thể rút tiền'
+      showToast('error', errorMessage)
     } finally {
       setProcessing(false)
     }
+  }
+
+  const closeQrModal = async () => {
+    setQrModal(null)
+    await fetchWallet()
   }
 
   const quickAmounts = [50000, 100000, 200000, 500000, 1000000]
@@ -350,6 +382,89 @@ export default function WalletOperationsScreen({ onBack, prefilledAmount = '' }:
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* QR Code Modal */}
+      {qrModal && (
+        <Modal
+          visible={qrModal.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={closeQrModal}
+        >
+          <View style={styles.qrModalOverlay}>
+            <View style={styles.qrModalContent}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Header */}
+                <View style={styles.qrModalHeader}>
+                  <MaterialCommunityIcons name="qrcode-scan" size={32} color={COLORS.primary} />
+                  <Text style={styles.qrModalTitle}>Quét mã QR để nạp tiền</Text>
+                </View>
+
+                {/* QR Code Image */}
+                <View style={styles.qrImageContainer}>
+                  <Image
+                    source={{ uri: qrModal.qrUrl }}
+                    style={styles.qrImage}
+                    resizeMode="contain"
+                  />
+                </View>
+
+                {/* Transaction Info */}
+                <View style={styles.qrInfoContainer}>
+                  <View style={styles.qrInfoRow}>
+                    <Text style={styles.qrInfoLabel}>Số tiền:</Text>
+                    <Text style={styles.qrInfoValue}>{formatVND(qrModal.amount)} đ</Text>
+                  </View>
+                  
+                  <View style={styles.qrInfoRow}>
+                    <Text style={styles.qrInfoLabel}>Nội dung chuyển khoản:</Text>
+                    <View style={styles.transferContentBox}>
+                      <Text style={styles.transferContentText}>{qrModal.transferContent}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.qrInfoRow}>
+                    <Text style={styles.qrInfoLabel}>Mã giao dịch:</Text>
+                    <Text style={styles.qrInfoValueSmall}>{qrModal.transactionId}</Text>
+                  </View>
+                </View>
+
+                {/* Instructions */}
+                <View style={styles.qrInstructions}>
+                  <Text style={styles.qrInstructionsTitle}>⚠️ Hướng dẫn:</Text>
+                  <Text style={styles.qrInstructionItem}>1. Mở ứng dụng ngân hàng của bạn</Text>
+                  <Text style={styles.qrInstructionItem}>2. Quét mã QR hoặc nhập thông tin thủ công</Text>
+                  <Text style={styles.qrInstructionItem}>3. Kiểm tra nội dung chuyển khoản chính xác</Text>
+                  <Text style={styles.qrInstructionItem}>4. Xác nhận chuyển tiền</Text>
+                  <Text style={styles.qrInstructionItem}>5. Tiền sẽ được cộng vào ví trong vài phút</Text>
+                </View>
+
+                {/* Confirm Button */}
+                <TouchableOpacity
+                  style={styles.qrConfirmButton}
+                  onPress={closeQrModal}
+                  activeOpacity={0.8}
+                >
+                  <MaterialCommunityIcons name="check-circle" size={20} color={COLORS.white} />
+                  <Text style={styles.qrConfirmButtonText}>Đã chuyển tiền</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Toast Notification */}
+      {toast.visible && (
+        <View style={[styles.toast, toast.type === 'success' ? styles.toastSuccess : styles.toastError]}>
+          <MaterialCommunityIcons 
+            name={toast.type === 'success' ? 'check-circle' : 'alert-circle'} 
+            size={20} 
+            color={COLORS.white} 
+          />
+          <Text style={styles.toastText}>{toast.message}</Text>
+        </View>
+      )}
     </SafeAreaView>
   )
 }
@@ -616,5 +731,159 @@ const styles = StyleSheet.create({
     color: '#78350F',
     marginBottom: 4,
     lineHeight: 18
-  }
+  },
+
+  // Toast
+  toast: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+    gap: 8,
+  },
+  toastSuccess: {
+    backgroundColor: COLORS.success,
+  },
+  toastError: {
+    backgroundColor: COLORS.danger,
+  },
+  toastText: {
+    flex: 1,
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // QR Modal
+  qrModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  qrModalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  qrModalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  qrModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textMain,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  qrImageContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+  },
+  qrImage: {
+    width: 260,
+    height: 260,
+  },
+  qrInfoContainer: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    gap: 12,
+  },
+  qrInfoRow: {
+    gap: 6,
+  },
+  qrInfoLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSec,
+  },
+  qrInfoValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  qrInfoValueSmall: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textMain,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  transferContentBox: {
+    backgroundColor: COLORS.white,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderStyle: 'dashed',
+  },
+  transferContentText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.primary,
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  qrInstructions: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+  },
+  qrInstructionsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 8,
+  },
+  qrInstructionItem: {
+    fontSize: 12,
+    color: '#78350F',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  qrConfirmButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.success,
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
+    shadowColor: COLORS.success,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  qrConfirmButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
+  },
 })
