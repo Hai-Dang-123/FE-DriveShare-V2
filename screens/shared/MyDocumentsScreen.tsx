@@ -13,7 +13,8 @@ import {
   Dimensions,
   Modal,
   TextInput,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  AppState
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
@@ -51,6 +52,17 @@ const MyDocumentsScreen = () => {
 
   useEffect(() => {
     loadDocuments();
+
+    // Reload documents when app comes to foreground
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadDocuments();
+      }
+    });
+
+    return () => {
+      subscription?.remove();
+    };
   }, []);
 
   const loadDocuments = async () => {
@@ -59,9 +71,6 @@ const MyDocumentsScreen = () => {
       const response = await ekycService.getMyDocuments();
       if (response.isSuccess && response.result) {
         setDocuments(response.result);
-      } else {
-        // Fallback data for testing UI if API fails (Optional)
-        // console.log(response.message);
       }
     } catch (error) {
       console.error(error);
@@ -89,7 +98,7 @@ const MyDocumentsScreen = () => {
         setShowReviewModal(false);
         setReviewNote('');
         setSelectedDocId(null);
-        await loadDocuments(); // Reload to update status
+        await loadDocuments();
       } else {
         Alert.alert('Lỗi', response.message || 'Không thể gửi yêu cầu');
       }
@@ -102,7 +111,6 @@ const MyDocumentsScreen = () => {
 
   // --- HELPER COMPONENTS ---
 
-  // 1. Info Row Item (Hiển thị thông tin dạng key-value đẹp)
   const InfoItem = ({ icon, label, value, isFullWidth = false }: any) => (
     <View style={[styles.infoItem, isFullWidth ? { width: '100%' } : { width: '48%' }]}>
       <View style={styles.infoLabelContainer}>
@@ -113,14 +121,12 @@ const MyDocumentsScreen = () => {
     </View>
   );
 
-  // 2. Status Badge (Thanh trạng thái)
   const StatusBanner = ({ status }: { status: string }) => {
     let config = { color: COLORS.inactive, bg: COLORS.bg, icon: 'minus-circle', text: 'Chưa cập nhật' };
     
     if (status === 'ACTIVE') {
       config = { color: COLORS.success, bg: COLORS.successBg, icon: 'check-circle', text: 'Đã xác thực' };
-    } else if (status === 'REJECTED' || status === 'INACTIVE') { 
-      // INACTIVE mà có reason thì coi như bị từ chối/chưa đạt
+    } else if (status === 'REJECTED' || status === 'INACTIVE') {
       config = { color: COLORS.error, bg: COLORS.errorBg, icon: 'alert-circle', text: 'Chưa đạt / Bị từ chối' };
     } else if (status === 'PENDING' || status === 'PENDING_REVIEW') {
       config = { color: COLORS.warning, bg: COLORS.warningBg, icon: 'clock', text: 'Đang chờ duyệt' };
@@ -134,15 +140,20 @@ const MyDocumentsScreen = () => {
     );
   };
 
-  // 3. Document Card (Component chính)
-  const DocumentCard = ({ doc, type }: { doc: DocumentDetailDTO | null, type: 'CCCD' | 'GPLX' }) => {
+  const DocumentCard = ({ doc, type }: { doc: DocumentDetailDTO | null, type: 'CCCD' | 'GPLX' | 'HEALTH_CHECK' }) => {
     const isCCCD = type === 'CCCD';
-    const title = isCCCD ? 'Căn cước công dân' : 'Giấy phép lái xe';
-    const mainIcon = isCCCD ? 'card-account-details-outline' : 'car';
+    const isGPLX = type === 'GPLX';
+    const isHealthCheck = type === 'HEALTH_CHECK';
+    
+    const title = isCCCD ? 'Căn cước công dân' : isGPLX ? 'Giấy phép lái xe' : 'Giấy khám sức khỏe';
+    const mainIcon = isCCCD ? 'card-account-details-outline' : isGPLX ? 'car' : 'heart-pulse';
+    const iconBgColor = isCCCD ? '#E0F2FE' : isGPLX ? '#E0F2FE' : '#D1FAE5';
+    const iconColor = isCCCD ? COLORS.primary : isGPLX ? COLORS.primary : '#10B981';
     
     const handlePress = () => {
         if (type === 'CCCD') router.push('/owner/verify-cccd' as any);
-        else router.push('/owner/verify-license' as any);
+        else if (type === 'GPLX') router.push('/owner/verify-license' as any);
+        else if (type === 'HEALTH_CHECK') router.push('/driver/verify-health-check' as any);
     };
 
     if (!doc) {
@@ -161,15 +172,14 @@ const MyDocumentsScreen = () => {
 
     return (
       <View style={styles.card}>
-        {/* Card Header */}
         <View style={styles.cardHeader}>
           <View style={styles.cardTitleRow}>
-            <View style={[styles.iconBox, { backgroundColor: '#E0F2FE' }]}>
-                <MaterialCommunityIcons name={mainIcon} size={22} color={COLORS.primary} />
+            <View style={[styles.iconBox, { backgroundColor: iconBgColor }]}>
+                <MaterialCommunityIcons name={mainIcon} size={22} color={iconColor} />
             </View>
             <View>
                 <Text style={styles.cardTitle}>{title}</Text>
-                <Text style={styles.cardId}>#{doc.identityNumber || 'N/A'}</Text>
+                {doc.identityNumber && <Text style={styles.cardId}>#{doc.identityNumber}</Text>}
             </View>
           </View>
           <StatusBanner status={doc.status} />
@@ -177,12 +187,10 @@ const MyDocumentsScreen = () => {
 
         <View style={styles.divider} />
 
-        {/* Images Gallery */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryContainer}>
             {[
                 { uri: doc.frontImageUrl, label: 'Mặt trước' },
                 { uri: doc.backImageUrl, label: 'Mặt sau' },
-                
             ].map((img, idx) => (
                 img.uri ? (
                     <View key={idx} style={styles.imageWrapper}>
@@ -195,20 +203,10 @@ const MyDocumentsScreen = () => {
             ))}
         </ScrollView>
 
-        {/* Details Grid */}
         <View style={styles.detailsGrid}>
             <InfoItem icon="user" label="Họ và tên" value={doc.fullName} isFullWidth />
-            {/* <InfoItem icon="calendar" label="Ngày sinh" value={doc.dateOfBirth ? new Date(doc.dateOfBirth).toLocaleDateString('vi-VN') : null} />
-            {isCCCD ? (
-                 <InfoItem icon="map-pin" label="Nơi cấp" value={doc.issuePlace} /> // Giả sử DTO có
-            ) : (
-                 <InfoItem icon="award" label="Hạng bằng" value={doc.licenseClass} />
-            )}
-            <InfoItem icon="clock" label="Ngày cấp" value={doc.issueDate ? new Date(doc.issueDate).toLocaleDateString('vi-VN') : null} /> */}
-            {/* <InfoItem icon="alert-circle" label="Hết hạn" value={doc.expiryDate ? new Date(doc.expiryDate).toLocaleDateString('vi-VN') : 'Không thời hạn'} /> */}
         </View>
 
-        {/* Rejection / Analysis Box */}
         {(doc.status === 'REJECTED' || doc.status === 'INACTIVE') && doc.rejectionReason && (
             <View style={styles.errorBox}>
                 <View style={styles.errorHeader}>
@@ -219,7 +217,6 @@ const MyDocumentsScreen = () => {
             </View>
         )}
 
-        {/* Action Button - Always show for non-ACTIVE status */}
         {doc.status !== 'ACTIVE' ? (
             <View style={{ gap: 10, marginTop: 16 }}>
                 <TouchableOpacity style={styles.fixButton} onPress={handlePress}>
@@ -264,7 +261,6 @@ const MyDocumentsScreen = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Feather name="arrow-left" size={24} color={COLORS.textMain} />
@@ -275,15 +271,6 @@ const MyDocumentsScreen = () => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* User Summary (Optional) */}
-        {/* <View style={styles.summaryContainer}>
-            <Text style={styles.greeting}>Xin chào,</Text>
-            <Text style={styles.userName}>{documents?.cccd?.fullName || 'Người dùng'}</Text>
-            <Text style={styles.userRole}>
-                {documents?.isDriver ? 'Tài xế đối tác' : 'Chủ xe / Khách hàng'}
-            </Text>
-        </View> */}
-
         <Text style={styles.sectionTitle}>Giấy tờ tùy thân</Text>
         <DocumentCard doc={documents?.cccd || null} type="CCCD" />
 
@@ -291,13 +278,13 @@ const MyDocumentsScreen = () => {
             <>
                 <Text style={styles.sectionTitle}>Giấy tờ hành nghề</Text>
                 <DocumentCard doc={documents?.driverDocuments?.drivingLicense || null} type="GPLX" />
+                <DocumentCard doc={documents?.driverDocuments?.healthCheck || null} type="HEALTH_CHECK" />
             </>
         )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Review Request Modal */}
       <Modal
         visible={showReviewModal}
         transparent
@@ -369,7 +356,7 @@ const MyDocumentsScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC', // Very light gray
+    backgroundColor: '#F8FAFC',
   },
   center: {
     justifyContent: 'center',
@@ -401,28 +388,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
-  
-  // Summary
-  summaryContainer: {
-    marginBottom: 24,
-  },
-  greeting: {
-    fontSize: 14,
-    color: COLORS.textSub,
-    fontWeight: '500',
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: COLORS.textMain,
-    marginTop: 4,
-  },
-  userRole: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: '600',
-    marginTop: 4,
-  },
 
   sectionTitle: {
     fontSize: 16,
@@ -434,7 +399,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // CARD STYLES
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 24,
@@ -478,7 +442,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   
-  // Status Banner
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -499,7 +462,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
-  // Gallery
   galleryContainer: {
     gap: 12,
     marginBottom: 20,
@@ -531,7 +493,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Details Grid
   detailsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -562,7 +523,6 @@ const styles = StyleSheet.create({
     color: COLORS.textMain,
   },
 
-  // Error Box
   errorBox: {
     marginTop: 20,
     backgroundColor: '#FEF2F2',
@@ -604,7 +564,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Empty State
   emptyCard: {
     marginBottom: 20,
   },
@@ -639,7 +598,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Update Button (for ACTIVE documents)
   updateButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -658,7 +616,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Request Review Button
   requestReviewButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -676,7 +633,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -764,3 +720,5 @@ const styles = StyleSheet.create({
 });
 
 export default MyDocumentsScreen;
+
+

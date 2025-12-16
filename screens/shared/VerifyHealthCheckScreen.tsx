@@ -29,18 +29,18 @@ const showAlert = (title: string, message: string, onOk?: () => void) => {
 }
 
 interface CapturedImages {
-  front: { uri: string; name: string; type: string } | null
-  selfie: { uri: string; name: string; type: string } | null
+  healthCertificate: { uri: string; name: string; type: string } | null
+  additionalDoc: { uri: string; name: string; type: string } | null
 }
 
 const { width } = Dimensions.get('window')
 
-const VerifyLicenseScreen = () => {
+const VerifyHealthCheckScreen = () => {
   const router = useRouter()
   const [step, setStep] = useState<'instruction' | 'capture' | 'review' | 'processing'>('instruction')
   const [images, setImages] = useState<CapturedImages>({
-    front: null,
-    selfie: null,
+    healthCertificate: null,
+    additionalDoc: null,
   })
   const [uploading, setUploading] = useState(false)
   const [sdkConfig, setSdkConfig] = useState<VnptSdkConfig | null>(null)
@@ -74,7 +74,7 @@ const VerifyLicenseScreen = () => {
     }
   }
 
-  const pickImage = async (type: 'front' | 'selfie') => {
+  const pickImage = async (type: 'healthCertificate' | 'additionalDoc') => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync()
       if (status !== 'granted') {
@@ -86,7 +86,7 @@ const VerifyLicenseScreen = () => {
         mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.9,
-        cameraType: type === 'selfie' ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
+        cameraType: ImagePicker.CameraType.back,
       })
 
       if (!result.canceled && result.assets[0]) {
@@ -114,8 +114,8 @@ const VerifyLicenseScreen = () => {
     try {
       const timestamp = Date.now()
       setImages({
-        front: result.front_image ? { uri: `data:image/jpeg;base64,${result.front_image}`, name: `front_${timestamp}.jpg`, type: 'image/jpeg' } : null,
-        selfie: result.face_image ? { uri: `data:image/jpeg;base64,${result.face_image}`, name: `selfie_${timestamp}.jpg`, type: 'image/jpeg' } : null,
+        healthCertificate: result.front_image ? { uri: `data:image/jpeg;base64,${result.front_image}`, name: `health_${timestamp}.jpg`, type: 'image/jpeg' } : null,
+        additionalDoc: null,
       })
       setShowVnptModal(false)
       setStep('review')
@@ -134,43 +134,46 @@ const VerifyLicenseScreen = () => {
   }
 
   const handleSubmit = async () => {
-    if (!images.front || !images.selfie) {
-      Alert.alert('Thiếu ảnh', 'Vui lòng chụp đầy đủ ảnh GPLX mặt trước và chân dung')
+    if (!images.healthCertificate) {
+      Alert.alert('Thiếu ảnh', 'Vui lòng chụp ảnh giấy khám sức khỏe')
       return
     }
     setStep('processing')
     setUploading(true)
 
     try {
-      let front: any, selfie: any
+      let healthCert: any, additional: any = null
 
       if (Platform.OS === 'web') {
-        const frontBlob = await (await fetch(images.front.uri)).blob()
-        const selfieBlob = await (await fetch(images.selfie.uri)).blob()
-        front = new File([frontBlob], images.front.name, { type: images.front.type })
-        selfie = new File([selfieBlob], images.selfie.name, { type: images.selfie.type })
+        const certBlob = await (await fetch(images.healthCertificate.uri)).blob()
+        healthCert = new File([certBlob], images.healthCertificate.name, { type: images.healthCertificate.type })
+        
+        if (images.additionalDoc) {
+          const addBlob = await (await fetch(images.additionalDoc.uri)).blob()
+          additional = new File([addBlob], images.additionalDoc.name, { type: images.additionalDoc.type })
+        }
       } else {
-        front = images.front
-        selfie = images.selfie
+        healthCert = images.healthCertificate
+        additional = images.additionalDoc
       }
 
-      const response = await ekycService.verifyLicense(front, selfie)
+      const response = await ekycService.verifyHealthCheck(healthCert, additional)
       
-      console.log('✅ VerifyLicense Response:', JSON.stringify(response, null, 2))
+      console.log('✅ VerifyHealthCheck Response:', JSON.stringify(response, null, 2))
       
       setUploading(false)
 
       if (response.isSuccess) {
-        showAlert('Thành công! 🎉', response.message || 'GPLX của bạn đã được xác thực', () => {
+        showAlert('Thành công! 🎉', response.message || 'Giấy khám sức khỏe đã được gửi xác thực', () => {
           // Navigate to my-documents and reload
           if (Platform.OS === 'web') {
-            router.replace('/owner/my-documents')
+            router.replace('/driver/my-documents')
           } else {
             router.back()
           }
         })
       } else {
-        setStep('capture') // Go back to capture for retry
+        setStep('capture')
         const errorTitle = 'Xác thực thất bại'
         const errorReason = response.result?.reason || response.result?.rejectionReason || response.message || 'Vui lòng kiểm tra lại'
         
@@ -179,7 +182,7 @@ const VerifyLicenseScreen = () => {
           if (retry) {
             setStep('capture')
           } else {
-            router.replace('/owner/my-documents')
+            router.replace('/driver/my-documents')
           }
         } else {
           Alert.alert(errorTitle, errorReason, [
@@ -189,10 +192,10 @@ const VerifyLicenseScreen = () => {
         }
       }
     } catch (error: any) {
-      console.error('❌ VerifyLicense Error:', error)
+      console.error('❌ VerifyHealthCheck Error:', error)
       
       setUploading(false)
-      setStep('capture') // Go back to capture
+      setStep('capture')
       
       const errorData = error?.response?.data
       if (errorData) {
@@ -234,31 +237,31 @@ const VerifyLicenseScreen = () => {
   const renderInstruction = () => (
     <View style={styles.cardContainer}>
       <View style={styles.iconCircleBig}>
-        <MaterialCommunityIcons name="card-account-details-outline" size={60} color="#F59E0B" />
+        <MaterialCommunityIcons name="heart-pulse" size={60} color="#10B981" />
       </View>
-      <Text style={styles.titleText}>Xác thực Giấy phép lái xe</Text>
+      <Text style={styles.titleText}>Xác thực Sức khỏe</Text>
       <Text style={styles.subtitleText}>
-        Chuẩn bị GPLX của bạn và chụp ảnh chân dung để xác thực
+        Chuẩn bị giấy khám sức khỏe của bạn để xác thực đủ điều kiện làm tài xế
       </Text>
 
       <View style={styles.stepsContainer}>
         <View style={styles.stepRow}>
-          <View style={[styles.stepIconBox, { backgroundColor: '#FEF3C7' }]}>
-            <MaterialCommunityIcons name="card-account-details" size={24} color="#F59E0B" />
+          <View style={[styles.stepIconBox, { backgroundColor: '#D1FAE5' }]}>
+            <MaterialCommunityIcons name="certificate" size={24} color="#10B981" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.stepTitle}>Chụp GPLX mặt trước</Text>
-            <Text style={styles.stepDesc}>Đặt bằng lái nằm ngang, rõ nét</Text>
+            <Text style={styles.stepTitle}>Chụp giấy khám sức khỏe</Text>
+            <Text style={styles.stepDesc}>Giấy xác nhận từ cơ sở y tế có thẩm quyền</Text>
           </View>
         </View>
 
         <View style={styles.stepRow}>
-          <View style={[styles.stepIconBox, { backgroundColor: '#FEF3C7' }]}>
-            <MaterialCommunityIcons name="face-recognition" size={24} color="#F59E0B" />
+          <View style={[styles.stepIconBox, { backgroundColor: '#D1FAE5' }]}>
+            <MaterialCommunityIcons name="file-document-outline" size={24} color="#10B981" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.stepTitle}>Chụp ảnh chân dung</Text>
-            <Text style={styles.stepDesc}>Nhìn thẳng, không đeo khẩu trang hoặc kính</Text>
+            <Text style={styles.stepTitle}>Tài liệu bổ sung (tùy chọn)</Text>
+            <Text style={styles.stepDesc}>Giấy tờ liên quan đến sức khỏe nếu có</Text>
           </View>
         </View>
       </View>
@@ -266,19 +269,19 @@ const VerifyLicenseScreen = () => {
       {useVnptSdk && sdkConfig ? (
         <View style={{ gap: 12, width: '100%' }}>
           <TouchableOpacity onPress={startVnptSdkFlow} activeOpacity={0.8}>
-            <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.primaryButton}>
+            <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryButton}>
               <MaterialCommunityIcons name="robot" size={20} color="#FFF" />
               <Text style={styles.primaryButtonText}>Quét với AI (Khuyến nghị)</Text>
             </LinearGradient>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Chụp thủ công</Text>
+          <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8} style={styles.secondaryBtnAlt}>
+            <Text style={styles.secondaryBtnAltText}>Chụp thủ công</Text>
             <MaterialCommunityIcons name="arrow-right" size={20} color="#64748B" />
           </TouchableOpacity>
         </View>
       ) : (
         <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8}>
-          <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.primaryButton}>
+          <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Bắt đầu</Text>
             <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />
           </LinearGradient>
@@ -289,61 +292,61 @@ const VerifyLicenseScreen = () => {
 
   const renderCapture = () => (
     <View style={styles.captureWrapper}>
-      <Text style={styles.sectionHeader}>Chụp ảnh GPLX</Text>
+      <Text style={styles.sectionHeader}>Chụp ảnh giấy tờ sức khỏe</Text>
 
       <View style={styles.gridContainer}>
-        {/* Front Image */}
+        {/* Health Certificate */}
         <TouchableOpacity
-          style={[styles.uploadBox, images.front && styles.uploadBoxActive]}
-          onPress={() => pickImage('front')}
+          style={[styles.uploadBox, images.healthCertificate && styles.uploadBoxActive]}
+          onPress={() => pickImage('healthCertificate')}
           activeOpacity={0.7}
         >
-          {images.front ? (
+          {images.healthCertificate ? (
             <>
-              <Image source={{ uri: images.front.uri }} style={styles.uploadedImage} />
+              <Image source={{ uri: images.healthCertificate.uri }} style={styles.uploadedImage} />
               <View style={styles.checkBadge}>
                 <MaterialCommunityIcons name="check" size={16} color="#FFF" />
               </View>
             </>
           ) : (
             <View style={styles.uploadPlaceholder}>
-              <View style={[styles.uploadIconCircle, { backgroundColor: '#FEF3C7' }]}>
-                <MaterialCommunityIcons name="card-account-details" size={28} color="#F59E0B" />
+              <View style={[styles.uploadIconCircle, { backgroundColor: '#D1FAE5' }]}>
+                <MaterialCommunityIcons name="certificate" size={28} color="#10B981" />
               </View>
-              <Text style={styles.uploadLabel}>GPLX mặt trước</Text>
+              <Text style={styles.uploadLabel}>Giấy khám sức khỏe</Text>
               <Text style={styles.uploadSub}>Nhấn để chụp</Text>
             </View>
           )}
         </TouchableOpacity>
 
-        {/* Selfie */}
+        {/* Additional Document (Optional) */}
         <TouchableOpacity
-          style={[styles.uploadBox, images.selfie && styles.uploadBoxActive]}
-          onPress={() => pickImage('selfie')}
+          style={[styles.uploadBox, images.additionalDoc && styles.uploadBoxActive]}
+          onPress={() => pickImage('additionalDoc')}
           activeOpacity={0.7}
         >
-          {images.selfie ? (
+          {images.additionalDoc ? (
             <>
-              <Image source={{ uri: images.selfie.uri }} style={styles.uploadedImage} />
+              <Image source={{ uri: images.additionalDoc.uri }} style={styles.uploadedImage} />
               <View style={styles.checkBadge}>
                 <MaterialCommunityIcons name="check" size={16} color="#FFF" />
               </View>
             </>
           ) : (
             <View style={styles.uploadPlaceholder}>
-              <View style={[styles.uploadIconCircle, { backgroundColor: '#FEF3C7' }]}>
-                <MaterialCommunityIcons name="face-recognition" size={28} color="#F59E0B" />
+              <View style={[styles.uploadIconCircle, { backgroundColor: '#D1FAE5' }]}>
+                <MaterialCommunityIcons name="file-document-outline" size={28} color="#10B981" />
               </View>
-              <Text style={styles.uploadLabel}>Ảnh chân dung</Text>
-              <Text style={styles.uploadSub}>Nhấn để chụp</Text>
+              <Text style={styles.uploadLabel}>Tài liệu bổ sung</Text>
+              <Text style={styles.uploadSub}>Tùy chọn</Text>
             </View>
           )}
         </TouchableOpacity>
       </View>
 
       <TouchableOpacity
-        style={[styles.continueBtn, (!images.front || !images.selfie) && styles.disabledBtn]}
-        disabled={!images.front || !images.selfie}
+        style={[styles.continueBtn, !images.healthCertificate && styles.disabledBtn]}
+        disabled={!images.healthCertificate}
         onPress={() => setStep('review')}
       >
         <Text style={styles.continueBtnText}>Tiếp tục</Text>
@@ -357,19 +360,19 @@ const VerifyLicenseScreen = () => {
       <Text style={styles.reviewSub}>Đảm bảo hình ảnh không bị mờ hoặc lóa sáng</Text>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.galleryScroll}>
-        {images.front && (
+        {images.healthCertificate && (
           <View style={styles.reviewItem}>
-            <Image source={{ uri: images.front.uri }} style={styles.reviewImg} />
+            <Image source={{ uri: images.healthCertificate.uri }} style={styles.reviewImg} />
             <View style={styles.reviewLabelBadge}>
-              <Text style={styles.reviewLabelText}>GPLX mặt trước</Text>
+              <Text style={styles.reviewLabelText}>Giấy khám sức khỏe</Text>
             </View>
           </View>
         )}
-        {images.selfie && (
+        {images.additionalDoc && (
           <View style={styles.reviewItem}>
-            <Image source={{ uri: images.selfie.uri }} style={styles.reviewImg} />
+            <Image source={{ uri: images.additionalDoc.uri }} style={styles.reviewImg} />
             <View style={styles.reviewLabelBadge}>
-              <Text style={styles.reviewLabelText}>Chân dung</Text>
+              <Text style={styles.reviewLabelText}>Tài liệu bổ sung</Text>
             </View>
           </View>
         )}
@@ -381,7 +384,7 @@ const VerifyLicenseScreen = () => {
         </TouchableOpacity>
 
         <TouchableOpacity style={{ flex: 1 }} onPress={handleSubmit}>
-          <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.primaryButton}>
+          <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Xác nhận</Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -392,7 +395,7 @@ const VerifyLicenseScreen = () => {
   const renderProcessing = () => (
     <View style={styles.centerContent}>
       <View style={styles.processingCircle}>
-        <ActivityIndicator size="large" color="#F59E0B" />
+        <ActivityIndicator size="large" color="#10B981" />
       </View>
       <Text style={styles.processingTitle}>Đang xác thực...</Text>
       <Text style={styles.processingDesc}>Vui lòng chờ trong giây lát</Text>
@@ -400,12 +403,12 @@ const VerifyLicenseScreen = () => {
   )
 
   return (
-    <LinearGradient colors={['#FEF3C7', '#FFFFFF']} style={styles.container}>
+    <LinearGradient colors={['#ECFDF5', '#FFFFFF']} style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Xác thực GPLX</Text>
+        <Text style={styles.headerTitle}>Xác thực Sức khỏe</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -420,7 +423,7 @@ const VerifyLicenseScreen = () => {
         <VnptSdkModal
           visible={showVnptModal}
           config={sdkConfig}
-          scanType="license"
+          scanType="health_check"
           onResult={handleVnptSdkResult}
           onError={handleVnptSdkError}
           onCancel={handleVnptModalCancel}
@@ -461,7 +464,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
-    shadowColor: '#F59E0B',
+    shadowColor: '#10B981',
     shadowOpacity: 0.08,
     shadowRadius: 20,
     elevation: 5,
@@ -470,7 +473,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#D1FAE5',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -539,7 +542,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderWidth: 0,
     borderStyle: 'solid',
-    shadowColor: '#F59E0B',
+    shadowColor: '#10B981',
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 4,
@@ -571,11 +574,11 @@ const styles = StyleSheet.create({
   },
   continueBtn: {
     marginTop: 30,
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#10B981',
     paddingVertical: 18,
     borderRadius: 16,
     alignItems: 'center',
-    shadowColor: '#F59E0B',
+    shadowColor: '#10B981',
     shadowOpacity: 0.3,
     shadowRadius: 8,
   },
@@ -607,7 +610,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#D1FAE5',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -615,8 +618,8 @@ const styles = StyleSheet.create({
   processingTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
   processingDesc: { fontSize: 14, color: '#64748B', marginTop: 8 },
   
-  // Secondary button
-  secondaryButton: {
+  // Secondary button for health check
+  secondaryBtnAlt: {
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 16,
@@ -626,7 +629,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  secondaryButtonText: { color: '#64748B', fontWeight: '700', fontSize: 16 },
+  secondaryBtnAltText: { color: '#64748B', fontWeight: '700', fontSize: 16 },
 })
 
-export default VerifyLicenseScreen
+export default VerifyHealthCheckScreen

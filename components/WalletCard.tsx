@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
 
 interface WalletCardProps {
   balance?: string
@@ -10,7 +11,24 @@ interface WalletCardProps {
 }
 
 const WalletCard: React.FC<WalletCardProps> = ({ balance, wallet, onDeposit, onWithdraw }) => {
+  const router = useRouter()
   const displayBalance = wallet?.balance ?? balance ?? '0'
+  
+  const handleDeposit = () => {
+    if (onDeposit) {
+      onDeposit()
+    } else {
+      router.push('/wallet-operations')
+    }
+  }
+  
+  const handleWithdraw = () => {
+    if (onWithdraw) {
+      onWithdraw()
+    } else {
+      router.push('/wallet-operations')
+    }
+  }
   return (
     <View style={styles.container}>
       <Text style={styles.sectionTitle}>Tổng quan Tài chính & Hoạt động</Text>
@@ -28,11 +46,11 @@ const WalletCard: React.FC<WalletCardProps> = ({ balance, wallet, onDeposit, onW
           <Text style={styles.balanceText}>{displayBalance} đ</Text>
           
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.btnDeposit} onPress={onDeposit}>
+            <TouchableOpacity style={styles.btnDeposit} onPress={handleDeposit}>
               <Text style={styles.btnDepositText}>Nạp tiền</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.btnWithdraw} onPress={onWithdraw}>
+            <TouchableOpacity style={styles.btnWithdraw} onPress={handleWithdraw}>
               <Text style={styles.btnWithdrawText}>Rút tiền</Text>
             </TouchableOpacity>
           </View>

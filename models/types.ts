@@ -118,13 +118,15 @@ export interface Item {
 
 export interface PackageImage {
   packageImageId: string;
-  packageImageURL: string;
+  packageImageURL?: string;
+  imageUrl?: string;
   createdAt: string;
-  status: ImageStatus;
+  status?: ImageStatus;
 }
 
 export interface Package {
   id: string;
+  packageCode?: string;
   title: string;
   description?: string;
   quantity: number;
@@ -134,6 +136,21 @@ export interface Package {
   images: PackageImage[];
   itemId: string;
   status: PackageStatus;
+  otherRequirements?: string;
+  handlingAttributes?: string[];
+  isFragile?: boolean;
+  isLiquid?: boolean;
+  isRefrigerated?: boolean;
+  isFlammable?: boolean;
+  isHazardous?: boolean;
+  isBulky?: boolean;
+  isPerishable?: boolean;
+  ownerId?: string;
+  providerId?: string;
+  postPackageId?: string;
+  tripId?: string;
+  createdAt?: string;
+  packageImages?: PackageImage[];
 }
 
 export interface ShippingRoute {

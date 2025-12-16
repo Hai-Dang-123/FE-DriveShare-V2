@@ -49,6 +49,13 @@ const EditPackageModal: React.FC<EditPackageModalProps> = ({
     volumeM3: 0,
     handlingAttributes: [] as string[],
     otherRequirements: "",
+    isFragile: false,
+    isLiquid: false,
+    isRefrigerated: false,
+    isFlammable: false,
+    isHazardous: false,
+    isBulky: false,
+    isPerishable: false,
   });
 
   useEffect(() => {
@@ -83,6 +90,13 @@ const EditPackageModal: React.FC<EditPackageModalProps> = ({
           volumeM3: pkg.volumeM3 || 0,
           handlingAttributes: pkg.handlingAttributes || [],
           otherRequirements: pkg.otherRequirements || "",
+          isFragile: pkg.isFragile || false,
+          isLiquid: pkg.isLiquid || false,
+          isRefrigerated: pkg.isRefrigerated || false,
+          isFlammable: pkg.isFlammable || false,
+          isHazardous: pkg.isHazardous || false,
+          isBulky: pkg.isBulky || false,
+          isPerishable: pkg.isPerishable || false,
         });
         console.log("✅ Form data set successfully");
       } else {
@@ -102,7 +116,37 @@ const EditPackageModal: React.FC<EditPackageModalProps> = ({
   };
 
   const handleChange = (key: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
+    setFormData((prev) => {
+      const updated = { ...prev, [key]: value };
+      
+      // Auto-sync HandlingAttributes khi thay đổi Boolean fields
+      if (
+        key === "isFragile" ||
+        key === "isLiquid" ||
+        key === "isRefrigerated" ||
+        key === "isFlammable" ||
+        key === "isHazardous" ||
+        key === "isBulky" ||
+        key === "isPerishable"
+      ) {
+        updated.handlingAttributes = buildHandlingAttributes(updated);
+      }
+      
+      return updated;
+    });
+  };
+
+  // Xây dựng HandlingAttributes từ các Boolean fields
+  const buildHandlingAttributes = (data: any): string[] => {
+    const attributes: string[] = [];
+    if (data.isFragile) attributes.push("Fragile");
+    if (data.isLiquid) attributes.push("Liquid");
+    if (data.isRefrigerated) attributes.push("Refrigerated");
+    if (data.isFlammable) attributes.push("Flammable");
+    if (data.isHazardous) attributes.push("Hazardous");
+    if (data.isBulky) attributes.push("Bulky");
+    if (data.isPerishable) attributes.push("Perishable");
+    return attributes;
   };
 
   const handleSubmit = async () => {
@@ -127,8 +171,25 @@ const EditPackageModal: React.FC<EditPackageModalProps> = ({
     try {
       const payload = {
         packageId,
-        ...formData,
+        title: formData.title,
+        description: formData.description,
+        quantity: formData.quantity,
+        unit: formData.unit,
+        weightKg: formData.weightKg,
+        volumeM3: formData.volumeM3,
+        otherRequirements: formData.otherRequirements,
+        handlingAttributes: buildHandlingAttributes(formData),
+        // Boolean fields - đảm bảo luôn là true/false
+        isFragile: !!formData.isFragile,
+        isLiquid: !!formData.isLiquid,
+        isRefrigerated: !!formData.isRefrigerated,
+        isFlammable: !!formData.isFlammable,
+        isHazardous: !!formData.isHazardous,
+        isBulky: !!formData.isBulky,
+        isPerishable: !!formData.isPerishable,
       };
+      
+      console.log('📦 Package data to update:', payload);
 
       console.log("🚀 Calling update API...");
       const response = await packageService.updatePackage(payload);
@@ -288,6 +349,51 @@ const EditPackageModal: React.FC<EditPackageModalProps> = ({
                   </View>
                 </View>
 
+                {/* Divider */}
+                <View style={styles.divider} />
+
+                {/* Special Attributes */}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.sectionTitle}>Thuộc tính đặc biệt</Text>
+                  <View style={styles.checkboxGrid}>
+                    {[
+                      { key: "isFragile", label: "Dễ vỡ", icon: "alert-circle" },
+                      { key: "isLiquid", label: "Chất lỏng", icon: "water" },
+                      { key: "isRefrigerated", label: "Cần làm lạnh", icon: "snow" },
+                      { key: "isFlammable", label: "Dễ cháy", icon: "flame" },
+                      { key: "isHazardous", label: "Nguy hiểm", icon: "warning" },
+                      { key: "isBulky", label: "Cồng kềnh", icon: "cube" },
+                      { key: "isPerishable", label: "Dễ hỏng", icon: "time" },
+                    ].map((item) => (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[
+                          styles.checkboxItem,
+                          !!formData[item.key as keyof typeof formData] && styles.checkboxItemActive,
+                        ]}
+                        onPress={() => handleChange(item.key, !Boolean(formData[item.key as keyof typeof formData]))}
+                      >
+                        <Ionicons
+                          name={item.icon as any}
+                          size={20}
+                          color={Boolean(formData[item.key as keyof typeof formData]) ? COLORS.primary : COLORS.textLight}
+                        />
+                        <Text
+                          style={[
+                            styles.checkboxLabel,
+                            !!formData[item.key as keyof typeof formData] && styles.checkboxLabelActive,
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Divider */}
+                <View style={styles.divider} />
+
                 {/* Other Requirements */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.label}>Yêu cầu khác</Text>
@@ -295,7 +401,7 @@ const EditPackageModal: React.FC<EditPackageModalProps> = ({
                     style={[styles.input, styles.textArea]}
                     value={formData.otherRequirements}
                     onChangeText={(v) => handleChange("otherRequirements", v)}
-                    placeholder="Nhập các yêu cầu đặc biệt"
+                    placeholder="Ví dụ: Cần xếp nhẹ nhàng, tránh úp ngược..."
                     placeholderTextColor="#9CA3AF"
                     multiline
                     numberOfLines={2}
@@ -408,6 +514,46 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 16,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 12,
+  },
+  checkboxGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  checkboxItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#F9FAFB",
+    gap: 6,
+  },
+  checkboxItemActive: {
+    backgroundColor: "#EFF6FF",
+    borderColor: COLORS.primary,
+  },
+  checkboxLabel: {
+    fontSize: 13,
+    color: COLORS.textLight,
+    fontWeight: "500",
+  },
+  checkboxLabelActive: {
+    color: COLORS.primary,
+    fontWeight: "600",
   },
   footer: {
     flexDirection: "row",

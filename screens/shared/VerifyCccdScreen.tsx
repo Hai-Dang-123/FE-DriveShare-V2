@@ -9,7 +9,6 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
-  NativeModules,
   Dimensions
 } from 'react-native'
 import { useRouter } from 'expo-router'
@@ -17,7 +16,17 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { ekycService, VnptSdkConfig } from '@/services/ekycService'
-import WebCccdScanner from '@/components/ekyc/WebCccdScanner'
+import VnptSdkModal from '@/components/ekyc/VnptSdkModal'
+
+// Cross-platform alert function
+const showAlert = (title: string, message: string, onOk?: () => void) => {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n\n${message}`)
+    onOk?.()
+  } else {
+    Alert.alert(title, message, [{ text: 'OK', onPress: onOk }])
+  }
+}
 
 interface CapturedImages {
   front: { uri: string; name: string; type: string } | null
@@ -38,7 +47,7 @@ const VerifyCccdScreen = () => {
   const [uploading, setUploading] = useState(false)
   const [sdkConfig, setSdkConfig] = useState<VnptSdkConfig | null>(null)
   const [useVnptSdk, setUseVnptSdk] = useState<boolean>(false)
-  const [showVnptScanner, setShowVnptScanner] = useState<boolean>(false)
+  const [showVnptModal, setShowVnptModal] = useState<boolean>(false)
 
   useEffect(() => {
     requestPermissions()
@@ -51,9 +60,6 @@ const VerifyCccdScreen = () => {
       if (response.isSuccess && response.result) {
         setSdkConfig(response.result)
         setUseVnptSdk(true)
-        if (Platform.OS !== 'web' && NativeModules.VnptCccdModule) {
-          await NativeModules.VnptCccdModule.initializeSdk(response.result)
-        }
       }
     } catch (error) {
       console.error('Failed to load VNPT config:', error)
@@ -71,20 +77,23 @@ const VerifyCccdScreen = () => {
   }
 
   const startVnptSdkFlow = () => {
-    if (Platform.OS === 'web') {
-      setShowVnptScanner(true)
-    } else {
-      Alert.alert('Thông báo', 'Vui lòng dùng chụp ảnh thủ công trên thiết bị này.')
-    }
+    setShowVnptModal(true)
   }
 
   const pickImage = async (type: 'front' | 'back' | 'selfie') => {
     try {
+      // Request camera permission first
+      const { status } = await ImagePicker.requestCameraPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Cần quyền camera', 'Vui lòng cấp quyền truy cập camera để tiếp tục')
+        return
+      }
+
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: type === 'selfie' ? [3, 4] : [16, 9],
-        quality: 0.8,
+        allowsEditing: false, // No editing to prevent gallery access
+        quality: 0.9,
+        cameraType: type === 'selfie' ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
       })
 
       if (!result.canceled && result.assets[0]) {
@@ -111,16 +120,20 @@ const VerifyCccdScreen = () => {
         back: result.back_image ? { uri: `data:image/jpeg;base64,${result.back_image}`, name: `back_${timestamp}.jpg`, type: 'image/jpeg' } : null,
         selfie: result.face_image ? { uri: `data:image/jpeg;base64,${result.face_image}`, name: `selfie_${timestamp}.jpg`, type: 'image/jpeg' } : null,
       })
-      setShowVnptScanner(false)
-      setStep('review') // Tự động chuyển sang bước review
+      setShowVnptModal(false)
+      setStep('review')
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể xử lý kết quả từ SDK')
     }
   }
   
   const handleVnptSdkError = (error: string) => {
-    setShowVnptScanner(false)
+    setShowVnptModal(false)
     Alert.alert('Lỗi eKYC', error)
+  }
+
+  const handleVnptModalCancel = () => {
+    setShowVnptModal(false)
   }
 
   const handleSubmit = async () => {
@@ -150,23 +163,38 @@ const VerifyCccdScreen = () => {
       console.log('✅ VerifyCccd Response:', JSON.stringify(response, null, 2))
       
       setUploading(false)
-      setStep('instruction') // Reset to initial state
 
       if (response.isSuccess) {
-        Alert.alert('Thành công! 🎉', `Chào mừng ${response.result?.fullName}!`, [{ text: 'OK', onPress: () => router.back() }])
+        showAlert('Thành công! 🎉', `Chào mừng ${response.result?.fullName}!`, () => {
+          // Navigate to my-documents and reload
+          if (Platform.OS === 'web') {
+            router.replace('/owner/my-documents')
+          } else {
+            router.back()
+          }
+        })
       } else {
         setStep('capture') // Go back to capture for retry
-        // Hiển thị chi tiết lỗi từ backend
         const errorTitle = response.message || 'Xác thực thất bại'
         const errorReason = response.result?.reason || response.result?.rejectionReason || 'Vui lòng kiểm tra lại giấy tờ và thử lại'
-        Alert.alert(
-          errorTitle,
-          errorReason,
-          [
-            { text: 'Chụp lại', onPress: () => setStep('capture') },
-            { text: 'Hủy', onPress: () => router.back(), style: 'cancel' }
-          ]
-        )
+        
+        if (Platform.OS === 'web') {
+          const retry = window.confirm(`${errorTitle}\n\n${errorReason}\n\nBấm OK để chụp lại, Cancel để quay lại`)
+          if (retry) {
+            setStep('capture')
+          } else {
+            router.replace('/owner/my-documents')
+          }
+        } else {
+          Alert.alert(
+            errorTitle,
+            errorReason,
+            [
+              { text: 'Chụp lại', onPress: () => setStep('capture') },
+              { text: 'Hủy', onPress: () => router.back(), style: 'cancel' }
+            ]
+          )
+        }
       }
     } catch (error: any) {
       console.error('❌ VerifyCccd Error:', error)
@@ -180,19 +208,38 @@ const VerifyCccdScreen = () => {
         console.log('Error Data:', JSON.stringify(errorData, null, 2))
         const errorTitle = errorData.message || 'Lỗi xác thực'
         const errorReason = errorData.result?.reason || errorData.result?.rejectionReason || errorData.message || 'Có lỗi xảy ra'
-        Alert.alert(
-          errorTitle,
-          errorReason,
-          [
+        
+        if (Platform.OS === 'web') {
+          const retry = window.confirm(`${errorTitle}\n\n${errorReason}\n\nBấm OK để thử lại, Cancel để hủy`)
+          if (retry) {
+            setStep('capture')
+          } else {
+            router.back()
+          }
+        } else {
+          Alert.alert(
+            errorTitle,
+            errorReason,
+            [
+              { text: 'Thử lại', onPress: () => setStep('capture') },
+              { text: 'Hủy', onPress: () => router.back(), style: 'cancel' }
+            ]
+          )
+        }
+      } else {
+        if (Platform.OS === 'web') {
+          const retry = window.confirm('Lỗi\n\nKhông thể kết nối đến máy chủ\n\nBấm OK để thử lại, Cancel để hủy')
+          if (retry) {
+            setStep('capture')
+          } else {
+            router.back()
+          }
+        } else {
+          Alert.alert('Lỗi', 'Không thể kết nối đến máy chủ', [
             { text: 'Thử lại', onPress: () => setStep('capture') },
             { text: 'Hủy', onPress: () => router.back(), style: 'cancel' }
-          ]
-        )
-      } else {
-        Alert.alert('Lỗi', 'Không thể kết nối đến máy chủ', [
-          { text: 'Thử lại', onPress: () => setStep('capture') },
-          { text: 'Hủy', onPress: () => router.back(), style: 'cancel' }
-        ])
+          ])
+        }
       }
     }
   }
@@ -206,8 +253,14 @@ const VerifyCccdScreen = () => {
       </View>
       <Text style={styles.titleText}>Xác thực danh tính</Text>
       <Text style={styles.subtitleText}>
-        Để bảo mật tài khoản, chúng tôi cần xác minh giấy tờ tùy thân của bạn.
+        Để bảo mật tài khoản, vui lòng sử dụng camera để chụp giấy tờ tùy thân.
       </Text>
+      {useVnptSdk && sdkConfig && (
+        <View style={styles.recommendBox}>
+          <MaterialCommunityIcons name="robot" size={20} color="#10B981" />
+          <Text style={styles.recommendText}>Khuyến nghị sử dụng AI để tăng độ chính xác</Text>
+        </View>
+      )}
 
       <View style={styles.stepsContainer}>
         {[
@@ -227,55 +280,58 @@ const VerifyCccdScreen = () => {
         ))}
       </View>
 
-      <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8}>
-        <LinearGradient
-          colors={['#0EA5E9', '#2563EB']} // Blue gradient
-          start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-          style={styles.primaryButton}
-        >
-          <Text style={styles.primaryButtonText}>Bắt đầu ngay</Text>
-          <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />
-        </LinearGradient>
-      </TouchableOpacity>
+      {useVnptSdk && sdkConfig ? (
+        <View style={{ gap: 12, width: '100%' }}>
+          <TouchableOpacity onPress={startVnptSdkFlow} activeOpacity={0.8}>
+            <LinearGradient
+              colors={['#0EA5E9', '#2563EB']}
+              start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+              style={styles.primaryButton}
+            >
+              <MaterialCommunityIcons name="robot" size={20} color="#FFF" />
+              <Text style={styles.primaryButtonText}>Quét với AI (Khuyến nghị)</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonText}>Chụp thủ công</Text>
+            <MaterialCommunityIcons name="arrow-right" size={20} color="#64748B" />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8}>
+          <LinearGradient
+            colors={['#0EA5E9', '#2563EB']}
+            start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+            style={styles.primaryButton}
+          >
+            <Text style={styles.primaryButtonText}>Bắt đầu ngay</Text>
+            <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
     </View>
   )
 
   const renderCapture = () => (
     <View style={styles.captureWrapper}>
-      {Platform.OS === 'web' && showVnptScanner && sdkConfig && (
-        <View style={styles.scannerModal}>
-          <WebCccdScanner
-            config={sdkConfig}
-            onResult={handleVnptSdkResult}
-            onError={handleVnptSdkError}
-            onCancel={() => setShowVnptScanner(false)}
-          />
-          <TouchableOpacity style={styles.cancelButton} onPress={() => setShowVnptScanner(false)}>
-            <Text style={styles.cancelButtonText}>Quay lại</Text>
-          </TouchableOpacity>
-        </View>
+      {useVnptSdk && sdkConfig && (
+        <TouchableOpacity onPress={startVnptSdkFlow} activeOpacity={0.9} style={{marginBottom: 24}}>
+          <LinearGradient
+            colors={['#0F172A', '#334155']}
+            start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+            style={styles.aiButton}
+          >
+            <MaterialCommunityIcons name="line-scan" size={24} color="#38BDF8" />
+            <View>
+              <Text style={styles.aiButtonTitle}>Quét tự động bằng AI</Text>
+              <Text style={styles.aiButtonSubtitle}>Nhanh hơn, chính xác hơn</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={24} color="#94A3B8" style={{marginLeft: 'auto'}}/>
+          </LinearGradient>
+        </TouchableOpacity>
       )}
 
-      {!showVnptScanner && (
-        <>
-            {useVnptSdk && sdkConfig && (
-                <TouchableOpacity onPress={startVnptSdkFlow} activeOpacity={0.9} style={{marginBottom: 24}}>
-                    <LinearGradient
-                        colors={['#0F172A', '#334155']} // Dark slate gradient for AI button
-                        start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-                        style={styles.aiButton}
-                    >
-                        <MaterialCommunityIcons name="line-scan" size={24} color="#38BDF8" />
-                        <View>
-                            <Text style={styles.aiButtonTitle}>Quét tự động bằng AI</Text>
-                            <Text style={styles.aiButtonSubtitle}>Nhanh hơn, chính xác hơn</Text>
-                        </View>
-                        <MaterialCommunityIcons name="chevron-right" size={24} color="#94A3B8" style={{marginLeft: 'auto'}}/>
-                    </LinearGradient>
-                </TouchableOpacity>
-            )}
-
-            <Text style={styles.sectionHeader}>Hoặc tải lên thủ công</Text>
+      <Text style={styles.sectionHeader}>{useVnptSdk && sdkConfig ? 'Hoặc chụp thủ công' : 'Chụp ảnh giấy tờ'}</Text>
 
             <View style={styles.gridContainer}>
                 {[
@@ -309,15 +365,13 @@ const VerifyCccdScreen = () => {
                 ))}
             </View>
 
-            <TouchableOpacity 
-                style={[styles.continueBtn, (!images.front || !images.back || !images.selfie) && styles.disabledBtn]}
-                onPress={() => setStep('review')}
-                disabled={!images.front || !images.back || !images.selfie}
-            >
-                <Text style={styles.continueBtnText}>Tiếp tục</Text>
-            </TouchableOpacity>
-        </>
-      )}
+      <TouchableOpacity 
+        style={[styles.continueBtn, (!images.front || !images.back || !images.selfie) && styles.disabledBtn]}
+        onPress={() => setStep('review')}
+        disabled={!images.front || !images.back || !images.selfie}
+      >
+        <Text style={styles.continueBtnText}>Tiếp tục</Text>
+      </TouchableOpacity>
     </View>
   )
 
@@ -381,6 +435,17 @@ const VerifyCccdScreen = () => {
         {step === 'review' && renderReview()}
         {step === 'processing' && renderProcessing()}
       </ScrollView>
+
+      {showVnptModal && sdkConfig && (
+        <VnptSdkModal
+          visible={showVnptModal}
+          config={sdkConfig}
+          scanType="cccd"
+          onResult={handleVnptSdkResult}
+          onError={handleVnptSdkError}
+          onCancel={handleVnptModalCancel}
+        />
+      )}
     </LinearGradient>
   )
 }
@@ -522,7 +587,40 @@ const styles = StyleSheet.create({
     marginBottom: 20
   },
   processingTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
-  processingDesc: { fontSize: 14, color: '#64748B', marginTop: 8 }
+  processingDesc: { fontSize: 14, color: '#64748B', marginTop: 8 },
+  
+  // Secondary button
+  secondaryButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  secondaryButtonText: { color: '#64748B', fontWeight: '700', fontSize: 16 },
+  
+  // Recommend box
+  recommendBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 10,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  recommendText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#059669',
+    flex: 1,
+  },
 });
 
 export default VerifyCccdScreen

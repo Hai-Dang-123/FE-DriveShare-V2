@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text, Image, TouchableOpacity, StyleSheet, ImageBackground, Dimensions } from 'react-native'
 import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
+import { useNotification } from '@/hooks/useNotification'
 
 interface HeaderProps {
   owner: any | null | undefined
@@ -11,6 +12,7 @@ const { width } = Dimensions.get('window')
 
 const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
   const router = useRouter()
+  const { unreadCount } = useNotification()
   
   const o = owner as any
   // support payload that may be wrapped in `result`, or attached as `profile`, or be the profile directly
@@ -48,10 +50,13 @@ const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
         <View style={styles.topOverlay}>
           {/* Top Icons */}
           <View style={styles.topIconContainer}>
-              <TouchableOpacity style={styles.iconButton}>
+              <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/notifications')}>
                 <MaterialCommunityIcons name="bell-outline" size={28} color="#FFFFFF" />
-                {/* Dot thông báo đỏ */}
-                <View style={styles.notificationDot} />
+                {unreadCount > 0 && (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconButton}>
                 <Ionicons name="settings-outline" size={28} color="#FFFFFF" />
@@ -96,10 +101,10 @@ const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
 
                 {/* Nút xác minh CCCD */}
                 {hasVerifiedCitizenId ? (
-                  <View style={styles.verifyBadge}>
+                  <TouchableOpacity style={styles.verifyBadge} onPress={handleVerifyDocuments}>
                     <MaterialCommunityIcons name="shield-check" size={16} color="#047857" />
                     <Text style={styles.verifyText}>Đã xác minh CCCD</Text>
-                  </View>
+                  </TouchableOpacity>
                 ) : (
                   <TouchableOpacity style={styles.unverifiedBadge} onPress={handleVerifyDocuments}>
                     <MaterialCommunityIcons name="shield-alert" size={16} color="#2563EB" />
@@ -148,6 +153,23 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 6,
     backgroundColor: '#EF4444', // Đỏ
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
   
   // Floating Card Styles

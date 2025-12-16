@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { SafeAreaView, View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl } from 'react-native'
+import { SafeAreaView, View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl, AppState } from 'react-native'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -54,6 +54,17 @@ const OwnerHomeScreen: React.FC = () => {
 
   useEffect(() => {
     loadData()
+    
+    // Reload data when app comes to foreground or screen becomes active
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadData()
+      }
+    })
+    
+    return () => {
+      subscription?.remove()
+    }
   }, [])
 
   const onRefresh = async () => {

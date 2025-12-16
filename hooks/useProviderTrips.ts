@@ -85,9 +85,10 @@ export function useProviderTrips(): UseProviderTripsResult {
     }
   }, [user?.userId, pageSize, search, sortField, sortDirection, statusFilter])
 
-  useEffect(() => {
-    fetchPage(1)
-  }, [search, sortField, sortDirection, statusFilter])
+  // ✅ BỎ auto-fetch, chỉ fetch khi được gọi thủ công từ component
+  // useEffect(() => {
+  //   fetchPage(1)
+  // }, [search, sortField, sortDirection, statusFilter])
 
   return {
     trips,

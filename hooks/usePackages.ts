@@ -38,13 +38,34 @@ export const usePackages = (initialPage = 1, initialSize = 20) => {
         status: statusVal !== 'ALL' ? statusVal : undefined
       })
       
+      console.log('📦 [usePackages] API response:', res);
+      
       if (res && res.isSuccess && res.result) {
         const result: any = res.result
-        const rawPackages: any[] = result.items ?? result.data ?? []
-        const totalCount: number = result.totalCount ?? result.totalCount ?? rawPackages.length
+        // Ưu tiên lấy từ data (theo API response thực tế), rồi mới items
+        const rawPackages: any[] = result.data ?? result.items ?? []
+        const totalCount: number = result.totalCount ?? rawPackages.length
+        
+        console.log(`📦 [usePackages] Found ${rawPackages.length} packages`);
 
         // Map backend DTO to frontend Package interface
-        const dataPackages: Package[] = rawPackages.map((pkg: any) => {
+        const dataPackages: Package[] = rawPackages.map((pkg: any, idx: number) => {
+          console.log(`  📦 Package ${idx}:`, {
+            id: pkg.packageId,
+            title: pkg.title,
+            status: pkg.status,
+            imagesCount: pkg.packageImages?.length || 0,
+            attributes: {
+              isFragile: pkg.isFragile,
+              isLiquid: pkg.isLiquid,
+              isRefrigerated: pkg.isRefrigerated,
+              isFlammable: pkg.isFlammable,
+              isHazardous: pkg.isHazardous,
+              isBulky: pkg.isBulky,
+              isPerishable: pkg.isPerishable,
+            }
+          });
+          
           const imagesRaw = pkg.packageImages ?? pkg.images ?? []
           const images = (imagesRaw || []).map((img: any) => ({
             packageImageId: img.packageImageId ?? img.id ?? '',
@@ -63,6 +84,22 @@ export const usePackages = (initialPage = 1, initialSize = 20) => {
             images,
             packageCode: pkg.packageCode ?? '',
             itemId: pkg.itemId ?? '',
+            // Handling attributes
+            isFragile: pkg.isFragile ?? false,
+            isLiquid: pkg.isLiquid ?? false,
+            isRefrigerated: pkg.isRefrigerated ?? false,
+            isFlammable: pkg.isFlammable ?? false,
+            isHazardous: pkg.isHazardous ?? false,
+            isBulky: pkg.isBulky ?? false,
+            isPerishable: pkg.isPerishable ?? false,
+            otherRequirements: pkg.otherRequirements ?? '',
+            // Additional fields
+            ownerId: pkg.ownerId,
+            providerId: pkg.providerId,
+            postPackageId: pkg.postPackageId,
+            tripId: pkg.tripId,
+            createdAt: pkg.createdAt,
+            packageImages: images,
           } as Package
         })
 
@@ -80,9 +117,7 @@ export const usePackages = (initialPage = 1, initialSize = 20) => {
     }
   }, [userId])
 
-  useEffect(() => {
-    if (userId) fetchPage(initialPage, initialSize)
-  }, [userId, fetchPage, initialPage, initialSize])
+  // REMOVED: No auto-fetch on mount, component will call fetchPage manually
 
   return {
     packages,

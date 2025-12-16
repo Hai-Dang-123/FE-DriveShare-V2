@@ -14,6 +14,18 @@ interface PackageCardProps {
 // Default status colors (fallback if not provided)
 const defaultGetStatusColor = (status: string) => {
   switch (status) {
+    case "PENDING":
+      return "#F59E0B"; // Cam
+    case "APPROVED":
+      return "#10B981"; // Xanh lá
+    case "REJECTED":
+      return "#EF4444"; // Đỏ
+    case "IN_TRANSIT":
+      return "#3B82F6"; // Xanh dương
+    case "DELIVERED":
+      return "#10B981"; // Xanh lá
+    case "COMPLETED":
+      return "#6B7280"; // Xám
     case PackageStatus.OPEN:
       return "#10B981"; // Xanh lá
     case PackageStatus.CLOSED:
@@ -21,14 +33,18 @@ const defaultGetStatusColor = (status: string) => {
     case PackageStatus.DELETED:
       return "#EF4444"; // Đỏ
     default:
-      return "#F59E0B"; // Cam (Pending)
+      return "#9CA3AF"; // Xám nhạt
   }
 };
 
 const getStatusText = (status: string) => {
   switch (status) {
     case "PENDING":
-      return "Chờ xử lý";
+      return "Chờ duyệt";
+    case "APPROVED":
+      return "Đã duyệt";
+    case "REJECTED":
+      return "Từ chối";
     case "IN_TRANSIT":
       return "Đang vận chuyển";
     case "DELIVERED":
@@ -42,7 +58,7 @@ const getStatusText = (status: string) => {
     case PackageStatus.DELETED:
       return "Đã xóa";
     default:
-      return "Chờ duyệt";
+      return status;
   }
 };
 
@@ -53,7 +69,10 @@ const PackageCard: React.FC<PackageCardProps> = ({
   onPost,
   getStatusColor,
 }) => {
+  const [showAllAttributes, setShowAllAttributes] = React.useState(false);
+  
   const {
+    packageCode,
     title,
     description,
     quantity,
@@ -61,28 +80,48 @@ const PackageCard: React.FC<PackageCardProps> = ({
     weightKg,
     volumeM3,
     images = [],
+    packageImages = [],
     status,
+    isFragile,
+    isLiquid,
+    isRefrigerated,
+    isFlammable,
+    isHazardous,
+    isBulky,
+    isPerishable,
+    otherRequirements,
   } = pkg;
 
   // Chỉ cho phép edit/delete khi status KHÔNG phải PENDING
-  const canEditOrDelete = status !== PackageStatus.PENDING;
+  const canEditOrDelete =  status === PackageStatus.PENDING;
 
   // Resolve image URL defensively: packageImages may contain objects with different keys or plain strings
   let imageUrl = "https://via.placeholder.com/400";
-  if (images && images.length > 0) {
-    const first = images[0];
+  const imgList = packageImages && packageImages.length > 0 ? packageImages : images;
+  if (imgList && imgList.length > 0) {
+    const first = imgList[0];
     if (typeof first === "string") imageUrl = first;
     else if (first) {
       const f: any = first;
       imageUrl =
-        f.packageImageURL ??
         f.imageUrl ??
+        f.packageImageURL ??
         f.url ??
         f.uri ??
         f.packageImageUrl ??
         imageUrl;
     }
   }
+
+  // Collect special attributes
+  const specialAttributes = [];
+  if (isFragile) specialAttributes.push({ icon: "alert-circle", label: "Dễ vỡ", color: "#F59E0B" });
+  if (isLiquid) specialAttributes.push({ icon: "water", label: "Chất lỏng", color: "#3B82F6" });
+  if (isRefrigerated) specialAttributes.push({ icon: "snowflake", label: "Làm lạnh", color: "#06B6D4" });
+  if (isFlammable) specialAttributes.push({ icon: "flame", label: "Dễ cháy", color: "#EF4444" });
+  if (isHazardous) specialAttributes.push({ icon: "alert-triangle", label: "Nguy hiểm", color: "#DC2626" });
+  if (isBulky) specialAttributes.push({ icon: "package", label: "Cồng kềnh", color: "#8B5CF6" });
+  if (isPerishable) specialAttributes.push({ icon: "clock", label: "Dễ hỏng", color: "#F97316" });
 
   // Use provided getStatusColor or fallback to default
   const statusColorFn = getStatusColor || defaultGetStatusColor;
@@ -123,6 +162,14 @@ const PackageCard: React.FC<PackageCardProps> = ({
 
       {/* CONTENT */}
       <View style={styles.content}>
+        {/* Package Code */}
+        {packageCode && (
+          <View style={styles.codeRow}>
+            <MaterialCommunityIcons name="barcode" size={14} color="#6B7280" />
+            <Text style={styles.codeText}>{packageCode}</Text>
+          </View>
+        )}
+        
         <Text style={styles.title} numberOfLines={2}>
           {title}
         </Text>
@@ -159,6 +206,47 @@ const PackageCard: React.FC<PackageCardProps> = ({
             <Text style={styles.statValue}>{volumeM3} m³</Text>
           </View>
         </View>
+
+        {/* Special Attributes */}
+        {specialAttributes.length > 0 && (
+          <View>
+            <View style={styles.attributesRow}>
+              {(showAllAttributes ? specialAttributes : specialAttributes.slice(0, 3)).map((attr, idx) => (
+                <View key={idx} style={[styles.attributeChip, { borderColor: attr.color }]}>
+                  <Feather name={attr.icon as any} size={10} color={attr.color} />
+                  <Text style={[styles.attributeText, { color: attr.color }]}>
+                    {attr.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            {specialAttributes.length > 3 && (
+              <TouchableOpacity 
+                onPress={() => setShowAllAttributes(!showAllAttributes)}
+                style={styles.toggleAttributesBtn}
+              >
+                <Text style={styles.toggleAttributesText}>
+                  {showAllAttributes ? 'Thu gọn' : `Xem thêm ${specialAttributes.length - 3} thuộc tính`}
+                </Text>
+                <Feather 
+                  name={showAllAttributes ? "chevron-up" : "chevron-down"} 
+                  size={12} 
+                  color="#0284C7" 
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Other Requirements */}
+        {otherRequirements && (
+          <View style={styles.requirementsRow}>
+            <MaterialCommunityIcons name="note-text-outline" size={12} color="#6B7280" />
+            <Text style={styles.requirementsText} numberOfLines={1}>
+              {otherRequirements}
+            </Text>
+          </View>
+        )}
 
         {/* FOOTER ACTIONS */}
         <View style={styles.footer}>
@@ -228,6 +316,23 @@ const styles = StyleSheet.create({
   },
 
   content: { padding: 12 },
+  codeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 6,
+    backgroundColor: "#F9FAFB",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    alignSelf: "flex-start",
+  },
+  codeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#6B7280",
+    letterSpacing: 0.5,
+  },
   title: { fontSize: 15, fontWeight: "700", color: "#111827", marginBottom: 4 },
   desc: { fontSize: 12, color: "#6B7280", marginBottom: 12, height: 32 },
 
@@ -237,10 +342,61 @@ const styles = StyleSheet.create({
     backgroundColor: "#F9FAFB",
     borderRadius: 8,
     padding: 8,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   statItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   statValue: { fontSize: 11, fontWeight: "600", color: "#374151" },
+
+  attributesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginBottom: 4,
+  },
+  attributeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  attributeText: {
+    fontSize: 9,
+    fontWeight: "600",
+  },
+  toggleAttributesBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 6,
+    marginBottom: 4,
+  },
+  toggleAttributesText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0284C7",
+  },
+
+  requirementsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  requirementsText: {
+    flex: 1,
+    fontSize: 10,
+    color: "#92400E",
+    fontStyle: "italic",
+  },
 
   footer: {
     flexDirection: "row",

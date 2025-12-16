@@ -106,9 +106,10 @@ export function useProviderPosts(): UseProviderPostsResult {
     }
   }, [user?.userId, pageSize, search, sortBy, sortOrder, statusFilter])
 
-  useEffect(() => {
-    fetchPage(1)
-  }, [search, sortBy, sortOrder, statusFilter])
+  // ✅ BỎ auto-fetch, chỉ fetch khi được gọi thủ công từ component
+  // useEffect(() => {
+  //   fetchPage(1)
+  // }, [search, sortBy, sortOrder, statusFilter])
 
   return {
     posts,

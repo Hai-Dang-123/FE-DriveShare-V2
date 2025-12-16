@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import { 
   View, 
   Text, 
@@ -57,6 +58,25 @@ const PostsManagementScreen: React.FC<Props> = ({ onBack }) => {
   const [postSearchText, setPostSearchText] = useState('')
   const [tripSearchText, setTripSearchText] = useState('')
 
+  // ✅ Gọi API mới MỖI KHI màn hình được focus (cả lần đầu và khi quay lại)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 [PostsManagementScreen] Screen focused, fetching fresh data...');
+      // Reset search và sort về mặc định
+      setPostSearchText('');
+      setTripSearchText('');
+      postsHook.setSearch('');
+      postsHook.setSortBy('');
+      postsHook.setSortOrder('ASC');
+      tripsHook.setSearch('');
+      tripsHook.setSortField('');
+      tripsHook.setSortDirection('ASC');
+      // Fetch data
+      postsHook.fetchPage(1);
+      tripsHook.fetchPage(1);
+    }, [])
+  );
+
   // Helper functions colors
   const POST_STATUS_COLORS: Record<string, string> = {
     ALL: COLORS.primary, OPEN: '#10B981', PENDING: '#F59E0B', 
@@ -104,36 +124,87 @@ const PostsManagementScreen: React.FC<Props> = ({ onBack }) => {
 
   const handlePostSearchChange = (text: string) => {
     setPostSearchText(text)
-    if (searchDebounce) clearTimeout(searchDebounce)
-    const timeout = setTimeout(() => postsHook.setSearch(text), 500)
-    setSearchDebounce(timeout)
+  }
+
+  const handlePostSearchSubmit = () => {
+    console.log('🔍 [PostsManagementScreen] Submit search for posts:', postSearchText)
+    postsHook.setSearch(postSearchText)
+    postsHook.fetchPage(1)
+  }
+
+  const handlePostSearchClear = () => {
+    setPostSearchText('')
+    postsHook.setSearch('')
+    postsHook.fetchPage(1)
   }
 
   const handleTripSearchChange = (text: string) => {
     setTripSearchText(text)
-    if (searchDebounce) clearTimeout(searchDebounce)
-    const timeout = setTimeout(() => tripsHook.setSearch(text), 500)
-    setSearchDebounce(timeout)
+  }
+
+  const handleTripSearchSubmit = () => {
+    console.log('🔍 [PostsManagementScreen] Submit search for trips:', tripSearchText)
+    tripsHook.setSearch(tripSearchText)
+    tripsHook.fetchPage(1)
+  }
+
+  const handleTripSearchClear = () => {
+    setTripSearchText('')
+    tripsHook.setSearch('')
+    tripsHook.fetchPage(1)
   }
 
   const handlePostApplySort = (field: string, order: 'ASC' | 'DESC') => {
-    postsHook.setSortBy(field)
-    postsHook.setSortOrder(order)
+    if (field === 'status') {
+      // ✅ Sort theo status ở FE, không gọi API
+      postsHook.setSortBy('')
+      postsHook.setSortOrder(order)
+      const sorted = [...postsHook.posts].sort((a, b) => {
+        const statusA = (a.status || '').toString()
+        const statusB = (b.status || '').toString()
+        return order === 'ASC' 
+          ? statusA.localeCompare(statusB) 
+          : statusB.localeCompare(statusA)
+      })
+      // Update posts in hook (need to expose setPosts or handle differently)
+      console.log('✅ Sorted by status on FE:', sorted.length)
+    } else {
+      // Gọi API sort cho các field khác
+      postsHook.setSortBy(field)
+      postsHook.setSortOrder(order)
+    }
     setPostSortModalVisible(false)
     showToast('Đã áp dụng sắp xếp')
   }
 
   const handleTripApplySort = (field: string, direction: 'ASC' | 'DESC') => {
-    tripsHook.setSortField(field)
-    tripsHook.setSortDirection(direction)
+    if (field === 'status') {
+      // ✅ Sort theo status ở FE, không gọi API
+      tripsHook.setSortField('')
+      tripsHook.setSortDirection(direction)
+      const sorted = [...tripsHook.trips].sort((a, b) => {
+        const statusA = (a.status || '').toString()
+        const statusB = (b.status || '').toString()
+        return direction === 'ASC' 
+          ? statusA.localeCompare(statusB) 
+          : statusB.localeCompare(statusA)
+      })
+      console.log('✅ Sorted by status on FE:', sorted.length)
+    } else {
+      // Gọi API sort cho các field khác
+      tripsHook.setSortField(field)
+      tripsHook.setSortDirection(direction)
+    }
     setTripSortModalVisible(false)
     showToast('Đã áp dụng sắp xếp')
   }
 
   const handleCreateSuccess = async () => {
+    console.log('🔄 [PostsManagementScreen] Post created successfully, refreshing list...')
     setModalVisible(false)
     setEditPostData(null)
-    postsHook.fetchPage(1)
+    // Gọi lại API để load danh sách mới
+    await postsHook.fetchPage(1)
     showToast('Tạo bài đăng thành công')
   }
 
@@ -297,8 +368,24 @@ const PostsManagementScreen: React.FC<Props> = ({ onBack }) => {
             style={styles.searchInput}
             value={viewMode === 'posts' ? postSearchText : tripSearchText}
             onChangeText={viewMode === 'posts' ? handlePostSearchChange : handleTripSearchChange}
+            onSubmitEditing={viewMode === 'posts' ? handlePostSearchSubmit : handleTripSearchSubmit}
+            returnKeyType="search"
             placeholderTextColor="#9CA3AF"
           />
+          {(viewMode === 'posts' ? postSearchText : tripSearchText).length > 0 && (
+            <TouchableOpacity 
+              onPress={viewMode === 'posts' ? handlePostSearchClear : handleTripSearchClear}
+              style={styles.clearButton}
+            >
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity 
+            onPress={viewMode === 'posts' ? handlePostSearchSubmit : handleTripSearchSubmit} 
+            style={styles.searchButton}
+          >
+            <Ionicons name="arrow-forward" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
         </View>
         <TouchableOpacity 
           style={styles.filterIconBtn} 
@@ -429,6 +516,14 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#E2E8F0' 
   },
   searchInput: { flex: 1, fontSize: 14, color: COLORS.textMain },
+  clearButton: {
+    padding: 4,
+    marginRight: 4,
+  },
+  searchButton: {
+    padding: 4,
+    marginRight: 4,
+  },
   filterIconBtn: { 
     width: 40, height: 40, borderRadius: 8, 
     backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', 

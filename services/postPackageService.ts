@@ -28,9 +28,13 @@ export interface RouteCalculationRequestDTO {
 export interface RouteCalculationResultDTO {
   isValid: boolean
   message: string
-  distanceKm: number
+  distanceKm: number // Deprecated
+  estimatedDistanceKm: number
   estimatedDurationHours: number
+  travelTimeHours: number
+  waitTimeHours: number
   suggestedMinDeliveryDate: string // ISO 8601 format
+  restrictionNote: string
 }
 
 // --- SHIPPING ROUTE INPUT ---
@@ -248,8 +252,12 @@ const calculateRoute = async (dto: RouteCalculationRequestDTO): Promise<Response
         isValid: false,
         message: error?.response?.data?.message || error?.message || 'Không thể tính toán lộ trình',
         distanceKm: 0,
+        estimatedDistanceKm: 0,
         estimatedDurationHours: 0,
-        suggestedMinDeliveryDate: new Date().toISOString()
+        travelTimeHours: 0,
+        waitTimeHours: 0,
+        suggestedMinDeliveryDate: new Date().toISOString(),
+        restrictionNote: ''
       }
     }
   }

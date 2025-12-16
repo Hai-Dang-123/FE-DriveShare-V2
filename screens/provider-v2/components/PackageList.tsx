@@ -15,10 +15,22 @@ interface PackageListProps {
 }
 
 const PackageList: React.FC<PackageListProps> = ({ packages, onEdit, onDelete, onPost, getStatusColor }) => {
+  console.log('📦 [PackageList] Received packages:', packages);
+  console.log('📦 [PackageList] Is array?', Array.isArray(packages));
+  
   let list: Package[] = []
-  if (Array.isArray(packages)) list = packages
-  else if (packages?.data) list = packages.data
-  else if (packages?.items) list = packages.items
+  if (Array.isArray(packages)) {
+    list = packages
+    console.log('📦 [PackageList] Using array directly, length:', list.length);
+  } else if (packages?.data) {
+    list = packages.data
+    console.log('📦 [PackageList] Using packages.data, length:', list.length);
+  } else if (packages?.items) {
+    list = packages.items
+    console.log('📦 [PackageList] Using packages.items, length:', list.length);
+  }
+  
+  console.log('📦 [PackageList] Final list:', list);
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>

@@ -17,7 +17,7 @@ export interface VnptSdkConfig {
 
 export interface DocumentDetailDTO {
   userDocumentId?: string
-  documentType: 'CCCD' | 'DRIVER_LINCENSE'
+  documentType: 'CCCD' | 'DRIVER_LINCENSE' | 'HEALTH_CHECK'
   frontImageUrl?: string
   backImageUrl?: string
   portraitImageUrl?: string
@@ -39,6 +39,7 @@ export interface DocumentDetailDTO {
 
 export interface DriverDocumentsDTO {
   drivingLicense: DocumentDetailDTO | null
+  healthCheck?: DocumentDetailDTO | null
 }
 
 export interface MyDocumentsResponseDTO {
@@ -244,6 +245,62 @@ export const ekycService = {
       return response.data
     } catch (error: any) {
       console.error('ekycService.requestManualReview failed', error)
+      throw error
+    }
+  },
+
+  verifyHealthCheck: async (
+    front: File | { uri: string; name: string; type: string },
+    back?: File | { uri: string; name: string; type: string } | null,
+    selfie?: File | { uri: string; name: string; type: string } | null
+  ): Promise<ResponseDTO<DocumentDetailDTO>> => {
+    try {
+      const formData = new FormData()
+      
+      // Front - bắt buộc
+      if (front instanceof File) {
+        formData.append('Front', front)
+        if (back) {
+          formData.append('Back', back as File)
+        }
+        if (selfie) {
+          formData.append('Selfie', selfie as File)
+        }
+      } else {
+        formData.append('Front', {
+          uri: front.uri,
+          name: front.name,
+          type: front.type,
+        } as any)
+        if (back && 'uri' in back) {
+          formData.append('Back', {
+            uri: back.uri,
+            name: back.name,
+            type: back.type,
+          } as any)
+        }
+        if (selfie && 'uri' in selfie) {
+          formData.append('Selfie', {
+            uri: selfie.uri,
+            name: selfie.name,
+            type: selfie.type,
+          } as any)
+        }
+      }
+
+      const response = await api.post<ResponseDTO<DocumentDetailDTO>>(
+        '/api/UserDocument/verify-health-check',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      )
+
+      return response.data
+    } catch (error: any) {
+      console.error('ekycService.verifyHealthCheck failed', error)
       throw error
     }
   },

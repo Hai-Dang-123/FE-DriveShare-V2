@@ -6,7 +6,8 @@ import {
   ScrollView,
   StyleSheet,
   StatusBar,
-  RefreshControl
+  RefreshControl,
+  AppState
 } from 'react-native'
 import { Provider } from '@/models/types'
 import { useAuthStore } from '@/stores/authStore'
@@ -66,6 +67,17 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
 
   useEffect(() => {
     loadData()
+    
+    // Reload data when app comes to foreground or screen becomes active
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadData()
+      }
+    })
+    
+    return () => {
+      subscription?.remove()
+    }
   }, [])
 
   const onRefresh = async () => {
