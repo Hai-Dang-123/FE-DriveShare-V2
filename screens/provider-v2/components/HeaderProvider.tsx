@@ -1,60 +1,132 @@
-import React from 'react'
-import { View, Text, Image, TouchableOpacity, StyleSheet, ImageBackground, Dimensions } from 'react-native'
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
-import { useNotification } from '@/hooks/useNotification'
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  StyleSheet,
+  ImageBackground,
+  Dimensions,
+  Modal,
+} from "react-native";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useNotification } from "@/hooks/useNotification";
+import { authService } from "@/services/authService";
+import { removeToken, clearAllUserData } from "@/utils/token";
+import api from "@/config/api";
 
 interface HeaderProps {
-  provider: any | null | undefined
+  provider: any | null | undefined;
 }
 
-const { width } = Dimensions.get('window')
+const { width } = Dimensions.get("window");
 
 const HeaderProvider: React.FC<HeaderProps> = ({ provider }) => {
-  const router = useRouter()
-  const { unreadCount } = useNotification()
-  
-  const p = provider as any
-  const profile = p?.profile ?? p?.result ?? p ?? {}
+  const router = useRouter();
+  const { unreadCount } = useNotification();
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
-  const name = profile?.fullName || profile?.userName || 'Nhà cung cấp'
-  const company = profile?.companyName || profile?.company || 'Chưa có dữ liệu'
-  const avatar = profile?.avatarUrl || profile?.AvatarUrl || null
-  const email = profile?.email || 'Chưa có dữ liệu'
-  const phone = profile?.phoneNumber || 'Chưa có dữ liệu'
-  const status = (profile?.status || '').toString()
-  
+  const p = provider as any;
+  const profile = p?.profile ?? p?.result ?? p ?? {};
+
+  const name = profile?.fullName || profile?.userName || "Nhà cung cấp";
+  const company = profile?.companyName || profile?.company || "Chưa có dữ liệu";
+  const avatar = profile?.avatarUrl || profile?.AvatarUrl || null;
+  const email = profile?.email || "Chưa có dữ liệu";
+  const phone = profile?.phoneNumber || "Chưa có dữ liệu";
+  const status = (profile?.status || "").toString();
+
   // Get verification status from profile
-  const hasVerifiedCitizenId = profile?.hasVerifiedCitizenId ?? false
+  const hasVerifiedCitizenId = profile?.hasVerifiedCitizenId ?? false;
 
   const initials = name
-    ? name.split(' ').map((s: string) => s[0]).slice(0, 2).join('').toUpperCase()
-    : 'NP'
+    ? name
+        .split(" ")
+        .map((s: string) => s[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "NP";
 
   const handleVerifyDocuments = () => {
-    router.push('/provider-v2/my-documents')
-  }
+    router.push("/provider-v2/my-documents");
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Clear all user data and navigation
+      await clearAllUserData();
+      delete api.defaults.headers.common["Authorization"];
+      router.replace("/(auth)/login");
+
+      // Fire and forget the server logout
+      authService.logout().catch(() => {});
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
 
   return (
     <View style={styles.container}>
       <ImageBackground
-        source={require('../../../assets/header-bg.png')}
+        source={require("../../../assets/header-bg.png")}
         style={styles.backgroundImage}
         imageStyle={{ opacity: 0.9 }}
       >
         <View style={styles.topOverlay}>
           <View style={styles.topIconContainer}>
-            <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/notifications')}>
-              <MaterialCommunityIcons name="bell-outline" size={26} color="#FFFFFF" />
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => router.push("/notifications")}
+            >
+              <MaterialCommunityIcons
+                name="bell-outline"
+                size={26}
+                color="#FFFFFF"
+              />
               {unreadCount > 0 && (
                 <View style={styles.notificationBadge}>
-                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                  <Text style={styles.badgeText}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => setShowSettingsMenu(true)}
+            >
               <Ionicons name="settings-outline" size={26} color="#FFFFFF" />
             </TouchableOpacity>
+
+            {/* Settings Menu Modal */}
+            <Modal
+              visible={showSettingsMenu}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowSettingsMenu(false)}
+            >
+              <TouchableOpacity
+                style={styles.modalOverlay}
+                activeOpacity={1}
+                onPress={() => setShowSettingsMenu(false)}
+              >
+                <View style={styles.menuContainer}>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={handleLogout}
+                  >
+                    <Ionicons
+                      name="log-out-outline"
+                      size={20}
+                      color="#EF4444"
+                    />
+                    <Text style={styles.menuText}>Đăng xuất</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            </Modal>
           </View>
         </View>
       </ImageBackground>
@@ -63,7 +135,11 @@ const HeaderProvider: React.FC<HeaderProps> = ({ provider }) => {
         <View style={styles.floatingCard}>
           <View style={styles.avatarWrapper}>
             {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatarImage} resizeMode="cover" />
+              <Image
+                source={{ uri: avatar }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+              />
             ) : (
               <View style={styles.avatarInitialsContainer}>
                 <Text style={styles.avatarInitialsText}>{initials}</Text>
@@ -74,28 +150,56 @@ const HeaderProvider: React.FC<HeaderProps> = ({ provider }) => {
           <View style={styles.infoContent}>
             <View style={styles.nameRow}>
               <Text style={styles.profileName}>{name}</Text>
-              {status && status.toUpperCase() === 'ACTIVE' ? (
-                <View style={[styles.verifiedIcon, { backgroundColor: '#10B981' }]}>
-                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✓</Text>
+              {status && status.toUpperCase() === "ACTIVE" ? (
+                <View
+                  style={[styles.verifiedIcon, { backgroundColor: "#10B981" }]}
+                >
+                  <Text
+                    style={{ color: "white", fontSize: 12, fontWeight: "bold" }}
+                  >
+                    ✓
+                  </Text>
                 </View>
               ) : (
-                <View style={[styles.verifiedIcon, { backgroundColor: '#EF4444' }]}>
-                  <Text style={{ color: 'white', fontSize: 12, fontWeight: 'bold' }}>✕</Text>
+                <View
+                  style={[styles.verifiedIcon, { backgroundColor: "#EF4444" }]}
+                >
+                  <Text
+                    style={{ color: "white", fontSize: 12, fontWeight: "bold" }}
+                  >
+                    ✕
+                  </Text>
                 </View>
               )}
             </View>
 
             <Text style={styles.profileCompany}>{company}</Text>
-            <Text style={styles.profileContact}>{email} • {phone}</Text>
+            <Text style={styles.profileContact}>
+              {email} • {phone}
+            </Text>
 
             {hasVerifiedCitizenId ? (
-              <TouchableOpacity style={styles.verifyBadge} onPress={handleVerifyDocuments}>
-                <MaterialCommunityIcons name="shield-check" size={16} color="#047857" />
+              <TouchableOpacity
+                style={styles.verifyBadge}
+                onPress={handleVerifyDocuments}
+              >
+                <MaterialCommunityIcons
+                  name="shield-check"
+                  size={16}
+                  color="#047857"
+                />
                 <Text style={styles.verifyText}>Đã xác minh CCCD</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.unverifiedBadge} onPress={handleVerifyDocuments}>
-                <MaterialCommunityIcons name="shield-alert" size={16} color="#2563EB" />
+              <TouchableOpacity
+                style={styles.unverifiedBadge}
+                onPress={handleVerifyDocuments}
+              >
+                <MaterialCommunityIcons
+                  name="shield-alert"
+                  size={16}
+                  color="#2563EB"
+                />
                 <Text style={styles.unverifiedText}>Xác minh CCCD</Text>
               </TouchableOpacity>
             )}
@@ -103,85 +207,85 @@ const HeaderProvider: React.FC<HeaderProps> = ({ provider }) => {
         </View>
       </View>
     </View>
-  )
-}
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
     marginBottom: 10,
   },
   backgroundImage: {
-    width: '100%',
+    width: "100%",
     height: 220,
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
   },
   topOverlay: {
     paddingTop: 44,
     paddingHorizontal: 20,
   },
   topIconContainer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
     gap: 12,
   },
   iconButton: {
     padding: 8,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: "rgba(255,255,255,0.22)",
     borderRadius: 22,
     marginLeft: 8,
   },
   notificationDot: {
-    position: 'absolute',
+    position: "absolute",
     top: 6,
     right: 6,
     width: 10,
     height: 10,
     borderRadius: 6,
-    backgroundColor: '#EF4444',
+    backgroundColor: "#EF4444",
   },
   notificationBadge: {
-    position: 'absolute',
+    position: "absolute",
     top: 4,
     right: 4,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 4,
   },
   badgeText: {
-    color: '#FFF',
+    color: "#FFF",
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 
   floatingCardWrapper: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: -70,
     paddingHorizontal: 16,
   },
   floatingCard: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
+    width: "100%",
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
-    alignItems: 'center',
+    alignItems: "center",
     paddingTop: 56,
     paddingBottom: 20,
     paddingHorizontal: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 5,
   },
   avatarWrapper: {
-    position: 'absolute',
+    position: "absolute",
     top: -56,
-    alignSelf: 'center',
+    alignSelf: "center",
     padding: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 64,
   },
   avatarImage: {
@@ -193,58 +297,58 @@ const styles = StyleSheet.create({
     width: 112,
     height: 112,
     borderRadius: 56,
-    backgroundColor: '#E0E7FF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#E0E7FF",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: '#C7D2FE',
+    borderColor: "#C7D2FE",
   },
   avatarInitialsText: {
     fontSize: 36,
-    fontWeight: '800',
-    color: '#4F46E5',
+    fontWeight: "800",
+    color: "#4F46E5",
   },
   infoContent: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     marginBottom: 4,
   },
   profileName: {
     fontSize: 22,
-    fontWeight: '800',
-    color: '#111827',
+    fontWeight: "800",
+    color: "#111827",
   },
   verifiedIcon: {
     width: 16,
     height: 16,
-    backgroundColor: '#10B981',
+    backgroundColor: "#10B981",
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginLeft: 8,
   },
   profileCompany: {
     fontSize: 16,
-    color: '#374151',
+    color: "#374151",
     marginBottom: 2,
-    textAlign: 'center',
+    textAlign: "center",
   },
   profileContact: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
     marginBottom: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
   verifyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#D1FAE5',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#D1FAE5",
     borderWidth: 1,
-    borderColor: '#34D399',
+    borderColor: "#34D399",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 22,
@@ -252,15 +356,15 @@ const styles = StyleSheet.create({
   },
   verifyText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#047857',
+    fontWeight: "700",
+    color: "#047857",
   },
   unverifiedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EEF2FF',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EEF2FF",
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: "#BFDBFE",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 22,
@@ -268,9 +372,39 @@ const styles = StyleSheet.create({
   },
   unverifiedText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#2563EB',
+    fontWeight: "700",
+    color: "#2563EB",
   },
-})
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    paddingTop: 90,
+    paddingRight: 16,
+  },
+  menuContainer: {
+    backgroundColor: "#FFF",
+    borderRadius: 8,
+    minWidth: 150,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  menuText: {
+    fontSize: 14,
+    color: "#EF4444",
+    fontWeight: "600",
+  },
+});
 
-export default HeaderProvider
+export default HeaderProvider;

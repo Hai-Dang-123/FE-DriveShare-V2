@@ -150,10 +150,15 @@ const VehicleCard: React.FC<Props> = ({
 
           <TouchableOpacity
             onPress={(e) => {
+              console.log(
+                "Delete button pressed for vehicle:",
+                vehicle.plateNumber
+              );
               e.stopPropagation();
               onDelete();
             }}
             style={styles.circleButton}
+            activeOpacity={0.6}
           >
             <Feather name="trash-2" size={18} color="#EF4444" />
           </TouchableOpacity>

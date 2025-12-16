@@ -51,6 +51,8 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
   > | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
 
   // Refetch data when screen is focused
   useFocusEffect(
@@ -98,32 +100,24 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
 
   const handleDeleteVehicle = (id: string) => {
     const vehicle = vehicles.find((v) => v.id === id);
-    Alert.alert(
-      "Xác nhận xóa",
-      `Bạn có chắc muốn xóa xe ${
-        vehicle?.plateNumber || ""
-      }?\nHành động này không thể hoàn tác.`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa",
-          style: "destructive",
-          onPress: () => confirmDelete(id),
-        },
-      ]
-    );
+    setVehicleToDelete(vehicle || null);
+    setShowDeleteModal(true);
   };
 
-  const confirmDelete = async (id: string) => {
+  const confirmDelete = async () => {
+    if (!vehicleToDelete) return;
+
+    setShowDeleteModal(false);
     setIsDeleting(true);
     try {
-      await vehicleService.deleteVehicle(id);
+      await vehicleService.deleteVehicle(vehicleToDelete.id);
       showToast("Đã xóa xe thành công!");
       fetchPage(1);
     } catch (e: any) {
       Alert.alert("Lỗi", e?.message || "Không thể xóa xe. Vui lòng thử lại.");
     } finally {
       setIsDeleting(false);
+      setVehicleToDelete(null);
     }
   };
 
@@ -294,6 +288,45 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
         onUpdate={handleUpdate}
         vehicle={selectedVehicle}
       />
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {showDeleteModal && (
+        <Modal transparent animationType="fade">
+          <View style={styles.deleteModalBackdrop}>
+            <View style={styles.deleteModalContainer}>
+              <View style={styles.deleteModalHeader}>
+                <Ionicons name="warning" size={48} color="#EF4444" />
+              </View>
+              <Text style={styles.deleteModalTitle}>Xác nhận xóa</Text>
+              <Text style={styles.deleteModalMessage}>
+                Bạn có chắc muốn xóa xe{" "}
+                <Text style={styles.deleteModalPlate}>
+                  {vehicleToDelete?.plateNumber}
+                </Text>
+                ?{"\n"}Hành động này không thể hoàn tác.
+              </Text>
+              <View style={styles.deleteModalActions}>
+                <TouchableOpacity
+                  style={styles.deleteModalCancelBtn}
+                  onPress={() => {
+                    setShowDeleteModal(false);
+                    setVehicleToDelete(null);
+                  }}
+                >
+                  <Text style={styles.deleteModalCancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteModalConfirmBtn}
+                  onPress={confirmDelete}
+                >
+                  <Ionicons name="trash" size={18} color="#FFFFFF" />
+                  <Text style={styles.deleteModalConfirmText}>Xóa</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* SORT MODAL */}
       {isSortModalOpen && (
@@ -585,6 +618,86 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#111827",
+  },
+  // Delete confirmation modal
+  deleteModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  deleteModalContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  deleteModalHeader: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#FEE2E2",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  deleteModalMessage: {
+    fontSize: 15,
+    color: "#6B7280",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  deleteModalPlate: {
+    fontWeight: "700",
+    color: "#10439F",
+  },
+  deleteModalActions: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  deleteModalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+  },
+  deleteModalCancelText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  deleteModalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: "#EF4444",
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteModalConfirmText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 });
 
