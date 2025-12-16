@@ -9,6 +9,7 @@ import tripService from '@/services/tripService'
 import assignmentService from '@/services/assignmentService'
 import postAnalysisService from '@/services/postAnalysisService'
 import driverWorkSessionService from '@/services/driverWorkSessionService'
+import walletService from '@/services/walletService'
 import { useAuth } from '@/hooks/useAuth'
 import { track } from '@/utils/analytics'
 import useTripStore from '@/stores/tripStore'
@@ -241,6 +242,7 @@ const DriverPostTripDetailScreen: React.FC = () => {
     if (!data?.id) return
     const postTripDetailId = detail.postTripDetailId || detail.PostTripDetailId || detail.id || detail.Id
     const isAssistant = (detail.type || 'PRIMARY') !== 'PRIMARY'
+    const depositAmount = detail.depositAmount || 0
     
     // For assistant drivers with custom locations, use them; otherwise send null (backend will use default)
     const startLocation = (isAssistant && customPickup.trim()) ? customPickup.trim() : null
@@ -248,31 +250,61 @@ const DriverPostTripDetailScreen: React.FC = () => {
 
     setApplyingId(String(postTripDetailId))
     try {
+        // Step 1: Apply for the assignment
         const res: any = await assignmentService.applyByPostTrip({
             postTripId: String(data.id),
             postTripDetailId: String(postTripDetailId),
             startLocation: startLocation as any,
             endLocation: endLocation as any
         })
+        
         if (res?.isSuccess || res?.statusCode === 201) {
-            const successMsg = res?.message || 'Ứng tuyển thành công!'
-            showToast('success', successMsg)
+            // Step 2: If there's a deposit, create payment transaction
+            if (depositAmount > 0) {
+                try {
+                    const paymentRes: any = await walletService.createPayment({
+                        amount: depositAmount,
+                        type: 'DEPOSIT',
+                        tripId: data.trip?.tripId || null,
+                        postId: String(data.id),
+                        description: `Đặt cọệ cho chuyến ${data.title || data.id}`,
+                        externalCode: String(postTripDetailId)
+                    })
+                    
+                    if (!paymentRes?.isSuccess) {
+                        // Payment failed but assignment succeeded - show warning
+                        showToast('error', `Ứng tuyển thành công nhưng thanh toán tiền cọệ thất bại: ${paymentRes?.message || 'Lỗi thanh toán'}`)
+                    } else {
+                        showToast('success', `Ứng tuyển và thanh toán tiền cọệ ${depositAmount.toLocaleString('vi-VN')} đ thành công!`)
+                    }
+                } catch (paymentErr: any) {
+                    // Payment API failed but assignment succeeded
+                    showToast('error', `Ứng tuyển thành công nhưng không thể thanh toán tiền cọệ: ${paymentErr?.message || 'Lỗi kết nối'}`)
+                }
+            } else {
+                // No deposit required
+                const successMsg = res?.message || 'Ứng tuyển thành công!'
+                showToast('success', successMsg)
+            }
+            
             // Reset custom locations
             setCustomPickup('')
             setCustomDropoff('')
+            
             // Optimistic UI update: avoid immediate refetch which may return 403/forbidden
             const newDriver = {
                 driverId: user?.userId,
                 fullName: (user as any)?.fullName || (user as any)?.userName || '',
                 type: detail.type || detail.Type || 'PRIMARY',
                 assignmentStatus: 'ACCEPTED',
-                paymentStatus: 'UNPAID',
+                paymentStatus: depositAmount > 0 ? 'PAID' : 'UNPAID',
             }
             if (tripDetail) {
                 setTripDetailState({ ...tripDetail, drivers: [...(tripDetail.drivers || []), newDriver] })
             } else {
                 setTripDetailState({ drivers: [newDriver] })
             }
+            
             // mark that we just applied so fetchData can handle a 403 gracefully
             setJustApplied(true)
         } else {

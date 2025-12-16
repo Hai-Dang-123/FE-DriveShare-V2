@@ -408,6 +408,15 @@ const DriverTripDetailScreenV2: React.FC = () => {
   }, [trip, user]);
 
   const isMainDriver = currentDriver?.type === "PRIMARY";
+  
+  // Check if secondary driver has checked out and trip not completed yet
+  const isSecondaryDriverCheckedOut = useMemo(() => {
+    if (!currentDriver || !trip) return false;
+    const isSecondary = currentDriver.type === "SECONDARY";
+    const hasCheckedOut = currentDriver.isFinished === true || !!currentDriver.offBoardTime;
+    const tripNotCompleted = trip.status !== "COMPLETED";
+    return isSecondary && hasCheckedOut && tripNotCompleted;
+  }, [currentDriver, trip]);
 
   // Current session info (ai đang lái xe)
   const [currentSession, setCurrentSession] = useState<any>(null);
@@ -3147,6 +3156,28 @@ const DriverTripDetailScreenV2: React.FC = () => {
         </View>
         <StatusPill value={trip.status} />
       </View>
+      
+      {/* Overlay for Secondary Driver who has checked out */}
+      {isSecondaryDriverCheckedOut && (
+        <View style={styles.checkoutOverlay}>
+          <View style={styles.checkoutOverlayContent}>
+            <View style={styles.checkoutIconCircle}>
+              <MaterialCommunityIcons name="check-circle" size={64} color="#10B981" />
+            </View>
+            <Text style={styles.checkoutOverlayTitle}>Đã Check-out Thành Công</Text>
+            <Text style={styles.checkoutOverlayMessage}>
+              Bạn đã hoàn thành phần công việc của mình.{"\n"}
+              Vui lòng chờ khi chuyến đi hoàn thành.
+            </Text>
+            <View style={styles.checkoutInfoBox}>
+              <MaterialCommunityIcons name="clock-check-outline" size={20} color="#6B7280" />
+              <Text style={styles.checkoutInfoText}>
+                Thời gian check-out: {currentDriver?.offBoardTime ? new Date(currentDriver.offBoardTime).toLocaleString('vi-VN') : 'N/A'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Debug panel (DEV only) */}
       {/* {__DEV__ && (
@@ -5578,6 +5609,73 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F3F4F6" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   scrollContent: { padding: 16 },
+  
+  // Checkout Overlay Styles
+  checkoutOverlay: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    zIndex: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  checkoutOverlayContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    maxWidth: 400,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  checkoutIconCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  checkoutOverlayTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  checkoutOverlayMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  checkoutInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  checkoutInfoText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '600',
+    flex: 1,
+  },
 
   // Warning Banner
   warningBanner: {

@@ -12,7 +12,8 @@ import {
   StatusBar,
   Alert,
   Modal,
-  ScrollView
+  ScrollView,
+  Pressable
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
@@ -31,10 +32,14 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
   const router = useRouter()
   const { vehicles, loading, search, sortBy, sortOrder, statusFilter, setSearch, setSortBy, setSortOrder, setStatusFilter, fetchPage } = useVehicles()
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null)
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false)
+  const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null)
   const [isSortModalOpen, setIsSortModalOpen] = useState(false)
   const [searchText, setSearchText] = useState('')
-  const [searchDebounce, setSearchDebounce] = useState<ReturnType<typeof setTimeout> | null>(null)
   const [toastMessage, setToastMessage] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   // Refetch data when screen is focused
   useFocusEffect(
@@ -63,9 +68,17 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
 
   const handleSearchChange = (text: string) => {
     setSearchText(text)
-    if (searchDebounce) clearTimeout(searchDebounce)
-    const timeout = setTimeout(() => setSearch(text), 500)
-    setSearchDebounce(timeout)
+  }
+
+  const handleSearchSubmit = () => {
+    setSearch(searchText.trim())
+    showToast(searchText.trim() ? `Tìm kiếm: "${searchText.trim()}"` : 'Hiển thị tất cả xe')
+  }
+
+  const handleClearSearch = () => {
+    setSearchText('')
+    setSearch('')
+    showToast('Đã xóa bộ lọc')
   }
 
   const handleApplySort = (field: string, order: 'ASC' | 'DESC') => {
@@ -75,8 +88,37 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
     showToast('Đã áp dụng sắp xếp')
   }
 
-  const handleEditVehicle = (v: Vehicle) => Alert.alert('Thông báo', `Sửa xe ${v.plateNumber}`)
-  const handleDeleteVehicle = (id: string) => Alert.alert('Xác nhận', 'Bạn muốn xóa xe này?')
+  const handleEditVehicle = (v: Vehicle) => {
+    setEditingVehicle(v)
+    setShowEditModal(true)
+  }
+
+  const handleDeleteVehicle = (id: string) => {
+    setDeletingVehicleId(id)
+    setDeleteConfirmModal(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!deletingVehicleId) return
+    
+    try {
+      setSubmitting(true)
+      const response = await vehicleService.deleteVehicle(deletingVehicleId)
+      
+      if (response.isSuccess) {
+        showToast('Xóa xe thành công!')
+        fetchPage(1)
+      } else {
+        showToast('Không thể xóa xe', 3000)
+      }
+    } catch (e: any) {
+      showToast(e?.response?.data?.message || 'Lỗi khi xóa xe', 3000)
+    } finally {
+      setSubmitting(false)
+      setDeleteConfirmModal(false)
+      setDeletingVehicleId(null)
+    }
+  }
   
   const handleVehiclePress = (vehicleId: string) => {
     router.push(`/vehicle-detail?id=${vehicleId}` as any)
@@ -90,6 +132,25 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
       fetchPage(1)
     } catch (e: any) {
       Alert.alert('Lỗi', e?.message || 'Không thể tạo xe. Vui lòng thử lại.')
+    }
+  }
+
+  const handleUpdate = async (dto: any) => {
+    if (!editingVehicle?.id) return
+    
+    try {
+      const response = await vehicleService.updateVehicle(editingVehicle.id, dto)
+      
+      if (response.isSuccess) {
+        setShowEditModal(false)
+        setEditingVehicle(null)
+        showToast('Cập nhật xe thành công!')
+        fetchPage(1)
+      } else {
+        Alert.alert('Lỗi', response.message || 'Không thể cập nhật xe')
+      }
+    } catch (e: any) {
+      Alert.alert('Lỗi', e?.response?.data?.message || 'Không thể cập nhật xe. Vui lòng thử lại.')
     }
   }
 
@@ -121,8 +182,18 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
             style={styles.searchInput}
             value={searchText}
             onChangeText={handleSearchChange}
+            onSubmitEditing={handleSearchSubmit}
+            returnKeyType="search"
           />
+          {searchText.length > 0 && (
+            <TouchableOpacity onPress={handleClearSearch} style={styles.clearBtn}>
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
         </View>
+        <TouchableOpacity style={styles.searchBtn} onPress={handleSearchSubmit}>
+          <Ionicons name="search" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.filterBtn} onPress={() => setIsSortModalOpen(true)}>
           <Feather name="sliders" size={20} color="#374151" />
         </TouchableOpacity>
@@ -166,12 +237,65 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
         )}
       </View>
 
-      {/* MODAL FORM */}
+      {/* CREATE MODAL */}
       <VehicleFormModal 
         visible={showCreateModal} 
         onClose={() => setShowCreateModal(false)} 
         onCreate={handleCreate}
       />
+
+      {/* EDIT MODAL */}
+      <VehicleFormModal 
+        visible={showEditModal} 
+        onClose={() => {
+          setShowEditModal(false)
+          setEditingVehicle(null)
+        }} 
+        onCreate={handleUpdate}
+        initialData={editingVehicle}
+        isEdit={true}
+      />
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deleteConfirmModal && (
+        <Modal transparent animationType="fade">
+          <Pressable 
+            style={styles.deleteModalBackdrop} 
+            onPress={() => !submitting && setDeleteConfirmModal(false)}
+          >
+            <Pressable style={styles.deleteModal} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.deleteModalIcon}>
+                <Feather name="alert-triangle" size={48} color="#EF4444" />
+              </View>
+              <Text style={styles.deleteModalTitle}>Xác nhận xóa</Text>
+              <Text style={styles.deleteModalMessage}>
+                Bạn có chắc chắn muốn xóa xe này không?{"\n"}
+Hành động này không thể hoàn tác.
+              </Text>
+              <View style={styles.deleteModalButtons}>
+                <TouchableOpacity 
+                  style={[styles.deleteModalBtn, styles.deleteCancelBtn]}
+                  onPress={() => setDeleteConfirmModal(false)}
+                  disabled={submitting}
+                >
+                  <Text style={styles.deleteCancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.deleteModalBtn, styles.deleteConfirmBtn]}
+                  onPress={confirmDelete}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.deleteConfirmText}>Xóa</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
 
       {/* SORT MODAL */}
       {isSortModalOpen && (
@@ -286,6 +410,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111827',
   },
+  clearBtn: {
+    padding: 4,
+  },
+  searchBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#10439F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   filterBtn: {
     width: 44,
     height: 44,
@@ -398,6 +533,77 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     fontSize: 14,
+  },
+  // Delete Confirmation Modal
+  deleteModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteModal: {
+    width: '85%',
+    maxWidth: 400,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  deleteModalIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  deleteModalMessage: {
+    fontSize: 15,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  deleteModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  deleteModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  deleteCancelBtn: {
+    backgroundColor: '#F3F4F6',
+  },
+  deleteConfirmBtn: {
+    backgroundColor: '#EF4444',
+  },
+  deleteCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  deleteConfirmText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 })
 

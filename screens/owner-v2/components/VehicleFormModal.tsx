@@ -25,6 +25,8 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onCreate: (dto: any) => void;
+  initialData?: any;
+  isEdit?: boolean;
 }
 
 // Màu sắc chủ đạo theo thiết kế
@@ -110,7 +112,7 @@ const getImageTypeLabel = (type: VehicleImageType): string => {
   }
 };
 
-const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
+const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate, initialData, isEdit = false }) => {
   const [form, setForm] = useState<any>({
     VehicleTypeId: "",
     PlateNumber: "",
@@ -149,6 +151,23 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
       return;
     }
 
+    // Load initialData if editing
+    if (isEdit && initialData) {
+      setForm({
+        VehicleTypeId: initialData.vehicleTypeId || initialData.VehicleTypeId || "",
+        PlateNumber: initialData.plateNumber || initialData.PlateNumber || "",
+        Model: initialData.model || initialData.Model || "",
+        Brand: initialData.brand || initialData.Brand || "",
+        YearOfManufacture: initialData.yearOfManufacture || initialData.YearOfManufacture || new Date().getFullYear(),
+        Color: initialData.color || initialData.Color || "",
+        PayloadInKg: initialData.payloadInKg || initialData.PayloadInKg || 0,
+        VolumeInM3: initialData.volumeInM3 || initialData.VolumeInM3 || 0,
+        Features: initialData.features || initialData.Features || [],
+        VehicleImages: [],
+        Documents: [],
+      });
+    }
+
     let mounted = true;
     (async () => {
       try {
@@ -170,7 +189,7 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
     return () => {
       mounted = false;
     };
-  }, [visible]);
+  }, [visible, isEdit, initialData]);
 
   const handleChange = (k: string, v: any) =>
     setForm((p: any) => ({ ...p, [k]: v }));
@@ -292,7 +311,7 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
           onPress={(e) => e.stopPropagation()}
         >
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Thêm Xe Mới</Text>
+            <Text style={styles.headerTitle}>{isEdit ? 'Cập Nhật Xe' : 'Thêm Xe Mới'}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={24} color={COLORS.textLight} />
             </TouchableOpacity>
@@ -669,7 +688,7 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.btnSubmitText}>Tạo Xe</Text>
+                <Text style={styles.btnSubmitText}>{isEdit ? 'Cập Nhật' : 'Tạo Xe'}</Text>
               )}
             </TouchableOpacity>
           </View>

@@ -408,6 +408,28 @@ const vehicleService = {
       throw e
     }
   },
+
+  // Update vehicle
+  updateVehicle: async (vehicleId: string, dto: any) => {
+    try {
+      const res = await api.put(`api/vehicle/${vehicleId}`, dto)
+      return res.data
+    } catch (e: any) {
+      console.error('updateVehicle failed', e)
+      throw e
+    }
+  },
+
+  // Soft delete vehicle
+  deleteVehicle: async (vehicleId: string) => {
+    try {
+      const res = await api.delete(`api/vehicle/${vehicleId}`)
+      return res.data
+    } catch (e: any) {
+      console.error('deleteVehicle failed', e)
+      throw e
+    }
+  },
 }
 
 export default vehicleService
