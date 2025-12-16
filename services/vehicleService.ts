@@ -551,10 +551,10 @@ const vehicleService = {
       throw e;
     }
   },
-  updateVehicle: async (payload: any) => {
-    try {
-      const vehicleId = payload.vehicleId || payload.VehicleId;
-      if (!vehicleId) throw new Error("vehicleId is required for update");
+  // updateVehicle: async (payload: any) => {
+  //   try {
+  //     const vehicleId = payload.vehicleId || payload.VehicleId;
+  //     if (!vehicleId) throw new Error("vehicleId is required for update");
 
   // Update vehicle
   updateVehicle: async (vehicleId: string, dto: any) => {
@@ -579,35 +579,35 @@ const vehicleService = {
   },
 
 
-      const dto = {
-        VehicleId: vehicleId,
-        Model: payload.model || payload.Model,
-        Brand: payload.brand || payload.Brand,
-        Color: payload.color || payload.Color,
-        YearOfManufacture:
-          payload.yearOfManufacture || payload.YearOfManufacture,
-        PayloadInKg: payload.payloadInKg || payload.PayloadInKg,
-        VolumeInM3: payload.volumeInM3 || payload.VolumeInM3,
-        Features: payload.features || payload.Features || [],
-        CurrentAddress: payload.currentAddress || payload.CurrentAddress,
-        VehicleTypeId: payload.vehicleTypeId || payload.VehicleTypeId,
-      };
+  //     const dto = {
+  //       VehicleId: vehicleId,
+  //       Model: payload.model || payload.Model,
+  //       Brand: payload.brand || payload.Brand,
+  //       Color: payload.color || payload.Color,
+  //       YearOfManufacture:
+  //         payload.yearOfManufacture || payload.YearOfManufacture,
+  //       PayloadInKg: payload.payloadInKg || payload.PayloadInKg,
+  //       VolumeInM3: payload.volumeInM3 || payload.VolumeInM3,
+  //       Features: payload.features || payload.Features || [],
+  //       CurrentAddress: payload.currentAddress || payload.CurrentAddress,
+  //       VehicleTypeId: payload.vehicleTypeId || payload.VehicleTypeId,
+  //     };
 
-      const res = await api.put(`api/vehicle/${vehicleId}`, dto);
-      return res.data;
-    } catch (e: any) {
-      throw e;
-    }
-  },
+  //     const res = await api.put(`api/vehicle/${vehicleId}`, dto);
+  //     return res.data;
+  //   } catch (e: any) {
+  //     throw e;
+  //   }
+  // },
 
-  deleteVehicle: async (vehicleId: string) => {
-    try {
-      const res = await api.delete(`api/vehicle/${vehicleId}`);
-      return res.data;
-    } catch (e: any) {
-      throw e;
-    }
-  },
+  // deleteVehicle: async (vehicleId: string) => {
+  //   try {
+  //     const res = await api.delete(`api/vehicle/${vehicleId}`);
+  //     return res.data;
+  //   } catch (e: any) {
+  //     throw e;
+  //   }
+  // },
 };
 
 export default vehicleService;

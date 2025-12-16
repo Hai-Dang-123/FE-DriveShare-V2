@@ -54,17 +54,6 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
-  const router = useRouter()
-  const { vehicles, loading, search, sortBy, sortOrder, statusFilter, setSearch, setSortBy, setSortOrder, setStatusFilter, fetchPage } = useVehicles()
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null)
-  const [deleteConfirmModal, setDeleteConfirmModal] = useState(false)
-  const [deletingVehicleId, setDeletingVehicleId] = useState<string | null>(null)
-  const [isSortModalOpen, setIsSortModalOpen] = useState(false)
-  const [searchText, setSearchText] = useState('')
-  const [toastMessage, setToastMessage] = useState('')
-  const [submitting, setSubmitting] = useState(false)
 
   // Refetch data when screen is focused
   useFocusEffect(
@@ -97,19 +86,21 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
     const timeout = setTimeout(() => setSearch(text), 500);
     setSearchDebounce(timeout);
   };
-    setSearchText(text)
-  }
 
   const handleSearchSubmit = () => {
-    setSearch(searchText.trim())
-    showToast(searchText.trim() ? `Tìm kiếm: "${searchText.trim()}"` : 'Hiển thị tất cả xe')
-  }
+    setSearch(searchText.trim());
+    showToast(
+      searchText.trim()
+        ? `Tìm kiếm: "${searchText.trim()}"`
+        : "Hiển thị tất cả xe"
+    );
+  };
 
   const handleClearSearch = () => {
-    setSearchText('')
-    setSearch('')
-    showToast('Đã xóa bộ lọc')
-  }
+    setSearchText("");
+    setSearch("");
+    showToast("Đã xóa bộ lọc");
+  };
 
   const handleApplySort = (field: string, order: "ASC" | "DESC") => {
     setSortBy(field);
@@ -119,6 +110,8 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
   };
 
   const handleEditVehicle = (v: Vehicle) => {
+    console.log("📝 Editing vehicle:", v);
+    console.log("📋 Vehicle Type on edit:", v.vehicleType);
     setSelectedVehicle(v);
     setShowEditModal(true);
   };
@@ -146,38 +139,6 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
     }
   };
 
-  const handleEditVehicle = (v: Vehicle) => {
-    setEditingVehicle(v)
-    setShowEditModal(true)
-  }
-
-  const handleDeleteVehicle = (id: string) => {
-    setDeletingVehicleId(id)
-    setDeleteConfirmModal(true)
-  }
-
-  const confirmDelete = async () => {
-    if (!deletingVehicleId) return
-    
-    try {
-      setSubmitting(true)
-      const response = await vehicleService.deleteVehicle(deletingVehicleId)
-      
-      if (response.isSuccess) {
-        showToast('Xóa xe thành công!')
-        fetchPage(1)
-      } else {
-        showToast('Không thể xóa xe', 3000)
-      }
-    } catch (e: any) {
-      showToast(e?.response?.data?.message || 'Lỗi khi xóa xe', 3000)
-    } finally {
-      setSubmitting(false)
-      setDeleteConfirmModal(false)
-      setDeletingVehicleId(null)
-    }
-  }
-  
   const handleVehiclePress = (vehicleId: string) => {
     router.push(`/vehicle-detail?id=${vehicleId}` as any);
   };
@@ -194,11 +155,10 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
   };
 
   const handleUpdate = async (dto: any) => {
+    if (!selectedVehicle?.id) return;
+
     try {
-      await vehicleService.updateVehicle({
-        ...dto,
-        vehicleId: selectedVehicle?.id,
-      });
+      await vehicleService.updateVehicle(selectedVehicle.id, dto);
       setShowEditModal(false);
       setSelectedVehicle(null);
       showToast("Cập nhật xe thành công!");
@@ -210,25 +170,6 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
       );
     }
   };
-
-  const handleUpdate = async (dto: any) => {
-    if (!editingVehicle?.id) return
-    
-    try {
-      const response = await vehicleService.updateVehicle(editingVehicle.id, dto)
-      
-      if (response.isSuccess) {
-        setShowEditModal(false)
-        setEditingVehicle(null)
-        showToast('Cập nhật xe thành công!')
-        fetchPage(1)
-      } else {
-        Alert.alert('Lỗi', response.message || 'Không thể cập nhật xe')
-      }
-    } catch (e: any) {
-      Alert.alert('Lỗi', e?.response?.data?.message || 'Không thể cập nhật xe. Vui lòng thử lại.')
-    }
-  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -275,19 +216,21 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
             returnKeyType="search"
           />
           {searchText.length > 0 && (
-            <TouchableOpacity onPress={handleClearSearch} style={styles.clearBtn}>
+            <TouchableOpacity
+              onPress={handleClearSearch}
+              style={styles.clearBtn}
+            >
               <Ionicons name="close-circle" size={18} color="#9CA3AF" />
             </TouchableOpacity>
           )}
         </View>
+        <TouchableOpacity style={styles.searchBtn} onPress={handleSearchSubmit}>
+          <Ionicons name="search" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.filterBtn}
           onPress={() => setIsSortModalOpen(true)}
         >
-        <TouchableOpacity style={styles.searchBtn} onPress={handleSearchSubmit}>
-          <Ionicons name="search" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.filterBtn} onPress={() => setIsSortModalOpen(true)}>
           <Feather name="sliders" size={20} color="#374151" />
         </TouchableOpacity>
       </View>
@@ -362,10 +305,6 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
       <VehicleFormModal
         visible={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-      {/* CREATE MODAL */}
-      <VehicleFormModal 
-        visible={showCreateModal} 
-        onClose={() => setShowCreateModal(false)} 
         onCreate={handleCreate}
       />
 
@@ -416,22 +355,31 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
               </View>
             </View>
           </View>
-      <VehicleFormModal 
-        visible={showEditModal} 
+        </Modal>
+      )}
+
+      {/* EDIT MODAL */}
+      <VehicleUpdateModal
+        visible={showEditModal}
         onClose={() => {
-          setShowEditModal(false)
-          setEditingVehicle(null)
-        }} 
-        onCreate={handleUpdate}
-        initialData={editingVehicle}
-        isEdit={true}
+          setShowEditModal(false);
+          setSelectedVehicle(null);
+        }}
+        onUpdate={handleUpdate}
+        vehicle={selectedVehicle}
       />
 
-      {/* DELETE CONFIRMATION MODAL */}
-      {deleteConfirmModal && (
-        <Modal transparent animationType="fade">
-          <Pressable 
-            style={styles.deleteModalBackdrop} 
+      {/* DELETE LOADING OVERLAY */}
+      {isDeleting && (
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteLoadingBox}>
+            <ActivityIndicator size="large" color="#10439F" />
+            <Text style={styles.deleteLoadingText}>Đang xóa xe...</Text>
+          </View>
+        </View>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL (Old)alBackdrop} 
             onPress={() => !submitting && setDeleteConfirmModal(false)}
           >
             <Pressable style={styles.deleteModal} onPress={(e) => e.stopPropagation()}>
@@ -630,9 +578,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 8,
-    backgroundColor: '#10439F',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#10439F",
+    alignItems: "center",
+    justifyContent: "center",
   },
   filterBtn: {
     width: 44,
@@ -786,21 +734,6 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignItems: "center",
     shadowColor: "#000",
-  // Delete Confirmation Modal
-  deleteModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteModal: {
-    width: '85%',
-    maxWidth: 400,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -813,21 +746,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEE2E2",
     justifyContent: "center",
     alignItems: "center",
-  deleteModalIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 16,
   },
   deleteModalTitle: {
     fontSize: 20,
     fontWeight: "700",
     color: "#111827",
-    fontWeight: '700',
-    color: '#111827',
     marginBottom: 12,
   },
   deleteModalMessage: {
@@ -875,40 +799,5 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 });
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  deleteModalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  deleteModalBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 44,
-  },
-  deleteCancelBtn: {
-    backgroundColor: '#F3F4F6',
-  },
-  deleteConfirmBtn: {
-    backgroundColor: '#EF4444',
-  },
-  deleteCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  deleteConfirmText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-})
 
 export default VehiclesManagementScreen;

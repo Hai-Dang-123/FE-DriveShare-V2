@@ -23,8 +23,6 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onCreate: (dto: any) => void;
-  initialData?: any;
-  isEdit?: boolean;
 }
 
 // Màu sắc chủ đạo theo thiết kế

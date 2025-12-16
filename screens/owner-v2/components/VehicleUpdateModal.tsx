@@ -64,6 +64,10 @@ const VehicleUpdateModal: React.FC<Props> = ({
   // Load vehicle data into form
   useEffect(() => {
     if (visible && vehicle) {
+      console.log("🚗 Loading vehicle data:", vehicle);
+      console.log("🔍 Vehicle Type:", vehicle.vehicleType);
+      console.log("🆔 Vehicle Type ID:", vehicle.vehicleType?.vehicleTypeId);
+
       setForm({
         model: vehicle.model || "",
         brand: vehicle.brand || "",
