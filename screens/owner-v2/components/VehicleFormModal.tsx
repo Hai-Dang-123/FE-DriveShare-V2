@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useState } from "react";
 import {
   Modal,
@@ -25,6 +23,8 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onCreate: (dto: any) => void;
+  initialData?: any;
+  isEditMode?: boolean;
 }
 
 // Màu sắc chủ đạo theo thiết kế
@@ -110,7 +110,13 @@ const getImageTypeLabel = (type: VehicleImageType): string => {
   }
 };
 
-const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
+const VehicleFormModal: React.FC<Props> = ({
+  visible,
+  onClose,
+  onCreate,
+  initialData,
+  isEditMode = false,
+}) => {
   const [form, setForm] = useState<any>({
     VehicleTypeId: "",
     PlateNumber: "",
@@ -149,6 +155,24 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
       return;
     }
 
+    // Load initial data when in edit mode
+    if (isEditMode && initialData) {
+      setForm({
+        VehicleTypeId: initialData.vehicleType?.vehicleTypeId || "",
+        PlateNumber: initialData.plateNumber || "",
+        Model: initialData.model || "",
+        Brand: initialData.brand || "",
+        YearOfManufacture:
+          initialData.yearOfManufacture || new Date().getFullYear(),
+        Color: initialData.color || "",
+        PayloadInKg: initialData.payloadInKg || 0,
+        VolumeInM3: initialData.volumeInM3 || 0,
+        Features: initialData.features || [],
+        VehicleImages: [],
+        Documents: [],
+      });
+    }
+
     let mounted = true;
     (async () => {
       try {
@@ -170,7 +194,7 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
     return () => {
       mounted = false;
     };
-  }, [visible]);
+  }, [visible, isEditMode, initialData]);
 
   const handleChange = (k: string, v: any) =>
     setForm((p: any) => ({ ...p, [k]: v }));
@@ -280,7 +304,6 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
 
   return (
     <Modal
-
       visible={visible}
       transparent
       animationType="fade"
@@ -292,7 +315,9 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
           onPress={(e) => e.stopPropagation()}
         >
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Thêm Xe Mới</Text>
+            <Text style={styles.headerTitle}>
+              {isEditMode ? "Chỉnh Sửa Xe" : "Thêm Xe Mới"}
+            </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={24} color={COLORS.textLight} />
             </TouchableOpacity>
@@ -457,8 +482,12 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
                 <Text style={styles.addImageText}>Thêm ảnh</Text>
               </TouchableOpacity>
 
-              {form.VehicleImages.filter((img: any) => img.ImageType === VehicleImageType.OVERVIEW).map((img: any, index: number) => {
-                const actualIndex = form.VehicleImages.findIndex((i: any) => i === img);
+              {form.VehicleImages.filter(
+                (img: any) => img.ImageType === VehicleImageType.OVERVIEW
+              ).map((img: any, index: number) => {
+                const actualIndex = form.VehicleImages.findIndex(
+                  (i: any) => i === img
+                );
                 return (
                   <View key={actualIndex} style={styles.imageWrapper}>
                     <Image
@@ -473,7 +502,9 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
                     />
                     <View style={styles.imageTypeBadge}>
                       <Text style={styles.imageTypeBadgeText}>
-                        {getImageTypeLabel(img.ImageType || VehicleImageType.OTHER)}
+                        {getImageTypeLabel(
+                          img.ImageType || VehicleImageType.OTHER
+                        )}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -488,7 +519,9 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
             </ScrollView>
 
             {/* License Plate Images Section */}
-            <Text style={[styles.imageSubtitle, { marginTop: 16 }]}>🔖 Ảnh Biển số xe *</Text>
+            <Text style={[styles.imageSubtitle, { marginTop: 16 }]}>
+              🔖 Ảnh Biển số xe *
+            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -496,7 +529,9 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
             >
               <TouchableOpacity
                 style={styles.addImageBtn}
-                onPress={() => pickImageWithType(VehicleImageType.LICENSE_PLATE)}
+                onPress={() =>
+                  pickImageWithType(VehicleImageType.LICENSE_PLATE)
+                }
               >
                 <MaterialCommunityIcons
                   name="card-text"
@@ -506,8 +541,12 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
                 <Text style={styles.addImageText}>Thêm ảnh</Text>
               </TouchableOpacity>
 
-              {form.VehicleImages.filter((img: any) => img.ImageType === VehicleImageType.LICENSE_PLATE).map((img: any, index: number) => {
-                const actualIndex = form.VehicleImages.findIndex((i: any) => i === img);
+              {form.VehicleImages.filter(
+                (img: any) => img.ImageType === VehicleImageType.LICENSE_PLATE
+              ).map((img: any, index: number) => {
+                const actualIndex = form.VehicleImages.findIndex(
+                  (i: any) => i === img
+                );
                 return (
                   <View key={actualIndex} style={styles.imageWrapper}>
                     <Image
@@ -522,7 +561,9 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
                     />
                     <View style={styles.imageTypeBadge}>
                       <Text style={styles.imageTypeBadgeText}>
-                        {getImageTypeLabel(img.ImageType || VehicleImageType.OTHER)}
+                        {getImageTypeLabel(
+                          img.ImageType || VehicleImageType.OTHER
+                        )}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -537,16 +578,24 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
             </ScrollView>
 
             {/* Other Images Section (Optional) */}
-            {form.VehicleImages.filter((img: any) => img.ImageType === VehicleImageType.OTHER).length > 0 && (
+            {form.VehicleImages.filter(
+              (img: any) => img.ImageType === VehicleImageType.OTHER
+            ).length > 0 && (
               <>
-                <Text style={[styles.imageSubtitle, { marginTop: 16 }]}>📷 Ảnh khác</Text>
+                <Text style={[styles.imageSubtitle, { marginTop: 16 }]}>
+                  📷 Ảnh khác
+                </Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.imageList}
                 >
-                  {form.VehicleImages.filter((img: any) => img.ImageType === VehicleImageType.OTHER).map((img: any, index: number) => {
-                    const actualIndex = form.VehicleImages.findIndex((i: any) => i === img);
+                  {form.VehicleImages.filter(
+                    (img: any) => img.ImageType === VehicleImageType.OTHER
+                  ).map((img: any, index: number) => {
+                    const actualIndex = form.VehicleImages.findIndex(
+                      (i: any) => i === img
+                    );
                     return (
                       <View key={actualIndex} style={styles.imageWrapper}>
                         <Image
@@ -561,7 +610,9 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
                         />
                         <View style={styles.imageTypeBadge}>
                           <Text style={styles.imageTypeBadgeText}>
-                            {getImageTypeLabel(img.ImageType || VehicleImageType.OTHER)}
+                            {getImageTypeLabel(
+                              img.ImageType || VehicleImageType.OTHER
+                            )}
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -669,7 +720,9 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
               {submitting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.btnSubmitText}>Tạo Xe</Text>
+                <Text style={styles.btnSubmitText}>
+                  {isEditMode ? "Cập Nhật" : "Tạo Xe"}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
