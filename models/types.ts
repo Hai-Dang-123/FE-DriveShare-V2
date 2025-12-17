@@ -315,6 +315,7 @@ export interface ProviderSummary {
 
 // 🚩 Tóm tắt Driver (Tài xế)
 export interface DriverAssignment {
+  assignmentId: string;
   driverId: string;
   fullName: string;
   type: string; // "PRIMARY" | "SECONDARY"

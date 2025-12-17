@@ -92,25 +92,26 @@ const tripService = {
     }
   },
   async getTripsByProvider(params: {
-    pageNumber: number
-    pageSize: number
-    search?: string
-    sortField?: string
-    sortDirection?: string
-    status?: string
+    pageNumber: number;
+    pageSize: number;
+    search?: string;
+    sortField?: string;
+    sortDirection?: string;
+    status?: string;
   }) {
     try {
       const queryParams = new URLSearchParams({
         pageNumber: params.pageNumber.toString(),
         pageSize: params.pageSize.toString(),
-      })
-      if (params.search) queryParams.append('search', params.search)
-      if (params.sortField) queryParams.append('sortField', params.sortField)
-      if (params.sortDirection) queryParams.append('sortDirection', params.sortDirection)
-      if (params.status) queryParams.append('status', params.status)
+      });
+      if (params.search) queryParams.append("search", params.search);
+      if (params.sortField) queryParams.append("sortField", params.sortField);
+      if (params.sortDirection)
+        queryParams.append("sortDirection", params.sortDirection);
+      if (params.status) queryParams.append("status", params.status);
 
-      const res = await api.get(`api/trip/provider?${queryParams.toString()}`)
-      return res.data
+      const res = await api.get(`api/trip/provider?${queryParams.toString()}`);
+      return res.data;
     } catch (e: any) {
       console.error("getTripsByProvider failed", e);
       if (e.response) console.error("response", e.response.data);
@@ -288,44 +289,55 @@ const tripService = {
   }) {
     try {
       // Build FormData if there are any images
-      const hasImages = dto.ChecklistItems.some(item => item.EvidenceImage);
-      
+      const hasImages = dto.ChecklistItems.some((item) => item.EvidenceImage);
+
       if (hasImages) {
         const formData = new FormData();
-        
+
         // Add basic fields
-        formData.append('RecordId', dto.RecordId);
+        formData.append("RecordId", dto.RecordId);
         if (dto.CurrentOdometer !== undefined) {
-          formData.append('CurrentOdometer', dto.CurrentOdometer.toString());
+          formData.append("CurrentOdometer", dto.CurrentOdometer.toString());
         }
         if (dto.FuelLevel !== undefined) {
-          formData.append('FuelLevel', dto.FuelLevel.toString());
+          formData.append("FuelLevel", dto.FuelLevel.toString());
         }
         if (dto.IsEngineLightOn !== undefined) {
-          formData.append('IsEngineLightOn', dto.IsEngineLightOn.toString());
+          formData.append("IsEngineLightOn", dto.IsEngineLightOn.toString());
         }
         if (dto.Notes) {
-          formData.append('Notes', dto.Notes);
+          formData.append("Notes", dto.Notes);
         }
-        
+
         // Add checklist items
         dto.ChecklistItems.forEach((item, index) => {
           console.log(`🔍 Processing ChecklistItem ${index}:`, item);
           if (!item.TripVehicleHandoverTermResultId) {
-            console.error(`❌ Missing TripVehicleHandoverTermResultId for item ${index}:`, item);
-            throw new Error(`ChecklistItem[${index}] missing TripVehicleHandoverTermResultId`);
+            console.error(
+              `❌ Missing TripVehicleHandoverTermResultId for item ${index}:`,
+              item
+            );
+            throw new Error(
+              `ChecklistItem[${index}] missing TripVehicleHandoverTermResultId`
+            );
           }
-          formData.append(`ChecklistItems[${index}].TripVehicleHandoverTermResultId`, item.TripVehicleHandoverTermResultId);
-          formData.append(`ChecklistItems[${index}].IsPassed`, item.IsPassed.toString());
+          formData.append(
+            `ChecklistItems[${index}].TripVehicleHandoverTermResultId`,
+            item.TripVehicleHandoverTermResultId
+          );
+          formData.append(
+            `ChecklistItems[${index}].IsPassed`,
+            item.IsPassed.toString()
+          );
           if (item.Note) {
             formData.append(`ChecklistItems[${index}].Note`, item.Note);
           }
-          
+
           // Handle image upload
           if (item.EvidenceImage) {
-            if (typeof item.EvidenceImage === 'string') {
+            if (typeof item.EvidenceImage === "string") {
               // Mobile: uri string
-              const uriParts = item.EvidenceImage.split('.');
+              const uriParts = item.EvidenceImage.split(".");
               const fileType = uriParts[uriParts.length - 1];
               formData.append(`ChecklistItems[${index}].EvidenceImage`, {
                 uri: item.EvidenceImage,
@@ -334,17 +346,20 @@ const tripService = {
               } as any);
             } else {
               // Web: File object
-              formData.append(`ChecklistItems[${index}].EvidenceImage`, item.EvidenceImage);
+              formData.append(
+                `ChecklistItems[${index}].EvidenceImage`,
+                item.EvidenceImage
+              );
             }
           }
         });
-        
+
         const res = await api.put(
           `api/TripVehicleHandoverRecord/update-checklist`,
           formData,
           {
             headers: {
-              'Content-Type': 'multipart/form-data',
+              "Content-Type": "multipart/form-data",
             },
           }
         );
@@ -367,11 +382,11 @@ const tripService = {
   async reportHandoverIssue(formData: FormData) {
     try {
       const res = await api.post(
-        'api/TripVehicleHandoverRecord/report-issue',
+        "api/TripVehicleHandoverRecord/report-issue",
         formData,
         {
           headers: {
-            'Content-Type': 'multipart/form-data',
+            "Content-Type": "multipart/form-data",
           },
         }
       );
@@ -413,6 +428,31 @@ const tripService = {
       return res.data;
     } catch (e: any) {
       console.error("analyzeDrivers failed", e);
+      if (e.response) console.error("response", e.response.data);
+      throw e;
+    }
+  },
+
+  async cancelByOwner(tripId: string, reason?: string) {
+    try {
+      const res = await api.put("api/trip/cancel-by-owner", {
+        TripId: tripId,
+        Reason: reason || null,
+      });
+      return res.data;
+    } catch (e: any) {
+      console.error("cancelByOwner failed", e);
+      if (e.response) console.error("response", e.response.data);
+      throw e;
+    }
+  },
+
+  async removeDriverFromTrip(assignmentId: string) {
+    try {
+      const res = await api.delete(`api/TripDriverAssignments/${assignmentId}`);
+      return res.data;
+    } catch (e: any) {
+      console.error("removeDriverFromTrip failed", e);
       if (e.response) console.error("response", e.response.data);
       throw e;
     }

@@ -116,6 +116,8 @@ export default function OwnerLayout() {
       <Tabs.Screen name="profile" options={{ title: "Hồ sơ" }} />
 
       {/* Ẩn các màn hình khác */}
+      <Tabs.Screen name="owner-v2" options={{ href: null }} />
+      <Tabs.Screen name="owner-v2/post-detail/[id]" options={{ href: null }} />
       <Tabs.Screen name="my-drivers" options={{ href: null }} />
       <Tabs.Screen name="driver-detail" options={{ href: null }} />
       <Tabs.Screen name="vehicle-detail" options={{ href: null }} />
