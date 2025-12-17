@@ -12,7 +12,7 @@
       },
       "android": {
         "buildType": "apk",
-        "prebuildCommand": "bash scripts/eas-build-pre-install.sh"
+        "prebuildCommand": "node scripts/eas-build-pre-install.js"
       }
     },
     "preview": {
