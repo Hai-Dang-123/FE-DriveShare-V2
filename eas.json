@@ -7,8 +7,12 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "GOOGLE_SERVICES_JSON_BASE64": "$GOOGLE_SERVICES_JSON"
+      },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "prebuildCommand": "node scripts/eas-build-pre-install.js"
       }
     },
     "preview": {
