@@ -1,36 +1,3 @@
-// import React from 'react'
-// import { FlatList, View, Text, StyleSheet } from 'react-native'
-// import { FreightPost } from '@/models/types'
-// import OwnerPostPackageCard from './OwnerPostPackageCard'
-
-// interface Props {
-//   posts: FreightPost[]
-//   onView?: (postId: string) => void
-//   onAccept?: (postId: string) => void
-// }
-
-// const OwnerPostPackageList: React.FC<Props> = ({ posts, onView, onAccept }) => {
-//   const renderEmpty = () => (
-//     <View style={styles.empty}><Text style={{ color: '#6B7280' }}>Chưa có bài đăng</Text></View>
-//   )
-
-//   return (
-//     <FlatList
-//       data={posts}
-//       renderItem={({ item }) => (
-//         <OwnerPostPackageCard post={item} onView={onView} onAccept={onAccept} />
-//       )}
-//       keyExtractor={(i) => i.id}
-//       ListEmptyComponent={renderEmpty}
-//       ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-//       contentContainerStyle={{ paddingBottom: 64 }}
-//     />
-//   )
-// }
-
-// const styles = StyleSheet.create({ empty: { padding: 20, alignItems: 'center' } })
-
-// export default OwnerPostPackageList
 
 
 import React from 'react'

@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import { View, StyleSheet, ScrollView, StatusBar, Text, RefreshControl, AppState } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '@/hooks/useAuth'
+import { useNotification } from '@/hooks/useNotification'
 import { useAuthStore } from '@/stores/authStore'
 import HeaderDriver from './components/HeaderDriver'
 import DriverManagementTabs from './components/DriverManagementTabs'
@@ -16,6 +17,8 @@ import { ekycService } from '@/services/ekycService'
 
 const DriverHomeScreen: React.FC = () => {
   const { user, wallet } = useAuth()
+  // Đăng ký device token để nhận push notification
+  useNotification()
   const authStore = useAuthStore
 
   // profile from server (prefer) or from global auth store

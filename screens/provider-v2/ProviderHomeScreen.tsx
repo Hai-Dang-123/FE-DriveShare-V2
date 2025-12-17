@@ -17,6 +17,7 @@ import Stats from './components/Stat'
 import ManagementTabs from './components/ManagementTab'
 import WalletCard from '../../components/WalletCard'
 import { useAuth } from '@/hooks/useAuth'
+import { useNotification } from '@/hooks/useNotification'
 import userService from '@/services/userService'
 import walletService from '@/services/walletService'
 import { ekycService } from '@/services/ekycService'
@@ -28,6 +29,8 @@ interface ProviderHomePageProps {
 
 const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
   const { user, wallet } = useAuth()
+  // Đăng ký device token để nhận push notification
+  useNotification()
   const [profile, setProfile] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
   const providerData = (provider ?? profile ?? user) as Provider | undefined | null
