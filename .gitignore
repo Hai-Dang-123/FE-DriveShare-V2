@@ -35,7 +35,7 @@ expo-env.d.ts
 /android/.gradle/
 /android/build/
 /android/app/build/
-!/android/app/google-services.json
+/android/.cxx/
 /ios/
 
 # Snyk Security Extension - AI Rules (auto-generated)
