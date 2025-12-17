@@ -11,14 +11,14 @@
         "GOOGLE_SERVICES_JSON_BASE64": "$GOOGLE_SERVICES_JSON"
       },
       "android": {
-        "prebuildCommand": "bash scripts/eas-build-pre-install.sh"
+        "prebuildCommand": "node scripts/eas-build-pre-install.js"
       }
     },
     "development-client": {
       "extends": "development",
       "android": {
         "buildType": "apk",
-        "prebuildCommand": "bash scripts/eas-build-pre-install.sh"
+        "prebuildCommand": "node scripts/eas-build-pre-install.js"
       }
     },
     "preview": {
@@ -27,14 +27,14 @@
         "GOOGLE_SERVICES_JSON_BASE64": "$GOOGLE_SERVICES_JSON"
       },
       "android": {
-        "prebuildCommand": "bash scripts/eas-build-pre-install.sh"
+        "prebuildCommand": "node scripts/eas-build-pre-install.js"
       }
     },
     "preview-apk": {
       "extends": "preview",
       "android": {
         "buildType": "apk",
-        "prebuildCommand": "bash scripts/eas-build-pre-install.sh"
+        "prebuildCommand": "node scripts/eas-build-pre-install.js"
       }
     },
     "production": {
@@ -44,7 +44,7 @@
       },
       "android": {
         "buildType": "apk",
-        "prebuildCommand": "bash scripts/eas-build-pre-install.sh"
+        "prebuildCommand": "node scripts/eas-build-pre-install.js"
       }
     }
   },
