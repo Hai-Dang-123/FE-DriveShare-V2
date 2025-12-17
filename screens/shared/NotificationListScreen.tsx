@@ -153,6 +153,9 @@ const NotificationListScreen = () => {
         if (data.screen === 'PostDetail' && data.id) {
           // Owner: Xem chi tiết bài đăng (PostPackage)
           router.push(`/(owner)/owner-v2/post-detail/${data.id}`)
+        } else if (data.screen === 'PostTripDetail' && data.id) {
+          // Driver: Xem chi tiết bài đăng (PostTrip) - Kèo xe
+          router.push(`/(driver)/trip-post/${data.id}`)
         } else if (data.postId) {
           // Legacy: fallback
           router.push(`/(owner)/owner-v2/post-detail/${data.postId}`)
