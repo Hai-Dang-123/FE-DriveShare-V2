@@ -1,23 +1,36 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, SafeAreaView, Dimensions, StatusBar, TouchableOpacity, Platform } from 'react-native';
+import { 
+  View, 
+  Text, 
+  Image, 
+  StyleSheet, 
+  Dimensions, 
+  StatusBar, 
+  TouchableOpacity, 
+  Platform 
+} from 'react-native';
 import { useRouter } from 'expo-router';
 
-// Lấy kích thước màn hình
 const { width, height } = Dimensions.get('window');
 
 const WelcomeScreen: React.FC = () => {
   const router = useRouter();
 
   return (
-    <View style={styles.mainContainer}>
-      {/* StatusBar trong suốt để ảnh nền tràn lên trên cùng */}
+    <View style={styles.container}>
+      {/* Cấu hình StatusBar: 
+          - transparent để ảnh nền tràn lên
+          - dark-content để icon màu đen dễ nhìn trên nền sáng 
+      */}
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
-      {/* PHẦN 1: TOP SECTION - CHỨA ẢNH & LOGO */}
-      {/* Dùng màu nền nhẹ để tách biệt với phần nội dung bên dưới */}
+
+      {/* --- PHẦN 1: TOP SECTION (Ảnh & Decor) --- */}
       <View style={styles.topSection}>
         
-        {/* Logo nhỏ ở góc trên hoặc giữa */}
+        {/* Decor: Hình tròn mờ làm nền cho ảnh bớt đơn điệu */}
+        <View style={styles.blobCircle} />
+
+        {/* Logo */}
         <View style={styles.logoContainer}>
              <Image 
                 source={require('../../assets/icon-with-name.png')} 
@@ -26,8 +39,8 @@ const WelcomeScreen: React.FC = () => {
             />
         </View>
 
-        {/* Ảnh minh họa chính - Phóng to hơn */}
-        <View style={styles.illustrationContainer}>
+        {/* Ảnh chính */}
+        <View style={styles.illustrationWrapper}>
           <Image
             source={require('../../assets/welcome.png')}
             style={styles.mainImage}
@@ -36,38 +49,37 @@ const WelcomeScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* PHẦN 2: BOTTOM SHEET - CHỨA TEXT & BUTTON */}
-      {/* Khối màu trắng bo góc trượt lên trên hình nền */}
-      <View style={styles.bottomSection}>
+      {/* --- PHẦN 2: BOTTOM SECTION (Nội dung chính) --- */}
+      <View style={styles.bottomSheet}>
         <View style={styles.contentContainer}>
           
-          {/* Tiêu đề & Mô tả */}
-          <View style={styles.textWrapper}>
-            <Text style={styles.title}>
-              Chào mừng đến <Text style={styles.brandName}>DriveShare</Text>
-            </Text>
-            
-            <Text style={styles.subtitle}>
+          {/* Header Texts */}
+          <View style={styles.headerWrapper}>
+            <Text style={styles.welcomeText}>Chào mừng đến</Text>
+            <Text style={styles.brandName}>DriveShare</Text>
+            <Text style={styles.tagline}>
               Hệ sinh thái vận tải thông minh kết nối Chủ xe, Tài xế và Nhà cung cấp.
             </Text>
           </View>
 
-          {/* Buttons Area */}
-          <View style={styles.buttonWrapper}>
+          {/* Action Buttons */}
+          <View style={styles.buttonContainer}>
+            {/* Nút Đăng nhập - Nổi bật */}
             <TouchableOpacity
               onPress={() => router.push('/(auth)/login')}
               style={[styles.button, styles.primaryButton]}
               activeOpacity={0.8}
             >
-              <Text style={[styles.buttonText, styles.primaryButtonText]}>Đăng Nhập</Text>
+              <Text style={styles.primaryButtonText}>Đăng Nhập</Text>
             </TouchableOpacity>
 
+            {/* Nút Đăng ký - Viền nhẹ */}
             <TouchableOpacity
               onPress={() => router.push('/(auth)/register')}
-              style={[styles.button, styles.secondaryButton]}
-              activeOpacity={0.8}
+              style={[styles.button, styles.outlineButton]}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.buttonText, styles.secondaryButtonText]}>Tạo tài khoản mới</Text>
+              <Text style={styles.outlineButtonText}>Tạo tài khoản mới</Text>
             </TouchableOpacity>
           </View>
 
@@ -78,126 +90,135 @@ const WelcomeScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  mainContainer: {
+  container: {
     flex: 1,
-    backgroundColor: '#F0F5FF', // Màu xanh rất nhạt làm nền cho phần trên (thay vì trắng)
+    backgroundColor: '#EBF5FF', // Màu nền tổng thể xanh rất nhạt
   },
-  
-  // --- TOP SECTION ---
+
+  // --- TOP SECTION STYLES ---
   topSection: {
-    flex: 0.6, // Chiếm 60% màn hình
-    justifyContent: 'center',
+    flex: 0.55, // Chiếm 55% chiều cao (dành nhiều đất cho ảnh đẹp)
+    position: 'relative',
     alignItems: 'center',
-    paddingTop: StatusBar.currentHeight || 40,
+    justifyContent: 'flex-end', // Đẩy nội dung xuống sát phần bottom sheet
     paddingBottom: 20,
+    overflow: 'hidden', // Cắt các phần decor thừa
+  },
+  // Hình tròn trang trí phía sau
+  blobCircle: {
+    position: 'absolute',
+    top: -width * 0.2,
+    right: -width * 0.2,
+    width: width * 1.2,
+    height: width * 1.2,
+    borderRadius: width,
+    backgroundColor: '#DBEAFE', // Xanh đậm hơn nền một chút
+    opacity: 0.6,
   },
   logoContainer: {
     position: 'absolute',
-    top: (StatusBar.currentHeight || 40) + 10,
+    top: (StatusBar.currentHeight || 40) + 10, // Cách tai thỏ một chút
     alignSelf: 'center',
     zIndex: 10,
   },
   logoImage: {
-    width: 120, // Logo nhỏ lại một chút để tinh tế hơn
-    height: 40,
+    width: 140, 
+    height: 45,
   },
-  illustrationContainer: {
+  illustrationWrapper: {
     width: width,
-    height: '80%',
-    justifyContent: 'center',
+    height: '75%', // Chiếm phần lớn top section
     alignItems: 'center',
-    marginTop: 20,
+    justifyContent: 'flex-end',
+    marginBottom: 10,
   },
   mainImage: {
-    width: width * 0.9, // Rộng gần bằng màn hình
+    width: width * 0.85,
     height: '100%',
   },
 
-  // --- BOTTOM SECTION (Card Style) ---
-  bottomSection: {
-    flex: 0.4, // Chiếm 40% màn hình
+  // --- BOTTOM SHEET STYLES ---
+  bottomSheet: {
+    flex: 0.45, // Chiếm 45% còn lại
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32, // Bo góc lớn tạo cảm giác hiện đại
-    borderTopRightRadius: 32,
-    // Đổ bóng cho khối này để tách biệt với nền trên
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    // Hiệu ứng đổ bóng nổi bật phần bottom sheet
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: -4,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 10,
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 25, // Shadow đậm cho Android
   },
   contentContainer: {
     flex: 1,
-    paddingHorizontal: 30,
-    paddingTop: 36, // Đẩy nội dung xuống một chút
-    paddingBottom: 20,
-    justifyContent: 'space-between', // Đẩy Text lên trên, Button xuống dưới
+    paddingHorizontal: 28,
+    paddingTop: 40,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24, // iOS cần padding bottom nhiều hơn do thanh gạt home
+    justifyContent: 'space-between',
   },
-
-  // --- TYPOGRAPHY ---
-  textWrapper: {
+  
+  // TYPOGRAPHY
+  headerWrapper: {
     alignItems: 'center',
   },
-  title: {
-    fontSize: 28, // Font to hơn
-    fontWeight: '800', // Đậm hơn
-    color: '#111827',
-    textAlign: 'center',
-    marginBottom: 12,
+  welcomeText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#4B5563', // Gray 600
+    marginBottom: 4,
   },
   brandName: {
+    fontSize: 34,
+    fontWeight: '800',
     color: '#2563EB', // Blue 600
+    letterSpacing: 0.5,
+    marginBottom: 16,
   },
-  subtitle: {
-    fontSize: 16,
+  tagline: {
+    fontSize: 15,
     color: '#6B7280', // Gray 500
     textAlign: 'center',
-    lineHeight: 24, // Tăng khoảng cách dòng cho dễ đọc
+    lineHeight: 24, // Dãn dòng dễ đọc
     paddingHorizontal: 10,
   },
 
-  // --- BUTTONS ---
-  buttonWrapper: {
+  // BUTTONS
+  buttonContainer: {
     width: '100%',
-    gap: 16, // Khoảng cách giữa 2 nút (cần Expo SDK mới hoặc React Native 0.71+, nếu lỗi thì dùng marginBottom ở button)
-    marginBottom: 20,
+    gap: 14, // Khoảng cách giữa 2 nút (React Native 0.71+)
   },
   button: {
     width: '100%',
-    paddingVertical: 18, // Nút cao hơn chút cho dễ bấm
-    borderRadius: 16, // Bo góc tròn hơn
+    height: 56, // Chiều cao chuẩn UX dễ bấm
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
   },
   primaryButton: {
     backgroundColor: '#2563EB',
-    // Đổ bóng nhẹ cho nút chính
+    // Shadow cho nút
     shadowColor: "#2563EB",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  secondaryButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5, // Viền dày hơn tí
-    borderColor: '#E5E7EB', // Viền xám nhạt tinh tế hơn xanh
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '700',
+    shadowRadius: 12,
+    elevation: 8,
   },
   primaryButtonText: {
     color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
   },
-  secondaryButtonText: {
-    color: '#4B5563', // Chữ màu xám đậm cho nút phụ (trông sang hơn màu xanh)
+  outlineButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB', // Gray 200
+  },
+  outlineButtonText: {
+    color: '#374151', // Gray 700
+    fontSize: 17,
+    fontWeight: '600',
   },
 });
 

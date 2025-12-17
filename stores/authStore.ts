@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { jwtDecode } from 'jwt-decode'
 import { AuthenticatedUser } from '@/models/types'
+import { authService } from '@/services/authService'
 
 interface AuthState {
   user: AuthenticatedUser | null
@@ -90,8 +91,27 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await AsyncStorage.multiRemove(['accessToken', 'user'])
-    await AsyncStorage.multiRemove(['wallet', 'verificationStatus'])
-    set({ user: null, wallet: null, isVerified: false, verificationMessage: '' })
+    try {
+      // Gọi API logout với token trong header (interceptor tự động gán)
+      // API sẽ tự xóa token nếu thành công
+      await authService.logout()
+      
+      // API thành công → xóa các dữ liệu local khác
+      console.log('🔄 Clearing local user data...')
+      await AsyncStorage.multiRemove(['user', 'wallet', 'verificationStatus'])
+      set({ user: null, wallet: null, isVerified: false, verificationMessage: '' })
+      console.log('✅ Logout completed successfully')
+    } catch (e) {
+      console.error('❌ authStore.logout: API call failed', e)
+      
+      // API failed → có thể vẫn xóa local data để user có thể logout
+      // Hoặc throw error để UI hiển thị lỗi cho user
+      await AsyncStorage.multiRemove(['accessToken', 'user', 'wallet', 'verificationStatus'])
+      set({ user: null, wallet: null, isVerified: false, verificationMessage: '' })
+      console.warn('⚠️ Forced local logout due to API failure')
+      
+      // Uncomment dòng này nếu muốn throw error để UI handle
+      // throw e
+    }
   },
 }))

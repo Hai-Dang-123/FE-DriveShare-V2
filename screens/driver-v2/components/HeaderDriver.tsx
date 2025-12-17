@@ -12,9 +12,7 @@ import {
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useNotification } from "@/hooks/useNotification";
-import { authService } from "@/services/authService";
-import { removeToken, clearAllUserData } from "@/utils/token";
-import api from "@/config/api";
+import { useAuthStore } from "@/stores/authStore";
 
 interface HeaderProps {
   driver: any;
@@ -23,6 +21,7 @@ interface HeaderProps {
 const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
   const router = useRouter();
   const { unreadCount } = useNotification();
+  const { logout } = useAuthStore();
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
   const name = driver?.fullName || "N/A";
@@ -50,15 +49,13 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
 
   const handleLogout = async () => {
     try {
-      // Clear all user data and navigation
-      await clearAllUserData();
-      delete api.defaults.headers.common["Authorization"];
+      // Gọi authStore.logout() - nó sẽ tự gọi API với token rồi xóa data
+      await logout();
       router.replace("/(auth)/login");
-
-      // Fire and forget the server logout
-      authService.logout().catch(() => {});
     } catch (error) {
       console.error("Logout error:", error);
+      // Vẫn redirect về login nếu có lỗi
+      router.replace("/(auth)/login");
     }
   };
 

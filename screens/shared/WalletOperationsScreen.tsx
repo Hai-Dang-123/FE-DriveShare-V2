@@ -9,7 +9,6 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Image,
@@ -47,6 +46,7 @@ export default function WalletOperationsScreen({ onBack, prefilledAmount = '' }:
   const [processing, setProcessing] = useState(false)
   const [toast, setToast] = useState<{ visible: boolean; type: 'success' | 'error'; message: string }>({ visible: false, type: 'success', message: '' })
   const [qrModal, setQrModal] = useState<{ visible: boolean; qrUrl: string; amount: number; transferContent: string; transactionId: string } | null>(null)
+  const [confirmDialog, setConfirmDialog] = useState<{ visible: boolean; title: string; message: string; onConfirm: () => void } | null>(null)
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ visible: true, type, message })
@@ -127,26 +127,28 @@ export default function WalletOperationsScreen({ onBack, prefilledAmount = '' }:
     const balance = Number(wallet?.balance ?? wallet?.Balance ?? 0)
     
     if (!amount || amount <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ.')
+      showToast('error', 'Vui lòng nhập số tiền hợp lệ.')
       return
     }
     if (amount < 10000) {
-      Alert.alert('Lỗi', 'Số tiền rút tối thiểu là 10,000 VND.')
+      showToast('error', 'Số tiền rút tối thiểu là 10,000 VND.')
       return
     }
     if (amount > balance) {
-      Alert.alert('Lỗi', 'Số dư không đủ để thực hiện giao dịch.')
+      showToast('error', 'Số dư không đủ để thực hiện giao dịch.')
       return
     }
 
-    Alert.alert(
-      'Xác nhận rút tiền',
-      `Bạn muốn rút ${formatVND(amount)} VND từ ví?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Xác nhận', onPress: () => processWithdraw(amount) }
-      ]
-    )
+    // Show confirmation dialog
+    setConfirmDialog({
+      visible: true,
+      title: 'Xác nhận rút tiền',
+      message: `Bạn muốn rút ${formatVND(amount)} VND từ ví?`,
+      onConfirm: () => {
+        setConfirmDialog(null)
+        processWithdraw(amount)
+      }
+    })
   }
 
   const processWithdraw = async (amount: number) => {
@@ -449,6 +451,45 @@ export default function WalletOperationsScreen({ onBack, prefilledAmount = '' }:
                   <Text style={styles.qrConfirmButtonText}>Đã chuyển tiền</Text>
                 </TouchableOpacity>
               </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Confirm Dialog */}
+      {confirmDialog && (
+        <Modal
+          visible={confirmDialog.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setConfirmDialog(null)}
+        >
+          <View style={styles.confirmOverlay}>
+            <View style={styles.confirmDialog}>
+              <View style={styles.confirmHeader}>
+                <Ionicons name="alert-circle" size={48} color={COLORS.warning} />
+                <Text style={styles.confirmTitle}>{confirmDialog.title}</Text>
+              </View>
+              
+              <Text style={styles.confirmMessage}>{confirmDialog.message}</Text>
+              
+              <View style={styles.confirmButtons}>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, styles.confirmBtnCancel]}
+                  onPress={() => setConfirmDialog(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.confirmBtnTextCancel}>Hủy</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.confirmBtn, styles.confirmBtnConfirm]}
+                  onPress={confirmDialog.onConfirm}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.confirmBtnTextConfirm}>Xác nhận</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -885,5 +926,76 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16,
     fontWeight: '700',
+  },
+
+  // Confirm Dialog
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmDialog: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  confirmHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.textMain,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  confirmMessage: {
+    fontSize: 15,
+    color: COLORS.textSec,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtnCancel: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  confirmBtnConfirm: {
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  confirmBtnTextCancel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textMain,
+  },
+  confirmBtnTextConfirm: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.white,
   },
 })

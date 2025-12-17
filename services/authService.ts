@@ -204,29 +204,24 @@ export const authService = {
 
   logout: async (): Promise<ResponseDTO<any>> => {
     try {
+      // Gọi API logout với token trong header (interceptor tự động gán)
       const response = await api.post("/api/auth/logout");
+      
+      // Chỉ xóa token SAU KHI API logout thành công
+      console.log("✅ API logout successful, removing token from storage...");
+      await removeToken();
+      
+      // Xóa header axios
+      delete api.defaults.headers.common["Authorization"];
+      console.log("✅ Token removed from storage and header cleared");
+      
       return response.data;
     } catch (e: any) {
-      console.error("authService.logout failed", e);
-      if (e.response) console.error("response", e.response.data);
-      // Don't throw, continue to remove token
-    } finally {
-      // Always clear token from storage, even if API fails
-      try {
-        console.log("🔄 Removing token from storage...");
-        await removeToken();
-        console.log("✅ Token removed from storage");
-        // Also clear axios header
-        delete api.defaults.headers.common["Authorization"];
-        console.log("✅ Authorization header cleared");
-      } catch (e) {
-        console.error("❌ Failed to remove token:", e);
-      }
+      console.error("❌ authService.logout API failed", e);
+      if (e.response) console.error("Response:", e.response.data);
+      
+      // Throw error để caller biết API failed
+      throw e;
     }
-    return {
-      statusCode: 200,
-      isSuccess: true,
-      message: "Logged out locally",
-    } as any;
   },
 };
