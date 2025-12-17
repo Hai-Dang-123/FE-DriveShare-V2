@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.danger, textAlign: 'center', marginTop: 20 },
   emptyText: { color: COLORS.textLight, fontStyle: 'italic', textAlign: 'center', padding: 20 },
   
-  body: { paddingBottom: 40 },
+  body: { paddingBottom: 100 },
 
   // --- MAP SECTION ---
   mapSection: { position: 'relative', marginBottom: 80 }, // Margin bottom để chừa chỗ cho card nổi

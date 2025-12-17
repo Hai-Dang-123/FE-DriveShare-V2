@@ -373,7 +373,7 @@ const MyTripsScreen: React.FC = () => {
         renderItem={({ item }) => (
           <ItemCard item={item} onPress={() => router.push(`/(driver)/trip/${item.tripId}`)} />
         )}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
         onEndReachedThreshold={0.5}
         onEndReached={onEndReached}
         refreshing={refreshing}

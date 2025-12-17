@@ -687,7 +687,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   contentContainer: {
-    paddingBottom: 24,
+    paddingBottom: 100,
   },
   // Teams Section
   teamsSection: {

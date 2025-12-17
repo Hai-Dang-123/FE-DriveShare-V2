@@ -109,15 +109,17 @@ export const useNotification = () => {
   // Lấy số lượng thông báo chưa đọc
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const response = await notificationService.getUnreadCount();
-      setUnreadCount(response?.result || 0);
+      const count = await notificationService.getUnreadCount();
+      console.log('📊 Unread count:', count);
+      setUnreadCount(count);
     } catch (error: any) {
-      // Ignore 401/404 errors (user logged out or token invalid)
-      if (error?.response?.status === 401 || error?.response?.status === 404) {
+      // Ignore 401/403 errors (user logged out or token invalid)
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
         setUnreadCount(0);
         return;
       }
       console.error("Error fetching unread count:", error);
+      setUnreadCount(0);
     }
   }, []);
 
@@ -134,7 +136,12 @@ export const useNotification = () => {
     // 2. Fetch unread count ban đầu
     fetchUnreadCount();
 
-    // 3. Listener: Khi nhận notification (App đang mở - Foreground)
+    // 3. Auto-refresh unread count mỗi 30 giây
+    const intervalId = setInterval(() => {
+      fetchUnreadCount();
+    }, 30000); // 30 seconds
+
+    // 4. Listener: Khi nhận notification (App đang mở - Foreground)
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
         console.log(
@@ -166,6 +173,7 @@ export const useNotification = () => {
 
     // Cleanup listeners khi unmount
     return () => {
+      clearInterval(intervalId);
       if (notificationListener.current) {
         notificationListener.current.remove();
       }

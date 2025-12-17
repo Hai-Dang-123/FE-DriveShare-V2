@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { View, TextInput, Text, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator } from 'react-native'
+import { View, TextInput, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native'
 import vietmapAutocompleteService from '@/services/vietmapAutocompleteService'
 
 type Suggestion = any
@@ -52,13 +52,6 @@ const AddressAutocomplete: React.FC<Props> = ({ value = '', onSelect, placeholde
     debounced(text)
   }
 
-  const renderItem = ({ item }: { item: Suggestion }) => (
-    <TouchableOpacity style={styles.item} onPress={() => { setQuery(item.display || item.name); setSuggestions([]); onSelect(item) }}>
-      <Text style={styles.itemTitle}>{item.name || item.display}</Text>
-      <Text style={styles.itemSub}>{item.display || item.address}</Text>
-    </TouchableOpacity>
-  )
-
   return (
     <View style={styles.container}>
       <TextInput
@@ -70,7 +63,18 @@ const AddressAutocomplete: React.FC<Props> = ({ value = '', onSelect, placeholde
       {loading && <ActivityIndicator style={{ marginTop: 8 }} />}
       {suggestions.length > 0 && (
         <View style={styles.dropdown}>
-          <FlatList data={suggestions} keyExtractor={(i, idx) => `${i.ref_id ?? i.refId ?? idx}`} renderItem={renderItem} keyboardShouldPersistTaps='handled' />
+          <ScrollView nestedScrollEnabled keyboardShouldPersistTaps='handled'>
+            {suggestions.map((item, idx) => (
+              <TouchableOpacity 
+                key={item.ref_id ?? item.refId ?? idx} 
+                style={styles.item} 
+                onPress={() => { setQuery(item.display || item.name); setSuggestions([]); onSelect(item) }}
+              >
+                <Text style={styles.itemTitle}>{item.name || item.display}</Text>
+                <Text style={styles.itemSub}>{item.display || item.address}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
       )}
     </View>

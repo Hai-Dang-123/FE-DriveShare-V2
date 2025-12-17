@@ -100,18 +100,20 @@ const StepIndicator: React.FC<{ step: number }> = ({ step }) => {
 }
 
 // --- COMPONENT: INPUT FIELD ---
-const InputField = ({ label, value, onChange, placeholder, width = '100%', multiline = false, required = false, keyboardType = 'default' }: any) => (
+const InputField = ({ label, value, onChange, placeholder, width = '100%', multiline = false, required = false, keyboardType = 'default', error = null, onBlur = undefined }: any) => (
   <View style={{ width, marginBottom: 12 }}>
     <Text style={styles.label}>{label} {required && <Text style={{color: COLORS.danger}}>*</Text>}</Text>
     <TextInput
-      style={[styles.input, multiline && { height: 70, textAlignVertical: 'top', paddingTop: 10 }]}
+      style={[styles.input, multiline && { height: 70, textAlignVertical: 'top', paddingTop: 10 }, error && styles.inputError]}
       value={value}
       onChangeText={onChange}
       placeholder={placeholder}
       placeholderTextColor="#9CA3AF"
       multiline={multiline}
       keyboardType={keyboardType}
+      onBlur={onBlur}
     />
+    {error && <Text style={styles.errorText}>{error}</Text>}
   </View>
 )
 
@@ -396,6 +398,9 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
   const [isCalculating, setIsCalculating] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
 
+  // Phone Validation State
+  const [phoneErrors, setPhoneErrors] = useState<{ sender: string | null; receiver: string | null }>({ sender: null, receiver: null })
+
   // Form Data
   const [form, setForm] = useState({
     title: '', description: '', offeredPrice: '',
@@ -457,9 +462,43 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
     setValidationError(null)
     setRouteValidation(null)
     setShowTimeRanges(false)
+    setPhoneErrors({ sender: null, receiver: null })
   }
 
-  const handleChange = (key: string, val: string | null) => setForm(p => ({ ...p, [key]: val ?? '' }))
+  const validateVietnamesePhone = (phone: string): boolean => {
+    if (!phone) return false
+    // Remove spaces and dashes
+    const cleaned = phone.replace(/[\s-]/g, '')
+    // Vietnamese phone patterns:
+    // - Starts with 0 and has 10 digits: 0[3|5|7|8|9]xxxxxxxx
+    // - Starts with +84 and has 11 digits: +84[3|5|7|8|9]xxxxxxxx
+    const regex = /^(0[3|5|7|8|9][0-9]{8}|(\+84)[3|5|7|8|9][0-9]{8})$/
+    return regex.test(cleaned)
+  }
+
+  const handleChange = (key: string, val: string | null) => {
+    setForm(p => ({ ...p, [key]: val ?? '' }))
+    // Clear phone errors when user types
+    if (key === 'senderPhone') {
+      setPhoneErrors(p => ({ ...p, sender: null }))
+    } else if (key === 'receiverPhone') {
+      setPhoneErrors(p => ({ ...p, receiver: null }))
+    }
+  }
+
+  const validatePhoneField = (type: 'sender' | 'receiver') => {
+    const phone = type === 'sender' ? form.senderPhone : form.receiverPhone
+    if (!phone) {
+      setPhoneErrors(p => ({ ...p, [type]: 'Vui lòng nhập số điện thoại' }))
+      return false
+    }
+    if (!validateVietnamesePhone(phone)) {
+      setPhoneErrors(p => ({ ...p, [type]: 'Số điện thoại không hợp lệ (VD: 0912345678 hoặc +84912345678)' }))
+      return false
+    }
+    setPhoneErrors(p => ({ ...p, [type]: null }))
+    return true
+  }
 
   // --- EFFECT: ROUTE CALCULATION ---
   useEffect(() => {
@@ -657,14 +696,14 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
     onClose()
   }
 
-  const canProceedStep1 = !loading && !isCalculating && form.title && selectedIds.length > 0 && form.startLocation && form.endLocation && form.pickupDate && form.deliveryDate && (!routeValidation || routeValidation.isValid)
+  const canProceedStep1 = !loading && !isCalculating && form.title && selectedIds.length > 0 && form.startLocation && form.endLocation && form.pickupDate && form.deliveryDate && (!routeValidation || routeValidation.isValid) && form.senderPhone && form.receiverPhone && !phoneErrors.sender && !phoneErrors.receiver && validateVietnamesePhone(form.senderPhone) && validateVietnamesePhone(form.receiverPhone)
 
   if (!visible) return null
 
   return (
-    <View style={styles.fullscreenContainer}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      <SafeAreaView style={{ flex: 1 }}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         
         {/* HEADER */}
         <View style={styles.header}>
@@ -831,7 +870,17 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
                 <Text style={styles.sectionTitle}>📞 Người gửi (Sender)</Text>
                 <View style={styles.row}>
                   <InputField width="48%" label="Tên người gửi" value={form.senderName} onChange={(v:string)=>handleChange('senderName',v)} placeholder="Tên..." required/>
-                  <InputField width="48%" label="SĐT người gửi" value={form.senderPhone} onChange={(v:string)=>handleChange('senderPhone',v)} keyboardType="phone-pad" placeholder="09..." required/>
+                  <InputField 
+                    width="48%" 
+                    label="SĐT người gửi" 
+                    value={form.senderPhone} 
+                    onChange={(v:string)=>handleChange('senderPhone',v)} 
+                    keyboardType="phone-pad" 
+                    placeholder="0912345678" 
+                    required
+                    error={phoneErrors.sender}
+                    onBlur={() => validatePhoneField('sender')}
+                  />
                 </View>
                 <View style={styles.row}>
                   <InputField width="48%" label="Email" value={form.senderEmail} onChange={(v:string)=>handleChange('senderEmail',v)} placeholder="abc@gmail.com" keyboardType="email-address"/>
@@ -843,7 +892,17 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
                 <Text style={styles.sectionTitle}>📞 Người nhận (Receiver)</Text>
                 <View style={styles.row}>
                   <InputField width="48%" label="Tên người nhận" value={form.receiverName} onChange={(v:string)=>handleChange('receiverName',v)} placeholder="Tên..." required/>
-                  <InputField width="48%" label="SĐT người nhận" value={form.receiverPhone} onChange={(v:string)=>handleChange('receiverPhone',v)} keyboardType="phone-pad" placeholder="09..." required/>
+                  <InputField 
+                    width="48%" 
+                    label="SĐT người nhận" 
+                    value={form.receiverPhone} 
+                    onChange={(v:string)=>handleChange('receiverPhone',v)} 
+                    keyboardType="phone-pad" 
+                    placeholder="0987654321" 
+                    required
+                    error={phoneErrors.receiver}
+                    onBlur={() => validatePhoneField('receiver')}
+                  />
                 </View>
                 <View style={styles.row}>
                   <InputField width="48%" label="Email" value={form.receiverEmail} onChange={(v:string)=>handleChange('receiverEmail',v)} placeholder="abc@gmail.com" keyboardType="email-address"/>
@@ -1020,12 +1079,13 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
         </View>
 
       </SafeAreaView>
-    </View>
+    </Modal>
   )
 }
 
 const styles = StyleSheet.create({
-  fullscreenContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#fff', zIndex: 9999 },
+  safeArea: { flex: 1, backgroundColor: COLORS.white },
+  fullscreenContainer: { flex: 1, backgroundColor: COLORS.white },
   
   // Header
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderColor: '#eee' },
@@ -1045,7 +1105,7 @@ const styles = StyleSheet.create({
   stepTextActive: { color: COLORS.primary, fontWeight: '700' },
 
   // Content Area
-  scrollContent: { padding: 16 },
+  scrollContent: { padding: 16, paddingBottom: 100 },
   sectionBox: { backgroundColor: '#fff', marginBottom: 20 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12, color: COLORS.textMain },
   label: { fontSize: 13, fontWeight: '500', color: COLORS.textMain, marginBottom: 6 },
@@ -1091,7 +1151,7 @@ const styles = StyleSheet.create({
   successDesc: { textAlign: 'center', color: COLORS.textSec, lineHeight: 22 },
 
   // Footer
-  footer: { padding: 16, borderTopWidth: 1, borderColor: '#eee', backgroundColor: '#fff' },
+  footer: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 34 : 16, borderTopWidth: 1, borderColor: '#eee', backgroundColor: '#fff' },
   btnPri: { flex: 1, backgroundColor: COLORS.primary, padding: 14, borderRadius: 8, alignItems: 'center' },
   btnPriText: { color: '#fff', fontWeight: '700' },
   btnSec: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', padding: 14, borderRadius: 8, alignItems: 'center' },
@@ -1125,6 +1185,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: COLORS.textMain
+  },
+  
+  // Input Error
+  inputError: {
+    borderColor: COLORS.danger,
+    borderWidth: 1.5
+  },
+  errorText: {
+    fontSize: 12,
+    color: COLORS.danger,
+    marginTop: 4,
+    marginLeft: 2
   },
   
   // Time Picker

@@ -646,7 +646,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
   closeBtn: { padding: 4 },
-  body: { padding: 16 },
+  body: { padding: 16, paddingBottom: 120 },
   emptyText: { textAlign: 'center', color: COLORS.textLight },
 
   // CARD

@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC', // Màu nền tổng thể hơi xám nhẹ dịu mắt
   },
   scrollContainer: {
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
   bodyContent: {
     paddingHorizontal: 16,

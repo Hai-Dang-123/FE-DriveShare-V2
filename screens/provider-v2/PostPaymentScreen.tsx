@@ -60,7 +60,7 @@ const PostPaymentScreen: React.FC = () => {
         </View>
 
         {(!post || !wallet) ? <ActivityIndicator size="large" color="#0284C7" style={{ marginTop: 40 }} /> : (
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
             <Text style={{ fontSize: 16, fontWeight: '700' }}>{post.title}</Text>
             <Text style={{ marginTop: 8, color: '#6B7280' }}>Số dư ví: {(wallet.balance ?? wallet.Balance ?? 0).toLocaleString('vi-VN')} VND</Text>
             <Text style={{ marginTop: 8 }}>Số tiền cần: {(post.offeredPrice ?? post.OfferedPrice ?? 0).toLocaleString('vi-VN')} VND</Text>

@@ -5608,7 +5608,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F3F4F6" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  scrollContent: { padding: 16 },
+  scrollContent: { padding: 16, paddingBottom: 120 },
   
   // Checkout Overlay Styles
   checkoutOverlay: {

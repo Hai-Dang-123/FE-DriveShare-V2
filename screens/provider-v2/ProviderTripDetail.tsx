@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorText: { color: COLORS.danger },
-  scrollContent: { paddingBottom: 20 },
+  scrollContent: { paddingBottom: 120 },
 
   // MAP
   mapSection: { marginBottom: 12 },

@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   closeBtn: { padding: 4 },
 
   // Scroll Content
-  scrollContent: { padding: 16 },
+  scrollContent: { padding: 16, paddingBottom: 120 },
 
   // Info Banner
   infoBanner: {
@@ -272,12 +272,9 @@ const styles = StyleSheet.create({
 
   // Footer
   footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: COLORS.white,
     padding: 16,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
     borderTopWidth: 1,
     borderColor: COLORS.border,
     shadowColor: '#000',

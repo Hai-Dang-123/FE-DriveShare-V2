@@ -296,7 +296,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         
         {/* 1. IDENTITY CARD */}
         <View style={styles.mainCard}>

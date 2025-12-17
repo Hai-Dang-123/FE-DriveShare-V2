@@ -38,17 +38,21 @@ const NotificationListScreen = () => {
       }
 
       const response = await notificationService.getMyNotifications(page, pageSize)
+      console.log('📬 Notifications response:', response)
       
+      // Backend trả về: { message, statusCode, isSuccess, result: { Items, TotalCount, UnreadCount } }
       if (response?.isSuccess && response?.result) {
-        const { data = [], totalCount: total = 0, totalPages = 0 } = response.result
+        const items = response.result.Items || response.result.items || []
+        const total = response.result.TotalCount || response.result.totalCount || 0
+        const totalPages = Math.ceil(total / pageSize)
         
         if (isRefresh || page === 1) {
-          setNotifications(data || [])
+          setNotifications(items)
         } else {
-          setNotifications(prev => [...prev, ...(data || [])])
+          setNotifications(prev => [...prev, ...items])
         }
         
-        setTotalCount(total || 0)
+        setTotalCount(total)
         setHasMore(page < totalPages)
         setPageNumber(page)
       }
@@ -143,11 +147,17 @@ const NotificationListScreen = () => {
     if (notification.data) {
       try {
         const data = JSON.parse(notification.data)
+        console.log('📱 Notification data:', data)
         
-        // Navigate based on notification type
-        if (data.postId) {
-          router.push(`/post-detail/${data.postId}`)
+        // Navigate based on notification screen type
+        if (data.screen === 'PostDetail' && data.id) {
+          // Owner: Xem chi tiết bài đăng (PostPackage)
+          router.push(`/(owner)/owner-v2/post-detail/${data.id}`)
+        } else if (data.postId) {
+          // Legacy: fallback
+          router.push(`/(owner)/owner-v2/post-detail/${data.postId}`)
         } else if (data.tripId) {
+          // Trip detail (for all roles)
           router.push(`/trip-detail/${data.tripId}`)
         }
       } catch (e) {

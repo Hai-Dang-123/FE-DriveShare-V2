@@ -26,6 +26,7 @@ const ItemList: React.FC<ItemListProps> = ({ items, onEdit, onDelete, onPack, de
 
   return (
     <FlatList
+      key="single-column-list"
       data={items}
       renderItem={({ item }) => (
         <ItemCard
@@ -38,8 +39,6 @@ const ItemList: React.FC<ItemListProps> = ({ items, onEdit, onDelete, onPack, de
         />
       )}
       keyExtractor={(item) => item.id}
-      numColumns={2} // Tạo layout 2 cột
-      columnWrapperStyle={styles.columnWrapper}
       ListEmptyComponent={renderEmptyComponent}
       style={styles.listContainer}
       contentContainerStyle={styles.listContentContainer}
@@ -52,12 +51,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContentContainer: {
-    paddingHorizontal: 8, // Bù trừ cho margin 8 của ItemCard
-    paddingBottom: 64,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    paddingHorizontal: 0,
+    paddingBottom: 120,
   },
   emptyContainer: {
     flex: 1,

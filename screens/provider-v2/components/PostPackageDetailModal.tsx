@@ -10,7 +10,8 @@ import {
   Image,
   Dimensions,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  Platform
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import postPackageService from '@/services/postPackageService';
@@ -340,7 +341,7 @@ const PostPackageDetailModal: React.FC<Props> = ({ visible, postId, onClose }) =
 
 const styles = StyleSheet.create({
   // LAYOUT
-  scrollContent: { padding: 16, paddingBottom: 20 },
+  scrollContent: { padding: 16, paddingBottom: 120 },
   centerLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   
@@ -417,10 +418,16 @@ const styles = StyleSheet.create({
 
   // ACTIONS (STICKY BOTTOM)
   bottomActions: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: COLORS.white, padding: 16,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
-    shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 10
+    backgroundColor: COLORS.white,
+    padding: 16,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 10
   },
   btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, gap: 8 },
   btnPrimary: { backgroundColor: COLORS.primary },

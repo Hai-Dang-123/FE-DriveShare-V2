@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 4 },
 
   // Scroll Content
-  scrollContent: { padding: 16 },
+  scrollContent: { padding: 16, paddingBottom: 100 },
 
   // Step Indicator
   stepContainer: { backgroundColor: COLORS.white, paddingVertical: 16, paddingBottom: 12, borderBottomWidth: 1, borderColor: COLORS.border },

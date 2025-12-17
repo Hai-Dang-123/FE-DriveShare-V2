@@ -2,12 +2,21 @@ import api from '@/config/api'
 
 export interface NotificationDTO {
   notificationId: string
-  userId: string
+  userId?: string
   title: string
   body: string
   data?: string // JSON string
   isRead: boolean
   createdAt: string
+}
+
+export interface PaginatedNotificationDTO {
+  Items: NotificationDTO[]
+  items?: NotificationDTO[]
+  TotalCount: number
+  totalCount?: number
+  UnreadCount: number
+  unreadCount?: number
 }
 
 export interface NotificationListResponse {
@@ -50,10 +59,16 @@ class NotificationService {
   async getUnreadCount() {
     try {
       const response = await api.get('/api/Notification/unread-count')
-      return response.data
-    } catch (error) {
+      // Backend trả về: { message, statusCode, isSuccess, result: { UnreadCount: number } }
+      const unreadCount = response.data?.result?.UnreadCount ?? response.data?.result?.unreadCount ?? 0
+      return unreadCount
+    } catch (error: any) {
+      // Ignore 401/403 (not logged in)
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        return 0
+      }
       console.error('Error getting unread count:', error)
-      return { result: 0 }
+      return 0
     }
   }
 

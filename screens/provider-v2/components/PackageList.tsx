@@ -44,6 +44,7 @@ const PackageList: React.FC<PackageListProps> = ({ packages, onEdit, onDelete, o
 
   return (
     <FlatList
+      key="single-column-list"
       data={list}
       renderItem={({ item }) => (
         <PackageCard 
@@ -55,8 +56,6 @@ const PackageList: React.FC<PackageListProps> = ({ packages, onEdit, onDelete, o
         />
       )}
       keyExtractor={(item) => item.id}
-      numColumns={2}
-      columnWrapperStyle={{ justifyContent: 'space-between' }}
       contentContainerStyle={styles.listContent}
       ListEmptyComponent={renderEmpty}
       showsVerticalScrollIndicator={false}
@@ -65,7 +64,7 @@ const PackageList: React.FC<PackageListProps> = ({ packages, onEdit, onDelete, o
 }
 
 const styles = StyleSheet.create({
-  listContent: { padding: 10, paddingBottom: 80 },
+  listContent: { paddingHorizontal: 0, paddingTop: 8, paddingBottom: 80 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 60, paddingHorizontal: 32 },
   emptyIconBg: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#374151', marginBottom: 8 },

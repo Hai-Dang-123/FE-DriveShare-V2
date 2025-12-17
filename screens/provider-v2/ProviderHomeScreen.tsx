@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     color: '#6B7280', // text-gray-500
   },
   scrollContainer: {
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   mainContent: {
     paddingHorizontal: 16, // px-4

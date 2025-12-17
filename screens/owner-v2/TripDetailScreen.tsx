@@ -1964,7 +1964,7 @@ const TripDetailScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  scrollContent: { padding: 16 },
+  scrollContent: { padding: 16, paddingBottom: 120 },
 
   // Header
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "#FFF", borderBottomWidth: 1, borderColor: "#E5E7EB" },

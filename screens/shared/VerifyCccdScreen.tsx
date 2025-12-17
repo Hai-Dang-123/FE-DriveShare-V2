@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2
   },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  scrollContent: { padding: 20, paddingBottom: 50 },
+  scrollContent: { padding: 20, paddingBottom: 120 },
 
   // Instruction
   cardContainer: {
