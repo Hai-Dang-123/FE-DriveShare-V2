@@ -11,16 +11,18 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useNotification } from "@/hooks/useNotification";
+import { useNotificationStore } from "@/stores/notificationStore";
 import { useAuthStore } from "@/stores/authStore";
 
 interface HeaderProps {
   driver: any;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
-const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
+const HeaderDriver: React.FC<HeaderProps> = ({ driver, onRefresh, refreshing = false }) => {
   const router = useRouter();
-  const { unreadCount } = useNotification();
+  const { unreadCount } = useNotificationStore();
   const { logout } = useAuthStore();
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
@@ -71,6 +73,19 @@ const HeaderDriver: React.FC<HeaderProps> = ({ driver }) => {
           <Text style={styles.brandText}>DriveShare Driver</Text>
 
           <View style={styles.actions}>
+            {onRefresh && (
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={onRefresh}
+                disabled={refreshing}
+              >
+                {refreshing ? (
+                  <MaterialCommunityIcons name="loading" size={24} color="#FFF" />
+                ) : (
+                  <Ionicons name="refresh-outline" size={24} color="#FFF" />
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.iconBtn}
               onPress={() => router.push("/notifications")}

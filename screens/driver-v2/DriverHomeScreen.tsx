@@ -17,8 +17,8 @@ import { ekycService } from '@/services/ekycService'
 
 const DriverHomeScreen: React.FC = () => {
   const { user, wallet } = useAuth()
-  // Đăng ký device token để nhận push notification
-  useNotification()
+  // Đăng ký device token để nhận push notification (với auto-refresh)
+  const { unreadCount } = useNotification(true)
   const authStore = useAuthStore
 
   // profile from server (prefer) or from global auth store
@@ -152,7 +152,7 @@ const DriverHomeScreen: React.FC = () => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* 1. Header: Profile Info & Background */}
-        <HeaderDriver driver={driverData} />
+        <HeaderDriver driver={driverData} onRefresh={onRefresh} refreshing={refreshing} />
 
         <View style={styles.bodyContent}>
           {/* 2. Wallet: Thu nhập & Rút tiền */}

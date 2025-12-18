@@ -67,19 +67,20 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 10
+    zIndex: 10,
+    paddingTop: 10
   },
   topPanel: {
     backgroundColor: '#111827',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#374151',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8
   },
   instructionContainer: {
     flexDirection: 'row',
@@ -101,11 +102,12 @@ const styles = StyleSheet.create({
   bottomPanel: {
     backgroundColor: 'rgba(17, 24, 39, 0.95)',
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     justifyContent: 'space-around',
     borderBottomWidth: 1,
-    borderBottomColor: '#374151'
+    borderBottomColor: '#374151',
+    marginBottom: 8
   },
   infoBox: {
     alignItems: 'center',

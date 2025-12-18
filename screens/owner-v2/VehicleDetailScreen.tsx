@@ -19,6 +19,7 @@ import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-ico
 import { VehicleDetail, VehicleImageType, DocumentType, DocumentStatus } from '@/models/types'
 import vehicleService from '@/services/vehicleService'
 import ImageUploader from '@/screens/provider-v2/components/ImageUploader'
+import DateInput from '@/components/DateInput'
 
 const { width } = Dimensions.get('window')
 
@@ -37,7 +38,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
   const [uploadDocType, setUploadDocType] = useState<DocumentType | null>(null)
   const [frontImage, setFrontImage] = useState<{ uri?: string; base64?: string; fileName?: string; type?: string } | null>(null)
   const [backImage, setBackImage] = useState<{ uri?: string; base64?: string; fileName?: string; type?: string } | null>(null)
-  const [expirationDate, setExpirationDate] = useState('')
+  const [expirationDate, setExpirationDate] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
@@ -208,13 +209,12 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
               </View>
 
               <View style={styles.uploadSection}>
-                <Text style={styles.uploadLabel}>Ngày hết hạn (dd/mm/yyyy)</Text>
-                <TextInput
-                  style={styles.dateInput}
-                  placeholder="VD: 31/12/2025"
-                  value={expirationDate}
-                  onChangeText={setExpirationDate}
-                  placeholderTextColor="#9CA3AF"
+                <Text style={styles.uploadLabel}>Ngày hết hạn</Text>
+                <DateInput
+                  value={expirationDate || undefined}
+                  onChange={(date) => setExpirationDate(date || '')}
+                  placeholder="Chọn ngày hết hạn"
+                  minDate={new Date().toISOString().split('T')[0]}
                 />
               </View>
 

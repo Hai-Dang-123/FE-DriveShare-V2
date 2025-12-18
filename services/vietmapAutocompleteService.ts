@@ -11,7 +11,7 @@ type AutocompleteParams = {
 const BASE = 'https://maps.vietmap.vn/api/autocomplete/v4'
 
 const buildUrl = (p: AutocompleteParams) => {
-  const key = vietmapAPIKey || ''
+  const key = vietmapServicesKey || ''
   const qs = new URLSearchParams()
   qs.append('apikey', key)
   qs.append('text', p.text || '')

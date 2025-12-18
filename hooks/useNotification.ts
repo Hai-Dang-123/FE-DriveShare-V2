@@ -4,6 +4,7 @@ import notificationService from "@/services/notificationService";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
+import { useNotificationStore } from "@/stores/notificationStore";
 
 // Cấu hình hiển thị notification khi app đang mở (Foreground)
 Notifications.setNotificationHandler({
@@ -16,8 +17,8 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export const useNotification = () => {
-  const [unreadCount, setUnreadCount] = useState(0);
+export const useNotification = (autoRefresh: boolean = false) => {
+  const { unreadCount, setUnreadCount } = useNotificationStore();
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const notificationListener = useRef<Notifications.Subscription | undefined>(
     undefined
@@ -136,10 +137,13 @@ export const useNotification = () => {
     // 2. Fetch unread count ban đầu
     fetchUnreadCount();
 
-    // 3. Auto-refresh unread count mỗi 30 giây
-    const intervalId = setInterval(() => {
-      fetchUnreadCount();
-    }, 30000); // 30 seconds
+    // 3. Auto-refresh unread count mỗi 30 giây (chỉ khi autoRefresh = true)
+    let intervalId: NodeJS.Timeout | undefined;
+    if (autoRefresh) {
+      intervalId = setInterval(() => {
+        fetchUnreadCount();
+      }, 30000); // 30 seconds
+    }
 
     // 4. Listener: Khi nhận notification (App đang mở - Foreground)
     notificationListener.current =
@@ -173,7 +177,7 @@ export const useNotification = () => {
 
     // Cleanup listeners khi unmount
     return () => {
-      clearInterval(intervalId);
+      if (intervalId) clearInterval(intervalId);
       if (notificationListener.current) {
         notificationListener.current.remove();
       }
@@ -181,7 +185,7 @@ export const useNotification = () => {
         responseListener.current.remove();
       }
     };
-  }, [registerToken, fetchUnreadCount]);
+  }, [registerToken, fetchUnreadCount, autoRefresh]);
 
   return {
     unreadCount,

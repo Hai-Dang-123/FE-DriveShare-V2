@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Modal,
   View,
@@ -92,6 +92,27 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
     otherRequirements: "",
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // Cache blob URLs to prevent recreation on every render (causes network request loop when typing)
+  const packageImageUrls = useMemo(() => {
+    return formData.images.map((img: any) => {
+      if (img instanceof File || img instanceof Blob) {
+        return URL.createObjectURL(img);
+      }
+      return img.uri || img.packageImageURL || img;
+    });
+  }, [formData.images]);
+
+  // Cleanup blob URLs to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      packageImageUrls.forEach((url: string) => {
+        if (url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    };
+  }, [packageImageUrls]);
 
   useEffect(() => {
     if (visible && item) {
@@ -349,24 +370,17 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
                 />
                 <Text style={styles.addImageText}>Thêm ảnh</Text>
               </TouchableOpacity>
-              {formData.images.map((img: any, idx: number) => {
-                // Handle both File objects (Web) and URI strings (Mobile)
-                const imageUri = img instanceof File || img instanceof Blob 
-                  ? URL.createObjectURL(img) 
-                  : (img.uri || img.packageImageURL || img);
-                
-                return (
-                  <View key={idx} style={styles.imageWrapper}>
-                    <Image source={{ uri: imageUri }} style={styles.thumbnail} />
-                    <TouchableOpacity
-                      style={styles.removeBtn}
-                      onPress={() => removeImage(idx)}
-                    >
-                      <Ionicons name="close" size={10} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
+              {packageImageUrls.map((imageUri: string, idx: number) => (
+                <View key={idx} style={styles.imageWrapper}>
+                  <Image source={{ uri: imageUri }} style={styles.thumbnail} />
+                  <TouchableOpacity
+                    style={styles.removeBtn}
+                    onPress={() => removeImage(idx)}
+                  >
+                    <Ionicons name="close" size={10} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
             </ScrollView>
           </ScrollView>
 

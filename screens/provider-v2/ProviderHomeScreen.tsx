@@ -29,8 +29,8 @@ interface ProviderHomePageProps {
 
 const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
   const { user, wallet } = useAuth()
-  // Đăng ký device token để nhận push notification
-  useNotification()
+  // Đăng ký device token để nhận push notification (với auto-refresh)
+  const { unreadCount } = useNotification(true)
   const [profile, setProfile] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
   const providerData = (provider ?? profile ?? user) as Provider | undefined | null
@@ -115,7 +115,7 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        <HeaderProvider provider={user} />
+        <HeaderProvider provider={user} onRefresh={onRefresh} refreshing={refreshing} />
 
         <View style={styles.bodyContent}>
           <WalletCard wallet={wallet} />

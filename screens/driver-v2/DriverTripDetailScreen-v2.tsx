@@ -383,6 +383,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   // --- State ---
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [trip, setTrip] = useState<TripDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
@@ -1258,6 +1259,31 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const [checkOutImage, setCheckOutImage] = useState<any>(null);
   const [checkingOut, setCheckingOut] = useState(false);
+
+  // Cache blob URLs for check-in/check-out images to prevent memory leaks
+  const checkInImageUrl = useMemo(() => {
+    if (!checkInImage) return '';
+    if (checkInImage instanceof File) return URL.createObjectURL(checkInImage);
+    return checkInImage.uri || '';
+  }, [checkInImage]);
+
+  const checkOutImageUrl = useMemo(() => {
+    if (!checkOutImage) return '';
+    if (checkOutImage instanceof File) return URL.createObjectURL(checkOutImage);
+    return checkOutImage.uri || '';
+  }, [checkOutImage]);
+
+  // Cleanup blob URLs
+  useEffect(() => {
+    return () => {
+      if (checkInImageUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(checkInImageUrl);
+      }
+      if (checkOutImageUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(checkOutImageUrl);
+      }
+    };
+  }, [checkInImageUrl, checkOutImageUrl]);
   
   // Vehicle handover states
   const [showHandoverModal, setShowHandoverModal] = useState(false);
@@ -1665,6 +1691,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
       setError(errorMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (refreshing || !tripId) return;
+    setRefreshing(true);
+    try {
+      await fetchTripData();
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -3150,10 +3186,21 @@ const DriverTripDetailScreenV2: React.FC = () => {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Chi tiết chuyến đi</Text>
           <Text style={styles.subTitle}>{trip.tripCode}</Text>
         </View>
+        <TouchableOpacity 
+          onPress={handleRefresh} 
+          style={{ padding: 4, marginRight: 8 }}
+          disabled={refreshing}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color="#2563EB" />
+          ) : (
+            <Ionicons name="refresh" size={22} color="#2563EB" />
+          )}
+        </TouchableOpacity>
         <StatusPill value={trip.status} />
       </View>
       
@@ -5461,7 +5508,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
               {checkInImage ? (
                 <View style={styles.checkInImagePreview}>
                   <Image 
-                    source={{ uri: checkInImage instanceof File ? URL.createObjectURL(checkInImage) : checkInImage.uri }} 
+                    source={{ uri: checkInImageUrl }} 
                     style={styles.checkInImage}
                     resizeMode="cover"
                   />
@@ -5547,7 +5594,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
               {checkOutImage ? (
                 <View style={styles.checkInImagePreview}>
                   <Image 
-                    source={{ uri: checkOutImage instanceof File ? URL.createObjectURL(checkOutImage) : checkOutImage.uri }} 
+                    source={{ uri: checkOutImageUrl }} 
                     style={styles.checkInImage}
                     resizeMode="cover"
                   />
@@ -5959,12 +6006,14 @@ const styles = StyleSheet.create({
   },
   navActionBar: {
     position: "absolute",
-    bottom: 30,
-    left: 20,
-    right: 20,
+    bottom: 50,
+    left: 16,
+    right: 16,
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
     alignItems: "center",
+    paddingBottom: 8,
+    flexWrap: "wrap",
   },
   navActionBarAbove: { zIndex: 2500 },
   approachAlertContainer: {
@@ -5998,57 +6047,76 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pauseBtn: {
-    paddingHorizontal: 14,
-    height: 48,
-    borderRadius: 24,
+    paddingHorizontal: 12,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#F59E0B",
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 70,
   },
-  pauseBtnText: { color: "#FFF", fontWeight: "700" },
+  pauseBtnText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
   resumeBtn: {
-    paddingHorizontal: 14,
-    height: 48,
-    borderRadius: 24,
+    paddingHorizontal: 12,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#10B981",
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 100,
   },
-  resumeBtnText: { color: "#FFF", fontWeight: "700" },
+  resumeBtnText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
   minBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.25)",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   navMainBtn: {
     flex: 1,
-    height: 48,
+    minWidth: 150,
+    height: 44,
     backgroundColor: "#2563EB",
-    borderRadius: 24,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 6,
   },
   btnGreen: { backgroundColor: "#10B981" },
   btnOrange: { backgroundColor: "#F97316" },
-  navMainBtnText: { color: "#FFF", fontWeight: "700", fontSize: 16 },
+  navMainBtnText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
   btnDisabled: { opacity: 0.5, backgroundColor: "#9CA3AF" },
   stopBtn: {
-    paddingHorizontal: 16,
-    height: 48,
-    borderRadius: 24,
+    paddingHorizontal: 14,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#DC2626",
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 80,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 6,
   },
-  stopBtnText: { color: "#FFF", fontWeight: "600" },
+  stopBtnText: { color: "#FFF", fontWeight: "600", fontSize: 14 },
   miniBar: {
     position: "absolute",
-    bottom: 20,
+    bottom: 40,
     left: 16,
     right: 16,
     backgroundColor: "#1F2937",
@@ -6073,14 +6141,20 @@ const styles = StyleSheet.create({
   // fullscreen nav timer overlay
   navTimerContainer: {
     position: "absolute",
-    top: 20,
+    top: 50,
     left: 12,
+    right: 12,
     zIndex: 1100,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginTop: 40,
+    paddingVertical: 10,
+    borderRadius: 12,
+    maxWidth: 400,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
   },
   navTimerPanel: { flexDirection: "row", gap: 12, alignItems: "center" },
   timerCol: { minWidth: 160, padding: 8 },

@@ -14,8 +14,8 @@ import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-ico
 
 const OwnerHomeScreen: React.FC = () => {
   const { user, wallet } = useAuth()
-  // Đăng ký device token để nhận push notification
-  useNotification()
+  // Đăng ký device token để nhận push notification (với auto-refresh)
+  const { unreadCount } = useNotification(true)
   const [profile, setProfile] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -110,7 +110,7 @@ const OwnerHomeScreen: React.FC = () => {
       
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         {/* 1. Header (Background + Info Card) */}
-        <HeaderOwner owner={user} />
+        <HeaderOwner owner={user} onRefresh={onRefresh} refreshing={refreshing} />
 
         <View style={styles.bodyContent}>
 

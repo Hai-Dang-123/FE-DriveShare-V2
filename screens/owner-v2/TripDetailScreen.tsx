@@ -259,6 +259,7 @@ const TripDetailScreen: React.FC = () => {
 
   // --- STATE ---
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [trip, setTrip] = useState<TripDetailFullDTOExtended | null>(null);
   const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(
     null
@@ -314,6 +315,23 @@ const TripDetailScreen: React.FC = () => {
   const [issueImage, setIssueImage] = useState<File | string | null>(null);
   const [submittingIssue, setSubmittingIssue] = useState(false);
 
+  // Cache blob URL to prevent recreation on every render (causes network request loop when typing)
+  const issueImageUrl = useMemo(() => {
+    if (!issueImage) return '';
+    if (typeof issueImage === 'string') return issueImage;
+    if (issueImage instanceof File) return URL.createObjectURL(issueImage);
+    return '';
+  }, [issueImage]);
+
+  // Cleanup blob URL to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (issueImageUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(issueImageUrl);
+      }
+    };
+  }, [issueImageUrl]);
+
   // Surcharge/Compensation states for handover issues
   const [showSurchargeModal, setShowSurchargeModal] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<any | null>(null);
@@ -346,6 +364,16 @@ const TripDetailScreen: React.FC = () => {
       if (tripId) fetchTrip(tripId);
     }, [tripId])
   );
+
+  const handleRefresh = async () => {
+    if (refreshing || !tripId) return;
+    setRefreshing(true);
+    try {
+      await fetchTrip(tripId);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const fetchTrip = async (id: string) => {
     setLoading(true);
@@ -1213,9 +1241,22 @@ const TripDetailScreen: React.FC = () => {
           <Text style={styles.headerTitle}>Chi Tiết Chuyến Đi</Text>
           <Text style={styles.headerSubTitle}>{trip.tripCode}</Text>
         </View>
-        <TouchableOpacity onPress={toggleSimulation} style={{ padding: 4 }}>
-          <Text style={{ fontSize: 20 }}>{simulationActive ? "⏸️" : "▶️"}</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity 
+            onPress={handleRefresh} 
+            style={{ padding: 4 }}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color="#2563EB" />
+            ) : (
+              <Ionicons name="refresh" size={22} color="#2563EB" />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={toggleSimulation} style={{ padding: 4 }}>
+            <Text style={{ fontSize: 20 }}>{simulationActive ? "⏸️" : "▶️"}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -1641,9 +1682,9 @@ const TripDetailScreen: React.FC = () => {
         )}
 
         {/* 4. PHƯƠNG TIỆN & TÀI XẾ (Fixed: Nút Gán tài xế đã hiển thị lại) */}
-        <View style={styles.rowContainer}>
+        <View>
           {/* Vehicle Card */}
-          <View style={[styles.card, { flex: 1, marginRight: 6 }]}>
+          <View style={styles.card}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>🚛 Phương tiện</Text>
             </View>
@@ -1668,7 +1709,7 @@ const TripDetailScreen: React.FC = () => {
           </View>
 
           {/* Drivers Card */}
-          <View style={[styles.card, { flex: 1, marginLeft: 6 }]}>
+          <View style={styles.card}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>👮 Tài xế</Text>
               {trip.status !== "AWAITING_OWNER_CONTRACT" && (
@@ -3179,12 +3220,7 @@ const TripDetailScreen: React.FC = () => {
                 {issueImage ? (
                   <View style={styles.issueImagePreview}>
                     <Image
-                      source={{
-                        uri:
-                          issueImage instanceof File
-                            ? URL.createObjectURL(issueImage)
-                            : issueImage,
-                      }}
+                      source={{ uri: issueImageUrl }}
                       style={styles.issueImagePreviewImg}
                     />
                     <TouchableOpacity

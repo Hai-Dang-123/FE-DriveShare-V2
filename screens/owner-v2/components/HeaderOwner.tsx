@@ -16,18 +16,20 @@ import {
   Ionicons,
 } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useNotification } from "@/hooks/useNotification";
+import { useNotificationStore } from "@/stores/notificationStore";
 import { useAuthStore } from "@/stores/authStore";
 
 interface HeaderProps {
   owner: any | null | undefined;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 const { width } = Dimensions.get("window");
 
-const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
+const HeaderOwner: React.FC<HeaderProps> = ({ owner, onRefresh, refreshing = false }) => {
   const router = useRouter();
-  const { unreadCount } = useNotification();
+  const { unreadCount } = useNotificationStore();
   const { logout } = useAuthStore();
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
@@ -86,6 +88,19 @@ const HeaderOwner: React.FC<HeaderProps> = ({ owner }) => {
         <View style={styles.topOverlay}>
           {/* Top Icons */}
           <View style={styles.topIconContainer}>
+            {onRefresh && (
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={onRefresh}
+                disabled={refreshing}
+              >
+                {refreshing ? (
+                  <MaterialCommunityIcons name="loading" size={28} color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="refresh-outline" size={28} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.iconButton}
               onPress={() => router.push("/notifications")}

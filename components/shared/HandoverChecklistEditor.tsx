@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -57,6 +57,31 @@ const HandoverChecklistEditor: React.FC<Props> = ({
   formData.checklistItems.forEach((item, idx) => {
     console.log(`🔧 State Item ${idx}:`, JSON.stringify(item, null, 2));
   });
+
+  // Cache blob URLs to prevent recreation on every render (causes network request loop)
+  const checklistImageUrls = useMemo(() => {
+    return formData.checklistItems.map((item) => {
+      if (item.evidenceImage) {
+        if (typeof item.evidenceImage === 'string') {
+          return item.evidenceImage; // Mobile: URI string
+        } else if (item.evidenceImage instanceof File) {
+          return URL.createObjectURL(item.evidenceImage); // Web: Blob URL
+        }
+      }
+      return item.evidenceImageUrl || ''; // Existing image URL
+    });
+  }, [formData.checklistItems]);
+
+  // Cleanup blob URLs to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      checklistImageUrls.forEach((url) => {
+        if (url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    };
+  }, [checklistImageUrls]);
 
   // Update basic info
   const updateBasicInfo = (field: keyof HandoverChecklistFormData, value: any) => {
@@ -264,14 +289,7 @@ const HandoverChecklistEditor: React.FC<Props> = ({
               {(item.evidenceImage || item.evidenceImageUrl) ? (
                 <View style={styles.imagePreview}>
                   <Image
-                    source={{
-                      uri:
-                        typeof item.evidenceImage === 'string'
-                          ? item.evidenceImage // Mobile: URI string
-                          : item.evidenceImage instanceof File
-                          ? URL.createObjectURL(item.evidenceImage) // Web: File object
-                          : item.evidenceImageUrl || '', // Existing image URL
-                    }}
+                    source={{ uri: checklistImageUrls[index] }}
                     style={styles.evidenceImage}
                   />
                   <TouchableOpacity

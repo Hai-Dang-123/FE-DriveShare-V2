@@ -102,14 +102,14 @@ const geocodeAddress = async (address: string): Promise<{ lat: number; lng: numb
     return null
   }
   
-  if (!vietmapAPIKey) {
+  if (!vietmapServicesKey) {
     console.error('❌ Geocode: Vietmap API key is missing')
     return null
   }
   
   try {
     // Bước 1: Search API - tìm địa điểm
-    const searchUrl = `https://maps.vietmap.vn/api/search/v3?apikey=${vietmapAPIKey}&text=${encodeURIComponent(address)}`
+    const searchUrl = `https://maps.vietmap.vn/api/search/v3?apikey=${vietmapServicesKey}&text=${encodeURIComponent(address)}`
     console.log('🔍 Step 1: Searching for address:', address)
     
     const searchResponse = await fetch(searchUrl)

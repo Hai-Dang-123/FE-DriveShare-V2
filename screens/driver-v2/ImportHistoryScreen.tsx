@@ -113,7 +113,7 @@ const ImportHistoryScreen: React.FC = () => {
       if (response?.isSuccess) {
         if (Platform.OS === 'web') {
           window.alert('Thành công\n\nĐã import lịch sử giờ lái thành công!')
-          router.replace('/driver')
+          router.replace('/(driver)/home')
         } else {
           Alert.alert('Thành công', 'Đã import lịch sử giờ lái thành công!', [
             { text: 'OK', onPress: () => router.replace('/(driver)/home') }
@@ -123,10 +123,10 @@ const ImportHistoryScreen: React.FC = () => {
         const errorMsg = response?.message || 'Không thể import lịch sử'
         if (Platform.OS === 'web') {
           window.alert(`Lỗi\n\n${errorMsg}`)
-          router.replace('/driver')
+          router.replace('/(driver)/home')
         } else {
           Alert.alert('Lỗi', errorMsg, [
-            { text: 'OK', onPress: () => router.replace('/driver') }
+            { text: 'OK', onPress: () => router.replace('/(driver)/home') }
           ])
         }
       }
@@ -135,10 +135,10 @@ const ImportHistoryScreen: React.FC = () => {
       const errorMsg = error?.message || 'Có lỗi xảy ra khi import lịch sử'
       if (Platform.OS === 'web') {
         window.alert(`Lỗi\n\n${errorMsg}`)
-        router.replace('/driver')
+        router.replace('/(driver)/home')
       } else {
         Alert.alert('Lỗi', errorMsg, [
-          { text: 'OK', onPress: () => router.replace('/driver') }
+          { text: 'OK', onPress: () => router.replace('/(driver)/home') }
         ])
       }
     } finally {

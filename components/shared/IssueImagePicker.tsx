@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,27 @@ const IssueImagePicker: React.FC<IssueImagePickerProps> = ({
   onImagesChange,
   maxImages = 5,
 }) => {
+  // Cache blob URLs to prevent recreation on every render (causes network request loop)
+  const imageUrls = useMemo(() => {
+    return images.map((item) => {
+      if (typeof item === 'string') {
+        return item; // URI string (mobile)
+      } else {
+        return URL.createObjectURL(item); // Blob URL (web)
+      }
+    });
+  }, [images]);
+
+  // Cleanup blob URLs to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      imageUrls.forEach((url) => {
+        if (url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    };
+  }, [imageUrls]);
   const pickImage = async () => {
     if (images.length >= maxImages) {
       Alert.alert('Giới hạn', `Chỉ có thể tải tối đa ${maxImages} ảnh`);
@@ -73,21 +94,17 @@ const IssueImagePicker: React.FC<IssueImagePickerProps> = ({
       {/* Image Grid */}
       {images.length > 0 && (
         <View style={styles.imageGrid}>
-          {images.map((item, index) => {
-            // Get URI for display - either from string or File object
-            const uri = typeof item === 'string' ? item : URL.createObjectURL(item);
-            return (
-              <View key={index} style={styles.imageWrapper}>
-                <Image source={{ uri }} style={styles.imagePreview} />
-                <TouchableOpacity
-                  style={styles.removeBtn}
-                  onPress={() => removeImage(index)}
-                >
-                  <Ionicons name="close-circle" size={24} color="#EF4444" />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
+          {imageUrls.map((uri, index) => (
+            <View key={index} style={styles.imageWrapper}>
+              <Image source={{ uri }} style={styles.imagePreview} />
+              <TouchableOpacity
+                style={styles.removeBtn}
+                onPress={() => removeImage(index)}
+              >
+                <Ionicons name="close-circle" size={24} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          ))}
         </View>
       )}
 

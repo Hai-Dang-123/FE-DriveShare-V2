@@ -11,18 +11,20 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useNotification } from "@/hooks/useNotification";
+import { useNotificationStore } from "@/stores/notificationStore";
 import { useAuthStore } from "@/stores/authStore";
 
 interface HeaderProps {
   provider: any | null | undefined;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 const { width } = Dimensions.get("window");
 
-const HeaderProvider: React.FC<HeaderProps> = ({ provider }) => {
+const HeaderProvider: React.FC<HeaderProps> = ({ provider, onRefresh, refreshing = false }) => {
   const router = useRouter();
-  const { unreadCount } = useNotification();
+  const { unreadCount } = useNotificationStore();
   const { logout } = useAuthStore();
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
@@ -73,6 +75,19 @@ const HeaderProvider: React.FC<HeaderProps> = ({ provider }) => {
       >
         <View style={styles.topOverlay}>
           <View style={styles.topIconContainer}>
+            {onRefresh && (
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={onRefresh}
+                disabled={refreshing}
+              >
+                {refreshing ? (
+                  <MaterialCommunityIcons name="loading" size={26} color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="refresh-outline" size={26} color="#FFFFFF" />
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.iconButton}
               onPress={() => router.push("/notifications")}
