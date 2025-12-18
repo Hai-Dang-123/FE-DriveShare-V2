@@ -1,9 +1,20 @@
 // Centralized VietMap configuration for styles and API keys
-// Reads Expo public env var: EXPO_PUBLIC_VIETMAP_API_KEY
+// Two separate keys for different purposes:
+// 1. TILEMAP_KEY: For map tiles rendering (vector/raster tiles)
+// 2. SERVICES_KEY: For routing, geocoding, search, and other API services
 
-export const vietmapAPIKey: string =
-  (typeof process !== 'undefined' && (process as any)?.env?.EXPO_PUBLIC_VIETMAP_API_KEY) || 
-  'd6a44263b00bd2ec885ca6378f374da800df69a83efae44c' // Default VietMap API key
+// Tilemap Key - used for map tile rendering
+export const vietmapTilemapKey: string =
+  (typeof process !== 'undefined' && (process as any)?.env?.EXPO_PUBLIC_VIETMAP_TILEMAP_KEY) || 
+  'c3e53caf753884406eec941d83e209f1ca00c908ca4d404a'
+
+// Services Key - used for routing, geocoding, search APIs
+export const vietmapServicesKey: string =
+  (typeof process !== 'undefined' && (process as any)?.env?.EXPO_PUBLIC_VIETMAP_SERVICES_KEY) || 
+  'bec96ec200a6dd15926c19125a5d297b423fab530540644d'
+
+// Backward compatibility: default to Tilemap Key
+export const vietmapAPIKey: string = vietmapTilemapKey
 
 type VietmapTheme = 'default' | 'light' | 'dark'
 type VietmapStyleType = 'vector' | 'raster'
@@ -31,6 +42,6 @@ export const vietmapStyleUrl = (theme: VietmapTheme = 'light', type: VietmapStyl
   const code = themeToCode(theme)
   const suffix = type === 'vector' ? 'style.json' : 'tiles.json'
   const base = `https://maps.vietmap.vn/maps/styles/${code}/${suffix}`
-  return vietmapAPIKey ? `${base}?apikey=${encodeURIComponent(vietmapAPIKey)}` : base
+  return vietmapTilemapKey ? `${base}?apikey=${encodeURIComponent(vietmapTilemapKey)}` : base
 }
 

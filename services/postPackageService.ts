@@ -1,5 +1,5 @@
 import api from '@/config/api'
-import { vietmapAPIKey } from '@/config/vietmap'
+import { vietmapServicesKey } from '@/config/vietmap'
 
 // --- RESPONSE DTO ---
 interface ResponseDTO<T = any> {
@@ -140,7 +140,7 @@ const geocodeAddress = async (address: string): Promise<{ lat: number; lng: numb
     console.log('   Display:', firstResult.display)
     
     // Bước 2: Place API - lấy tọa độ từ ref_id
-    const placeUrl = `https://maps.vietmap.vn/api/place/v3?apikey=${vietmapAPIKey}&refid=${refId}`
+    const placeUrl = `https://maps.vietmap.vn/api/place/v3?apikey=${vietmapServicesKey}&refid=${refId}`
     console.log('🔍 Step 2: Getting coordinates for ref_id:', refId)
     
     const placeResponse = await fetch(placeUrl)

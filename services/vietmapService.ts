@@ -1,4 +1,4 @@
-import { vietmapAPIKey } from '@/config/vietmap'
+import { vietmapServicesKey } from '@/config/vietmap'
 import type { Position } from 'geojson'
 import { decodePolyline } from '@/utils/polyline'
 
@@ -70,14 +70,14 @@ const closestCoordIndex = (coords: Position[], target: Position): number => {
 const vietmapService = {
   // Plan route: current -> pickup -> delivery using Route API v3
   async planCurrentToTrip(current: Position, pickup: Position, delivery: Position): Promise<RoutePlanResult> {
-    if (!vietmapAPIKey) {
+    if (!vietmapServicesKey) {
       return { coordinates: [current, pickup, delivery], polyline: null }
     }
 
     try {
       // Build URL with 3 waypoints: current position -> pickup -> delivery
       const params = new URLSearchParams({
-        apikey: vietmapAPIKey,
+        apikey: vietmapServicesKey,
         points_encoded: 'true',
         vehicle: 'car'
       })
@@ -291,7 +291,7 @@ const vietmapService = {
    * Returns list of matches with address and coordinates [lon, lat]
    */
   async searchAddress(text: string, focus?: Position): Promise<Array<{ address: string; coordinates: Position }>> {
-    if (!vietmapAPIKey) return []
+    if (!vietmapServicesKey) return []
 
     try {
       const encoded = encodeURIComponent(text)

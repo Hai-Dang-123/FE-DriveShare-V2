@@ -26,7 +26,7 @@ const RealVietMapTest: React.FC = () => {
   const [mapReady, setMapReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const apiKey = process.env.EXPO_PUBLIC_VIETMAP_API_KEY
+  const apiKey = process.env.EXPO_PUBLIC_VIETMAP_TILEMAP_KEY
 
   // Web fallback
   if (Platform.OS === 'web') {

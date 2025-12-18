@@ -26,7 +26,7 @@ const CACHED_REGIONS_KEY = '@cached_regions'
  * Reason: expo-file-system v19+ requires complete API refactor
  */
 class MapTileCacheService {
-  private vietmapApiKey: string = 'd6a44263b00bd2ec885ca6378f374da800df69a83efae44c'
+  private vietmapApiKey: string = 'c3e53caf753884406eec941d83e209f1ca00c908ca4d404a' // Tilemap Key
 
   async initialize() {
     console.warn('[MapTileCacheService] Offline maps disabled')

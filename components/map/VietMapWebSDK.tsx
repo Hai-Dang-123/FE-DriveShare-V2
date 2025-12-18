@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { View, StyleSheet, Platform, ActivityIndicator } from 'react-native'
 import { decodePolyline } from '@/utils/polyline'
+import { vietmapAPIKey, vietmapStyleUrl } from '@/config/vietmap'
 
 interface VietMapWebSDKProps {
   style?: any
@@ -57,13 +58,12 @@ const VietMapWebSDK: React.FC<VietMapWebSDKProps> = ({
 
         if (!containerRef.current || !isMounted.current) return
 
-        const apiKey = process.env.EXPO_PUBLIC_VIETMAP_API_KEY || ''
         const vietmapgl = (window as any).vietmapgl
         
-        // Khởi tạo Map
+        // Khởi tạo Map với API key từ config
         const map = new vietmapgl.Map({
           container: containerRef.current,
-          style: `https://maps.vietmap.vn/maps/styles/tm/style.json?apikey=${apiKey}`,
+          style: vietmapStyleUrl('light', 'vector'),
           center: [106.8019, 10.8412], // Default Center (HCM)
           zoom: 12,
           pitch: 0,

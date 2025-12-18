@@ -62,7 +62,7 @@ const VietMapWebSDK: React.FC<VietMapWebSDKProps> = ({
           return
         }
 
-        const apiKey = process.env.EXPO_PUBLIC_VIETMAP_API_KEY
+        const apiKey = process.env.EXPO_PUBLIC_VIETMAP_TILEMAP_KEY || 'c3e53caf753884406eec941d83e209f1ca00c908ca4d404a'
         if (!apiKey) {
           setError('API Key not found')
           return

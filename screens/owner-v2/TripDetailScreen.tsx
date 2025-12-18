@@ -48,7 +48,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { decodePolyline, toGeoJSONLineFeature } from "@/utils/polyline";
 
 // --- CUSTOM COMPONENTS ---
-import VietMapWebSDK from "../../components/map/VietMapWebSDK";
+import VietMapUniversal from "@/components/map/VietMapUniversal";
 import { AnimatedRouteProgress } from "@/components/map/AnimatedRouteProgress";
 import DriverAssignModal from "./components/DriverAssignModal";
 import CreatePostTripModal from "./components/CreatePostTripModal";
@@ -1289,21 +1289,22 @@ const TripDetailScreen: React.FC = () => {
               <View style={styles.routeTextRow}>
                 <View style={[styles.dot, { backgroundColor: "#3B82F6" }]} />
                 <Text style={styles.routeAddress} numberOfLines={1}>
-                  {trip.shippingRoute?.startAddress?.split(",")[0]}
+                  {trip.shippingRoute?.startAddress?.split(",")[0] || "N/A"}
                 </Text>
                 <Text style={styles.arrow}>→</Text>
                 <View style={[styles.dot, { backgroundColor: "#EF4444" }]} />
                 <Text style={styles.routeAddress} numberOfLines={1}>
-                  {trip.shippingRoute?.endAddress?.split(",")[0]}
+                  {trip.shippingRoute?.endAddress?.split(",")[0] || "N/A"}
                 </Text>
               </View>
             </View>
             <StatusBadge status={trip.status} />
           </View>
           <View style={styles.mapContainer}>
-            <VietMapWebSDK
-              routeData={trip.tripRoute?.routeData}
-              showOverviewMarkers={true}
+            <VietMapUniversal
+              coordinates={routeCoords || []}
+              showUserLocation={false}
+              style={{ height: 450 }}
             />
             {simulationActive && routeFeature && (
               <View style={StyleSheet.absoluteFill} pointerEvents="none">

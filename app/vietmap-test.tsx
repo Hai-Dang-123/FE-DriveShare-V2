@@ -16,19 +16,20 @@ export default function VietMapTestScreen() {
 
   useEffect(() => {
     const checkVietMapAPI = async () => {
-      const apiKey = process.env.EXPO_PUBLIC_VIETMAP_API_KEY
+      const tilemapKey = process.env.EXPO_PUBLIC_VIETMAP_TILEMAP_KEY
+      const servicesKey = process.env.EXPO_PUBLIC_VIETMAP_SERVICES_KEY
       
-      if (!apiKey) {
-        setApiStatus('❌ API Key not found')
-        setStatus('Missing VietMap API key')
+      if (!tilemapKey || !servicesKey) {
+        setApiStatus('❌ API Keys not found')
+        setStatus('Missing VietMap API keys')
         return
       }
 
-      setApiStatus('✅ API Key loaded')
+      setApiStatus('✅ Both keys loaded (Tilemap + Services)')
       
       try {
-        // Test official URLs from VietMap README
-        const lightStyleUrl = `https://maps.vietmap.vn/api/maps/light/styles.json?apikey=${apiKey}`
+        // Test tilemap with Tilemap Key
+        const lightStyleUrl = `https://maps.vietmap.vn/maps/styles/tm/style.json?apikey=${tilemapKey}`
         
         const response = await fetch(lightStyleUrl)
         if (response.ok) {

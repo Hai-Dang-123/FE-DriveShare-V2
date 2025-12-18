@@ -1,4 +1,4 @@
-import { vietmapAPIKey } from '@/vietmap_config'
+import { vietmapServicesKey } from '@/vietmap_config'
 
 type AutocompleteParams = {
   text: string

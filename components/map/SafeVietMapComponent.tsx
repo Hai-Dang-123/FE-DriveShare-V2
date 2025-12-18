@@ -349,8 +349,8 @@ const SafeVietMapComponent = forwardRef<SafeVietMapRef, SafeVietMapProps>(({
   const cameraRef = useRef<any>(null)
 
   // Config
-  const apiKey = process.env.EXPO_PUBLIC_VIETMAP_API_KEY || ''
-  const mapStyleUrl = `https://maps.vietmap.vn/api/maps/light/styles.json?apikey=${apiKey}`
+  const apiKey = process.env.EXPO_PUBLIC_VIETMAP_TILEMAP_KEY || 'c3e53caf753884406eec941d83e209f1ca00c908ca4d404a'
+  const mapStyleUrl = `https://maps.vietmap.vn/maps/styles/tm/style.json?apikey=${apiKey}`
   const defaultCenter: [number, number] = [106.800106, 10.704619]
   const centerCoordinate = externalLocation || (coordinates.length > 0 ? coordinates[0] : defaultCenter)
 

@@ -122,7 +122,7 @@ const NativeRouteMap: React.FC<NativeRouteMapProps> = ({
   useEffect(() => {
     if (!VietmapGL) return
     // Initialize VietMap GL
-    VietmapGL.setAccessToken?.(process.env.EXPO_PUBLIC_VIETMAP_API_KEY || '')
+    VietmapGL.setAccessToken?.(process.env.EXPO_PUBLIC_VIETMAP_TILEMAP_KEY || 'c3e53caf753884406eec941d83e209f1ca00c908ca4d404a')
   }, [])
 
   if (!feature || !bounds) {
@@ -137,7 +137,7 @@ const NativeRouteMap: React.FC<NativeRouteMapProps> = ({
     <View style={[styles.container, style]}>
 <VietmapGL.MapView
         style={styles.map}
-        styleURL={styleURL || `https://maps.vietmap.vn/api/maps/light/styles.json?apikey=${process.env.EXPO_PUBLIC_VIETMAP_API_KEY}`}
+        styleURL={styleURL || `https://maps.vietmap.vn/api/maps/light/styles.json?apikey=${process.env.EXPO_PUBLIC_VIETMAP_TILEMAP_KEY}`}
         logoEnabled={true}
         compassEnabled
         rotateEnabled

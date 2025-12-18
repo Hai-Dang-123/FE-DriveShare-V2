@@ -91,15 +91,15 @@ export const VietMapWebWrapper: React.FC<VietMapWebWrapperProps> = ({
     if (!mapContainerRef.current || !window.vietmapgl || mapRef.current) return
     
     try {
-      const apiKey = process.env.EXPO_PUBLIC_VIETMAP_API_KEY || ''
+      const apiKey = process.env.EXPO_PUBLIC_VIETMAP_TILEMAP_KEY || 'c3e53caf753884406eec941d83e209f1ca00c908ca4d404a'
       
       if (!apiKey) {
-        setLoadError('Thiếu API Key trong .env')
+        setLoadError('Thiếu Tilemap Key trong .env')
         return
       }
 
       // URL Style chuẩn (Raster) - Loại này ít lỗi nhất trên web
-      const styleUrl = `https://maps.vietmap.vn/api/maps/light/styles.json?apikey=${apiKey}`
+      const styleUrl = `https://maps.vietmap.vn/maps/styles/tm/style.json?apikey=${apiKey}`
       
       const center = coordinates.length > 0 ? coordinates[0] : [106.800106, 10.704619]
 
