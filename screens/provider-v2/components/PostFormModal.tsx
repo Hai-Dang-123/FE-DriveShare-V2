@@ -590,6 +590,15 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
       const startLoc = await postPackageService.ensureLocationCoordinates({ address: form.startLocation, latitude: null, longitude: null })
       const endLoc = await postPackageService.ensureLocationCoordinates({ address: form.endLocation, latitude: null, longitude: null })
 
+      // Helper: Format time to HH:mm:ss for .NET TimeOnly
+      const formatTimeOnly = (time: string | null): string | null => {
+        if (!time) return null
+        // If already has seconds, return as-is
+        if (time.split(':').length === 3) return time
+        // Add :00 seconds
+        return `${time}:00`
+      }
+
       const createDto: any = {
         title: form.title,
         description: form.description,
@@ -599,10 +608,10 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
           endLocation: endLoc,
           expectedPickupDate: toISOStringWithZ(form.pickupDate),
           expectedDeliveryDate: toISOStringWithZ(form.deliveryDate),
-          startTimeToPickup: form.startTimeToPickup || null,
-          endTimeToPickup: form.endTimeToPickup || null,
-          startTimeToDelivery: form.startTimeToDelivery || null,
-          endTimeToDelivery: form.endTimeToDelivery || null
+          startTimeToPickup: formatTimeOnly(form.startTimeToPickup),
+          endTimeToPickup: formatTimeOnly(form.endTimeToPickup),
+          startTimeToDelivery: formatTimeOnly(form.startTimeToDelivery),
+          endTimeToDelivery: formatTimeOnly(form.endTimeToDelivery)
         },
         senderContact: { 
             fullName: form.senderName, 

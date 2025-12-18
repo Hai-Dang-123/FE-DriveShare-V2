@@ -1,7 +1,8 @@
 
 
 import React, { useEffect, useState, useRef } from 'react'
-import { View, StyleSheet, ScrollView, StatusBar, Text, RefreshControl, AppState } from 'react-native'
+import { View, StyleSheet, ScrollView, StatusBar, Text, RefreshControl } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotification } from '@/hooks/useNotification'
@@ -118,20 +119,20 @@ const DriverHomeScreen: React.FC = () => {
 
   useEffect(() => {
     mountedRef.current = true
-    loadProfileAndData()
-    
-    // Reload data when app comes to foreground or screen becomes active
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active' && mountedRef.current) {
-        loadProfileAndData()
-      }
-    })
-    
     return () => { 
       mountedRef.current = false
-      subscription?.remove()
     }
   }, [])
+
+  // Load data only when screen is focused (visible)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (mountedRef.current) {
+        loadProfileAndData()
+      }
+      return () => {}
+    }, [])
+  )
 
   const onRefresh = async () => {
     try {

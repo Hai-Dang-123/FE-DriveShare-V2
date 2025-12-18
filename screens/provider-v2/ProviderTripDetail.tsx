@@ -8,6 +8,7 @@ import {
 import tripService from '@/services/tripService'
 import { TripDetailFullDTOExtended, Role } from '@/models/types'
 import { useAuth } from '@/hooks/useAuth'
+import { useSignalRLocation } from '@/hooks/useSignalRLocation'
 import { useRouter } from 'expo-router'
 import { Ionicons, MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons'
 import NativeRouteMap from '@/components/map/NativeRouteMap'
@@ -111,6 +112,25 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
   const [trip, setTrip] = useState<TripDetailFullDTOExtended | null>(null)
   const [signing, setSigning] = useState(false)
   const [showContractModal, setShowContractModal] = useState(false)
+
+  // ========== REAL-TIME TRACKING ==========
+  const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number; bearing: number } | null>(null)
+  const { location, connected, error: signalRError } = useSignalRLocation({
+    tripId: tripId,
+    enabled: trip?.status === 'IN_PROGRESS' || trip?.status === 'VEHICLE_HANDOVERED',
+  })
+
+  // Update driver location when received from SignalR
+  useEffect(() => {
+    if (location) {
+      console.log('[Provider] Driver location received:', location)
+      setDriverLocation({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        bearing: location.bearing,
+      })
+    }
+  }, [location])
 
   useEffect(() => { if (tripId) fetchTrip(tripId) }, [tripId])
 
@@ -478,6 +498,28 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#E5E7EB' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
   backBtn: { padding: 4 },
+  signalRBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  signalRDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+  },
+  signalRText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065F46',
+  },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorText: { color: COLORS.danger },
   scrollContent: { paddingBottom: 120 },

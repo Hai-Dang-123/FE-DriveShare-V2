@@ -8,6 +8,8 @@ import { Ionicons, MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/v
 import tripService from '@/services/tripService'
 import { TripDetailFullDTOExtended, Role } from '@/models/types'
 import { useAuth } from '@/hooks/useAuth'
+import { ContractDocument } from '@/components/documents/ContractDocument'
+import VietMapUniversal from '@/components/map/VietMapUniversal'
 
 interface Props {
   visible: boolean;
@@ -95,61 +97,7 @@ const ProviderTripDetailModal: React.FC<Props> = ({ visible, tripId, onClose }) 
     Alert.alert('Thông báo', 'Chuyển hướng đến màn hình thanh toán QR...')
   }
 
-  // --- RENDERERS ---
-
-  // 1. Card Hợp Đồng (Design kiểu văn bản cũ nhưng đẹp hơn)
-  const renderContractCard = () => {
-    if (!providerContract?.contractId) return <Text style={styles.emptyText}>Chưa có hợp đồng.</Text>
-    
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="document-text" size={20} color={COLORS.text} />
-          <Text style={styles.cardTitle}>Hợp Đồng Vận Chuyển</Text>
-        </View>
-        
-        <View style={styles.contractContainer}>
-          <Text style={styles.contractValue}>{providerContract.contractValue?.toLocaleString()} VND</Text>
-          <Text style={styles.contractCode}>Mã HĐ: {providerContract.contractCode}</Text>
-          
-          <View style={[styles.statusTag, bothSigned ? styles.bgSuccess : styles.bgWarning]}>
-            <Text style={[styles.statusTagText, bothSigned ? {color: '#fff'} : {color: '#78350F'}]}>
-              {bothSigned ? '✔ HOÀN TẤT (Đã ký)' : '⚠ ĐANG CHỜ KÝ'}
-            </Text>
-          </View>
-
-          {/* Timeline ký kết */}
-          <View style={styles.signTimeline}>
-            <View style={styles.signNode}>
-              <Text style={styles.signLabel}>Chủ xe ký</Text>
-              <Ionicons name={ownerSigned ? "checkmark-circle" : "ellipse-outline"} size={20} color={ownerSigned ? COLORS.success : COLORS.textLight} />
-            </View>
-            <View style={styles.signLine} />
-            <View style={styles.signNode}>
-              <Text style={styles.signLabel}>Đối tác ký</Text>
-              <Ionicons name={providerSigned ? "checkmark-circle" : "ellipse-outline"} size={20} color={providerSigned ? COLORS.success : COLORS.textLight} />
-            </View>
-          </View>
-
-          {/* Nút hành động */}
-          <View style={styles.contractActions}>
-            {canSign && (
-              <TouchableOpacity 
-                style={[styles.actionBtn, styles.btnPrimary]} 
-                onPress={handleSign} 
-                disabled={signing}
-              >
-                {signing ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTextWhite}>{signBtnLabel}</Text>}
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={[styles.actionBtn, styles.btnOutline]} onPress={goToPayment}>
-              <Text style={styles.btnTextDark}>Thanh toán</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    )
-  }
+  // --- RENDERERS (Removed renderContractCard - now using ContractDocument component) ---
 
   const renderContent = () => {
     if (loading) return <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
@@ -161,10 +109,17 @@ const ProviderTripDetailModal: React.FC<Props> = ({ visible, tripId, onClose }) 
         
         {/* --- SECTION 1: MAP & ROUTE --- */}
         <View style={styles.mapSection}>
-          {/* Map Placeholder (Hình nền bản đồ) */}
+          {/* Real Map with VietMapUniversal */}
           <View style={styles.mapPlaceholder}>
-            {/* Thay thế bằng Image bản đồ thật nếu có */}
-            <MaterialCommunityIcons name="map" size={64} color="#CBD5E1" /> 
+            <VietMapUniversal
+              coordinates={
+                trip.tripRoute?.routeData 
+                  ? JSON.parse(trip.tripRoute.routeData).geometry?.coordinates || [[106.660172, 10.762622]]
+                  : [[106.660172, 10.762622], [106.670172, 10.772622]]
+              }
+              style={{ height: 200, width: '100%' }}
+              showUserLocation={false}
+            />
           </View>
           
           {/* Floating Route Card */}
@@ -217,12 +172,18 @@ const ProviderTripDetailModal: React.FC<Props> = ({ visible, tripId, onClose }) 
               <Text style={styles.statValue}>{(trip.packages || []).reduce((acc, p) => acc + (p.volume || 0), 0)} m³</Text>
             </View>
           </View>
-          {(trip.packages || []).map((p, i) => (
-            <View key={i} style={styles.pkgRow}>
-              {/* <Text style={styles.pkgName}>• {p.}</Text> */}
-              <Text style={styles.pkgCode}>{p.packageCode}</Text>
-            </View>
-          ))}
+          {/* Single row card for each package */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+            {(trip.packages || []).map((p, i) => (
+              <View key={i} style={styles.packageCard}>
+                <MaterialCommunityIcons name="cube" size={24} color={COLORS.primary} />
+                <View style={{ marginLeft: 8, flex: 1 }}>
+                  <Text style={styles.packageCode}>{p.packageCode}</Text>
+                  <Text style={styles.packageDetail}>{p.weight}kg • {p.volume}m³</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
         </View>
 
         {/* --- SECTION 3: TRANSPORT TEAM --- */}
@@ -232,12 +193,12 @@ const ProviderTripDetailModal: React.FC<Props> = ({ visible, tripId, onClose }) 
             <Text style={styles.cardTitle}>Đội Ngũ Vận Chuyển</Text>
           </View>
           
-          {/* Vehicle Info */}
-          <View style={styles.vehicleInfo}>
-            <View style={styles.vehicleImagePlaceholder}>
-               <MaterialCommunityIcons name="truck" size={40} color="#9CA3AF" />
+          {/* Vehicle Info - Single Row Card */}
+          <View style={styles.vehicleCard}>
+            <View style={styles.vehicleIconContainer}>
+               <MaterialCommunityIcons name="truck" size={32} color={COLORS.primary} />
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.vehiclePlate}>{trip.vehicle?.plateNumber || 'Chưa gán xe'}</Text>
               <Text style={styles.vehicleType}>{trip.vehicle?.vehicleTypeName}</Text>
             </View>
@@ -315,7 +276,33 @@ const ProviderTripDetailModal: React.FC<Props> = ({ visible, tripId, onClose }) 
         </View>
 
         {/* --- SECTION 5: CONTRACT --- */}
-        {renderContractCard()}
+        {providerContract?.contractId ? (
+          <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
+            <ContractDocument
+              contractCode={providerContract.contractCode || 'N/A'}
+              contractType="PROVIDER_CONTRACT"
+              contractValue={providerContract.contractValue || 0}
+              currency="VND"
+              effectiveDate={providerContract.effectiveDate || new Date().toISOString()}
+              terms={providerContract.terms || []}
+              ownerName={trip.owner?.fullName || 'Chủ xe'}
+              ownerCompany={trip.owner?.companyName}
+              counterpartyName={'Đối tác vận chuyển'}
+              ownerSigned={providerContract.ownerSigned || false}
+              ownerSignAt={providerContract.ownerSignAt || null}
+              counterpartySigned={providerContract.counterpartySigned || false}
+              counterpartySignAt={providerContract.counterpartySignAt || null}
+              tripCode={trip.tripCode}
+              vehiclePlate={trip.vehicle?.plateNumber}
+              startAddress={trip.shippingRoute?.startAddress}
+              endAddress={trip.shippingRoute?.endAddress}
+            />
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.emptyText}>Chưa có hợp đồng.</Text>
+          </View>
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -393,13 +380,39 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
   statBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', padding: 8, borderRadius: 8, gap: 6 },
   statValue: { fontWeight: '600', fontSize: 14, color: COLORS.text },
-  pkgRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  pkgName: { fontSize: 14, color: COLORS.text },
-  pkgCode: { fontSize: 12, color: COLORS.textLight },
+  packageCard: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#EFF6FF', 
+    padding: 12, 
+    borderRadius: 12, 
+    marginRight: 8,
+    minWidth: 180,
+    borderWidth: 1,
+    borderColor: '#BFDBFE'
+  },
+  packageCode: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  packageDetail: { fontSize: 11, color: COLORS.textLight, marginTop: 2 },
 
   // --- TEAM INFO ---
-  vehicleInfo: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderColor: '#F3F4F6' },
-  vehicleImagePlaceholder: { width: 80, height: 60, backgroundColor: '#E5E7EB', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  vehicleCard: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#F0F9FF', 
+    padding: 12, 
+    borderRadius: 12, 
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#BFDBFE'
+  },
+  vehicleIconContainer: { 
+    width: 56, 
+    height: 56, 
+    backgroundColor: '#DBEAFE', 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
   vehiclePlate: { fontSize: 16, fontWeight: '700', color: COLORS.blue, backgroundColor: '#EFF6FF', alignSelf: 'flex-start', paddingHorizontal: 6, borderRadius: 4, marginBottom: 4 },
   vehicleType: { fontSize: 13, color: COLORS.textLight },
   driverList: { gap: 12 },

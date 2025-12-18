@@ -43,6 +43,7 @@ import tripSurchargeService, {
 } from "@/services/tripSurchargeService";
 import { TripDetailFullDTOExtended } from "@/models/types";
 import { useAuth } from "@/hooks/useAuth";
+import { useSignalRLocation } from "@/hooks/useSignalRLocation";
 
 // --- UTILS ---
 import { decodePolyline, toGeoJSONLineFeature } from "@/utils/polyline";
@@ -337,6 +338,21 @@ const TripDetailScreen: React.FC = () => {
   const [selectedIssue, setSelectedIssue] = useState<any | null>(null);
   const [surchargeAmount, setSurchargeAmount] = useState("");
   const [surchargeDescription, setSurchargeDescription] = useState("");
+
+  // SignalR real-time tracking
+  const [driverLocation, setDriverLocation] = useState<{latitude: number; longitude: number; bearing?: number} | null>(null);
+  const { location, connected, error } = useSignalRLocation({
+    tripId,
+    enabled: trip?.status === 'IN_PROGRESS' || trip?.status === 'VEHICLE_HANDOVERED',
+  });
+
+  // Update driver location when received
+  useEffect(() => {
+    if (location) {
+      console.log('[Owner] Driver location received:', location);
+      setDriverLocation({ latitude: location.latitude, longitude: location.longitude, bearing: location.bearing });
+    }
+  }, [location]);
   const [submittingSurcharge, setSubmittingSurcharge] = useState(false);
 
   // OTP
@@ -1242,6 +1258,12 @@ const TripDetailScreen: React.FC = () => {
           <Text style={styles.headerSubTitle}>{trip.tripCode}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {connected && (
+            <View style={styles.signalRBadge}>
+              <View style={styles.signalRDot} />
+              <Text style={styles.signalRText}>Live</Text>
+            </View>
+          )}
           <TouchableOpacity 
             onPress={handleRefresh} 
             style={{ padding: 4 }}
@@ -3434,6 +3456,28 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     textAlign: "center",
     fontWeight: "600",
+  },
+  signalRBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  signalRDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+  },
+  signalRText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065F46',
   },
 
   // Stepper

@@ -199,13 +199,13 @@ const vietmapService = {
    * Plan route between two arbitrary points (start -> end)
    */
   async planBetweenPoints(start: Position, end: Position, vehicle = 'car'): Promise<RoutePlanResult> {
-    if (!vietmapAPIKey) {
+    if (!vietmapServicesKey) {
       return { coordinates: [start, end], polyline: null }
     }
 
     try {
       const params = new URLSearchParams({
-        apikey: vietmapAPIKey,
+        apikey: vietmapServicesKey,
         points_encoded: 'true',
         vehicle
       })
@@ -295,7 +295,7 @@ const vietmapService = {
 
     try {
       const encoded = encodeURIComponent(text)
-      let url = `https://maps.vietmap.vn/api/search?apikey=${vietmapAPIKey}&text=${encoded}`
+      let url = `https://maps.vietmap.vn/api/search?apikey=${vietmapServicesKey}&text=${encoded}`
       if (focus && focus.length === 2) {
         // focus expects lat,lon
         url += `&focus=${focus[1]},${focus[0]}`

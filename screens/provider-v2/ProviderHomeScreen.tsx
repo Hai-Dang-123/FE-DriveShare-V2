@@ -6,9 +6,9 @@ import {
   ScrollView,
   StyleSheet,
   StatusBar,
-  RefreshControl,
-  AppState
+  RefreshControl
 } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
 import { Provider } from '@/models/types'
 import { useAuthStore } from '@/stores/authStore'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -68,20 +68,13 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
     }
   }
 
-  useEffect(() => {
-    loadData()
-    
-    // Reload data when app comes to foreground or screen becomes active
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active') {
-        loadData()
-      }
-    })
-    
-    return () => {
-      subscription?.remove()
-    }
-  }, [])
+  // Load data only when screen is focused (visible)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData()
+      return () => {}
+    }, [])
+  )
 
   const onRefresh = async () => {
     setRefreshing(true)

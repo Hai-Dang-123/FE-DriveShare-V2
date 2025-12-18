@@ -39,6 +39,8 @@ import tripDeliveryIssueService, { DeliveryIssueType } from "@/services/tripDeli
 import assignmentService from "@/services/assignmentService";
 import { useAuth } from "@/hooks/useAuth";
 import * as ImagePicker from 'expo-image-picker';
+import { SimpleRouteSimulator, SimulatorLocation } from "@/utils/SimpleRouteSimulator";
+import { signalRTrackingService } from "@/services/signalRTrackingService";
 
 // Document Components
 import { ContractDocument } from "@/components/documents/ContractDocument";
@@ -632,7 +634,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
       setCanConfirmPickup(true);
       setJourneyPhase("TO_PICKUP");
       setStartModalOpen(false);
-      startLocationWatcher();
+      
+      // ========== START TRACKING: CHOOSE MODE ==========
+      if (trackingMode === 'simulation') {
+        // Simulation Mode: Use RouteSimulator
+        await startSimulation();
+      } else {
+        // Real Mode: Use GPS
+        startLocationWatcher();
+      }
+      
       try {
         Speech.speak("Bắt đầu dẫn đường đến điểm lấy hàng", {
           language: "vi-VN",
@@ -776,7 +787,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
       setCanConfirmDelivery(true);
       setJourneyPhase("TO_DELIVERY");
       setStartModalOpen(false);
-      startLocationWatcher();
+      
+      // ========== START TRACKING: CHOOSE MODE ==========
+      if (trackingMode === 'simulation') {
+        // Simulation Mode: Use RouteSimulator
+        await startSimulation();
+      } else {
+        // Real Mode: Use GPS
+        startLocationWatcher();
+      }
+      
       try {
         Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
           language: "vi-VN",
@@ -898,7 +918,15 @@ const DriverTripDetailScreenV2: React.FC = () => {
           setNavHidden(false);
           setJourneyPhase("TO_DELIVERY"); // Reuse delivery phase for return journey
           setStartModalOpen(false);
-          startLocationWatcher();
+          
+          // ========== START TRACKING: CHOOSE MODE ==========
+          if (trackingMode === 'simulation') {
+            // Simulation Mode: Use RouteSimulator
+            await startSimulation();
+          } else {
+            // Real Mode: Use GPS
+            startLocationWatcher();
+          }
           
           try {
             Speech.speak("Bắt đầu dẫn đường đến điểm trả xe", {
@@ -1229,6 +1257,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [navHidden, setNavHidden] = useState(false);
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [startingNav, setStartingNav] = useState(false);
+  
+  // ========== TRACKING MODE STATES ==========
+  // Toggle: 'simulation' | 'real'
+  const [trackingMode, setTrackingMode] = useState<'simulation' | 'real'>('simulation');
+  const [isSimulationRunning, setIsSimulationRunning] = useState(false);
+  const [simulatorIndex, setSimulatorIndex] = useState(0);
+  const simulatorRef = useRef<SimpleRouteSimulator | null>(null);
+  const [signalRConnected, setSignalRConnected] = useState(false);
 
   // Delivery Record Modal State
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
@@ -1420,6 +1456,45 @@ const DriverTripDetailScreenV2: React.FC = () => {
       };
     }
   }, [trip, tripId]);
+
+  // ========== SIGNALR CONNECTION LIFECYCLE ==========
+  // Initialize SignalR for BOTH SIM and GPS modes so Owner/Provider can track in real-time
+  useEffect(() => {
+    if (!tripId) return;
+
+    const initSignalR = async () => {
+      try {
+        const baseURL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.100.49:5246/';
+        await signalRTrackingService.init({
+          baseURL,
+          onConnectionChange: (connected) => {
+            console.log(`[SignalR:${trackingMode.toUpperCase()}] Connection status:`, connected);
+            setSignalRConnected(connected);
+          },
+          onError: (error) => {
+            console.error(`[SignalR:${trackingMode.toUpperCase()}] Error:`, error);
+          },
+        });
+        
+        // Join trip group
+        await signalRTrackingService.joinTripGroup(tripId);
+        console.log(`[SignalR:${trackingMode.toUpperCase()}] Joined trip group:`, tripId);
+      } catch (error) {
+        console.error(`[SignalR:${trackingMode.toUpperCase()}] Init failed:`, error);
+      }
+    };
+
+    initSignalR();
+
+    // Cleanup on unmount
+    return () => {
+      if (tripId) {
+        signalRTrackingService.leaveTripGroup(tripId);
+        signalRTrackingService.disconnect();
+        console.log(`[SignalR:${trackingMode.toUpperCase()}] Cleanup - left trip group`);
+      }
+    };
+  }, [tripId, trackingMode]);
 
   const loadEligibilityAndSession = async () => {
     try {
@@ -1704,6 +1779,93 @@ const DriverTripDetailScreenV2: React.FC = () => {
     }
   };
 
+  // ========== LOCATION TRACKING HELPER ==========
+  /**
+   * Unified location sender - Works for both Simulation and Real modes
+   * Sends location updates to SignalR so Owner/Provider can track in real-time
+   */
+  const sendLocationToServer = async (lat: number, lng: number, bearing: number, speed: number) => {
+    if (!tripId) return;
+
+    // Update UI immediately
+    setCurrentPos([lng, lat]);
+    setCurrentHeading(bearing);
+    setCurrentSpeed(speed);
+
+    // Send to SignalR if connected (works for both SIM and GPS modes)
+    if (signalRConnected) {
+      try {
+        await signalRTrackingService.sendLocationUpdate(tripId, lat, lng, bearing, speed);
+        console.log(`[Tracking:${trackingMode.toUpperCase()}] Sent: ${lat.toFixed(6)}, ${lng.toFixed(6)}, ${speed.toFixed(1)} km/h`);
+      } catch (error) {
+        console.error(`[Tracking:${trackingMode.toUpperCase()}] Failed:`, error);
+      }
+    } else {
+      console.warn(`[Tracking:${trackingMode.toUpperCase()}] SignalR not connected, location not sent`);
+    }
+  };
+
+  // ========== SIMULATION MODE FUNCTIONS ==========
+  const startSimulation = async () => {
+    if (!routeCoords || routeCoords.length === 0) {
+      showAlertCrossPlatform('Lỗi', 'Không có tuyến đường để giả lập');
+      return;
+    }
+
+    if (isSimulationRunning) {
+      console.warn('[Simulation] Already running');
+      return;
+    }
+
+    try {
+      // Initialize simulator
+      simulatorRef.current = new SimpleRouteSimulator({
+        route: routeCoords,
+        speedKmH: 40, // 40 km/h
+        updateIntervalMs: 3000, // 3 seconds
+        onUpdate: (location: SimulatorLocation) => {
+          sendLocationToServer(
+            location.latitude,
+            location.longitude,
+            location.heading,
+            location.speed
+          );
+        },
+        onComplete: () => {
+          console.log('[Simulation] Completed');
+          setIsSimulationRunning(false);
+          showAlertCrossPlatform('Hoàn thành', 'Đã đến đích giả lập');
+        },
+      });
+
+      // Start from saved index or 0
+      simulatorRef.current.start(simulatorIndex);
+      setIsSimulationRunning(true);
+      console.log('[Simulation] Started from index', simulatorIndex);
+    } catch (error: any) {
+      console.error('[Simulation] Start failed:', error);
+      showAlertCrossPlatform('Lỗi', error?.message || 'Không thể bắt đầu giả lập');
+    }
+  };
+
+  const pauseSimulation = () => {
+    if (simulatorRef.current && isSimulationRunning) {
+      const currentIdx = simulatorRef.current.pause();
+      setSimulatorIndex(currentIdx);
+      setIsSimulationRunning(false);
+      console.log('[Simulation] Paused at index', currentIdx);
+    }
+  };
+
+  const stopSimulation = () => {
+    if (simulatorRef.current) {
+      simulatorRef.current.stop();
+      setIsSimulationRunning(false);
+      setSimulatorIndex(0);
+      console.log('[Simulation] Stopped');
+    }
+  };
+
   // --- Navigation Logic ---
   const startNavigation = async () => {
     if (startingNav || !trip) return;
@@ -1854,7 +2016,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
         setJourneyPhase("TO_PICKUP");
       }
       setStartModalOpen(false);
-      startLocationWatcher();
+      
+      // ========== START TRACKING: CHOOSE MODE ==========
+      if (trackingMode === 'simulation') {
+        // Simulation Mode: Use RouteSimulator
+        await startSimulation();
+      } else {
+        // Real Mode: Use GPS
+        startLocationWatcher();
+      }
+      
       try {
         if (visibleRoute === "toDelivery")
           Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
@@ -2003,8 +2174,17 @@ const DriverTripDetailScreenV2: React.FC = () => {
       },
       (loc: any) => {
         const pos: Position = [loc.coords.longitude, loc.coords.latitude];
+        const latitude = loc.coords.latitude;
+        const longitude = loc.coords.longitude;
+        const bearing = loc.coords.heading ?? 0;
+        const speed = loc.coords.speed ?? 0;
+        
+        // Update UI
         setCurrentPos(pos);
         if (loc.coords.heading) setCurrentHeading(loc.coords.heading);
+
+        // Send location to server (Real mode)
+        sendLocationToServer(latitude, longitude, bearing, speed);
 
         // Calculate progress
         if (routeCoords.length) {
@@ -2015,7 +2195,6 @@ const DriverTripDetailScreenV2: React.FC = () => {
           setRemaining(rem);
           setEta(calculateArrivalTime(rem));
 
-          const speed = loc.coords.speed ?? previousSpeedRef.current ?? 0;
           const smooth = smoothSpeed(speed, previousSpeedRef.current);
           previousSpeedRef.current = speed;
           setCurrentSpeed(smooth);
@@ -2035,6 +2214,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
   };
 
   const stopNavigation = async () => {
+    // Stop Real GPS
     if (watchSubRef.current) {
       try {
         const s: any = watchSubRef.current;
@@ -2042,6 +2222,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       } catch (e) { }
       watchSubRef.current = null;
     }
+    
+    // Stop Simulation
+    stopSimulation();
+    
     setNavActive(false);
     setNavMinimized(false);
     setNavHidden(false);
@@ -3046,29 +3230,37 @@ const DriverTripDetailScreenV2: React.FC = () => {
     }
   }, [approachingContinuousLimit, approachAlertShown]);
   
-  // Check-in flow logic
+  // ===== CHECK-IN FLOW LOGIC =====
+  // Phân biệt tài xế có hợp đồng (external) vs tài xế nội bộ (internal/no contract)
+  const hasDriverOwnerContract = myDriverContract !== null;
   const hasSignedContract = myDriverContract?.counterpartySigned === true;
   
-  // QUAN TRỌNG: Nếu không có hợp đồng giữa driver và owner (myDriverContract === null)
-  // thì bỏ qua bước 1 (ký hợp đồng) và chuyển thẳng sang bước 2 (check-in)
-  const hasDriverOwnerContract = myDriverContract !== null;
+  // LOGIC FLOW:
+  // 1. TÀI XẾ CÓ HỢP ĐỒNG (External Driver):
+  //    - Bước 1: Ký hợp đồng (needsContractSign = true)
+  //    - Bước 2: Check-in khi READY_FOR_VEHICLE_HANDOVER
+  //
+  // 2. TÀI XẾ NỘI BỘ (Internal Driver - NO CONTRACT):
+  //    - Bỏ qua Bước 1 (không cần ký hợp đồng)
+  //    - Chuyển thẳng Bước 2: Check-in khi READY_FOR_VEHICLE_HANDOVER
   
-  // Overlay: show khi:
-  // 1. Driver chưa ký hợp đồng (bất kể status) => hiện bước 1 (CHỈ KHI CÓ HỢP ĐỒNG)
-  // 2. Đã ký hợp đồng HOẶC KHÔNG CÓ HỢP ĐỒNG nhưng chưa check in (isOnBoard = false) => hiện bước 2
+  // Hiển thị overlay khi:
+  // - Driver chưa check-in VÀ
+  // - (Có hợp đồng: chưa ký HOẶC chưa onboard) HOẶC (Không có hợp đồng: chưa onboard)
   const showOverlay = !isCheckedIn && currentDriver && (
     hasDriverOwnerContract 
-      ? (!hasSignedContract || !currentDriver.isOnBoard)  // Có hợp đồng: yêu cầu ký + check-in
-      : !currentDriver.isOnBoard                          // Không có hợp đồng: chỉ yêu cầu check-in
+      ? (!hasSignedContract || !currentDriver.isOnBoard)  // External: yêu cầu ký + check-in
+      : !currentDriver.isOnBoard                          // Internal: chỉ yêu cầu check-in
   );
   
-  // Contract sign state: chỉ để hiện UI ký hợp đồng trong overlay (CHỈ KHI CÓ HỢP ĐỒNG)
+  // Hiển thị UI ký hợp đồng (CHỈ KHI CÓ HỢP ĐỒNG và chưa ký)
   const needsContractSign = hasDriverOwnerContract && !hasSignedContract;
   
-  // Check-in button logic:
-  // - TÀI CHÍNH (PRIMARY): Chỉ khi status = READY_FOR_VEHICLE_HANDOVER và đã ký hợp đồng
-  // - TÀI PHỤ (SECONDARY): Khi status KHÔNG phải PENDING_DRIVER_ASSIGNMENT hoặc DONE_ASSIGNING_DRIVER, và đã ký hợp đồng
-  const canShowCheckInButton = hasSignedContract && (
+  // Hiển thị nút Check-in khi:
+  // - (Đã ký hợp đồng HOẶC không có hợp đồng = tài xế nội bộ) VÀ
+  // - TÀI CHÍNH: status = READY_FOR_VEHICLE_HANDOVER
+  // - TÀI PHỤ: status khác PENDING_DRIVER_ASSIGNMENT và DONE_ASSIGNING_DRIVER
+  const canShowCheckInButton = (hasSignedContract || !hasDriverOwnerContract) && (
     isMainDriver 
       ? trip?.status === 'READY_FOR_VEHICLE_HANDOVER'
       : (trip?.status !== 'PENDING_DRIVER_ASSIGNMENT' && trip?.status !== 'DONE_ASSIGNING_DRIVER')
@@ -3201,6 +3393,31 @@ const DriverTripDetailScreenV2: React.FC = () => {
             <Ionicons name="refresh" size={22} color="#2563EB" />
           )}
         </TouchableOpacity>
+        
+        {/* Tracking Mode Toggle */}
+        <TouchableOpacity
+          onPress={() => setTrackingMode(prev => prev === 'simulation' ? 'real' : 'simulation')}
+          style={[styles.modeToggleBtn, trackingMode === 'simulation' ? styles.modeSimulation : styles.modeReal]}
+          disabled={navActive || isSimulationRunning}
+        >
+          <Ionicons 
+            name={trackingMode === 'simulation' ? 'game-controller' : 'navigate'} 
+            size={16} 
+            color="#fff" 
+          />
+          <Text style={styles.modeToggleText}>
+            {trackingMode === 'simulation' ? 'SIM' : 'GPS'}
+          </Text>
+        </TouchableOpacity>
+        
+        {/* SignalR Connection Status Badge */}
+        {signalRConnected && (
+          <View style={styles.signalRBadge}>
+            <View style={styles.signalRDot} />
+            <Text style={styles.signalRText}>Live</Text>
+          </View>
+        )}
+        
         <StatusPill value={trip.status} />
       </View>
       
@@ -5444,7 +5661,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
               <View style={styles.sheetContent}>
                 <View style={styles.sheetHeader}>
                   <MaterialCommunityIcons name="car-key" size={48} color="#F59E0B" />
-                  <Text style={styles.sheetTitle}>BƯỚC 2: NHẬN XE</Text>
+                  <Text style={styles.sheetTitle}>
+                    {hasDriverOwnerContract ? 'BƯỚC 2: NHẬN XE' : 'NHẬN XE & CHECK-IN'}
+                  </Text>
                   
                   {!canShowCheckInButton ? (
                     <View style={styles.waitingBox}>
@@ -5782,6 +6001,53 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   pillText: { fontSize: 11, fontWeight: "700" },
+  
+  // Mode Toggle Button
+  modeToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  modeSimulation: {
+    backgroundColor: "#8B5CF6", // Purple for simulation
+  },
+  modeReal: {
+    backgroundColor: "#10B981", // Green for real GPS
+  },
+  modeToggleText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  signalRBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#10B981",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  signalRDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#fff",
+  },
+  signalRText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
 
   // Cards
   card: {

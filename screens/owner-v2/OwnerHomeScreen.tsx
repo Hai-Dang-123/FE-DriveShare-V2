@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { SafeAreaView, View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl, AppState } from 'react-native'
+import { SafeAreaView, View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotification } from '@/hooks/useNotification'
 import { useAuthStore } from '@/stores/authStore'
@@ -55,20 +56,13 @@ const OwnerHomeScreen: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-    loadData()
-    
-    // Reload data when app comes to foreground or screen becomes active
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active') {
-        loadData()
-      }
-    })
-    
-    return () => {
-      subscription?.remove()
-    }
-  }, [])
+  // Load data only when screen is focused (visible)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData()
+      return () => {}
+    }, [])
+  )
 
   const onRefresh = async () => {
     setRefreshing(true)
