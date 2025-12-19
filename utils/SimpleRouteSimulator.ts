@@ -31,7 +31,7 @@ export class SimpleRouteSimulator {
 
   private currentIndex: number = 0;
   private isRunning: boolean = false;
-  private intervalId?: NodeJS.Timeout;
+  private intervalId?: ReturnType<typeof setInterval>;
   private totalDistance: number = 0;
   private traveledDistance: number = 0;
 
@@ -156,36 +156,32 @@ export class SimpleRouteSimulator {
     const distancePerUpdate =
       ((this.speedKmH * 1000) / 3600) * (this.updateIntervalMs / 1000); // meters
 
-    console.log(
-      `[Simulation:TICK] Distance to travel: ${distancePerUpdate.toFixed(
-        2
-      )}m at ${this.speedKmH} km/h`
-    );
-
     // Tăng traveled distance
     this.traveledDistance += distancePerUpdate;
 
-    // Di chuyển currentIndex đến đúng vị trí dựa trên traveledDistance
-    let accumulatedDistance = 0;
-    for (let i = 0; i < this.route.length - 1; i++) {
-      const [lng1, lat1] = this.route[i];
-      const [lng2, lat2] = this.route[i + 1];
+    // ✅ Chỉ kiểm tra từ currentIndex trở đi (không duyệt lại từ đầu)
+    const distanceToCurrentIndex = this.calculateDistanceToIndex(
+      this.currentIndex
+    );
+    let remainingInRoute = this.traveledDistance - distanceToCurrentIndex;
+
+    // Di chuyển currentIndex nếu vượt qua segment hiện tại
+    while (this.currentIndex < this.route.length - 1 && remainingInRoute > 0) {
+      const [lng1, lat1] = this.route[this.currentIndex];
+      const [lng2, lat2] = this.route[this.currentIndex + 1];
       const segmentDist = this.haversineDistance(lat1, lng1, lat2, lng2);
 
-      if (accumulatedDistance + segmentDist >= this.traveledDistance) {
-        // Xe đang ở trong segment i->i+1
-        this.currentIndex = i;
+      if (remainingInRoute >= segmentDist) {
+        // Vượt qua segment này, chuyển sang segment tiếp theo
+        this.currentIndex++;
+        remainingInRoute -= segmentDist;
         console.log(
-          `[Simulation:TICK] 📍 Current segment: ${i}->${
-            i + 1
-          }, traveled: ${this.traveledDistance.toFixed(
-            2
-          )}m/${this.totalDistance.toFixed(2)}m`
+          `[Simulation:TICK] ✅ Moved to segment ${this.currentIndex}`
         );
+      } else {
+        // Đang ở trong segment này
         break;
       }
-
-      accumulatedDistance += segmentDist;
     }
 
     // Kiểm tra đã đến đích chưa
@@ -193,7 +189,7 @@ export class SimpleRouteSimulator {
       this.traveledDistance >= this.totalDistance ||
       this.currentIndex >= this.route.length - 1
     ) {
-      console.log("[SimpleRouteSimulator] Reached destination");
+      console.log("[SimpleRouteSimulator] 🏁 Reached destination");
       this.pause();
       if (this.onComplete) {
         this.onComplete();
