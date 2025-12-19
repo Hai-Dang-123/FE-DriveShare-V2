@@ -51,12 +51,12 @@ export class SimpleRouteSimulator {
    */
   public start(startIndex: number = 0): void {
     if (this.isRunning) {
-      console.warn('[SimpleRouteSimulator] Already running');
+      console.warn("[SimpleRouteSimulator] Already running");
       return;
     }
 
     if (startIndex >= this.route.length) {
-      console.error('[SimpleRouteSimulator] Invalid startIndex');
+      console.error("[SimpleRouteSimulator] Invalid startIndex");
       return;
     }
 
@@ -66,8 +66,10 @@ export class SimpleRouteSimulator {
     // Tính quãng đường đã đi
     this.traveledDistance = this.calculateDistanceToIndex(startIndex);
 
-    console.log(`[SimpleRouteSimulator] Started at index ${startIndex}/${this.route.length}`);
-    
+    console.log(
+      `[SimpleRouteSimulator] Started at index ${startIndex}/${this.route.length}`
+    );
+
     // Emit vị trí đầu tiên ngay lập tức
     this.emitCurrentLocation();
 
@@ -82,7 +84,7 @@ export class SimpleRouteSimulator {
    */
   public pause(): number {
     if (!this.isRunning) {
-      console.warn('[SimpleRouteSimulator] Not running');
+      console.warn("[SimpleRouteSimulator] Not running");
       return this.currentIndex;
     }
 
@@ -103,7 +105,7 @@ export class SimpleRouteSimulator {
     this.pause();
     this.currentIndex = 0;
     this.traveledDistance = 0;
-    console.log('[SimpleRouteSimulator] Stopped');
+    console.log("[SimpleRouteSimulator] Stopped");
   }
 
   /**
@@ -117,14 +119,18 @@ export class SimpleRouteSimulator {
     for (let i = 0; i < this.route.length; i++) {
       const [routeLng, routeLat] = this.route[i];
       const distance = this.haversineDistance(lat, lng, routeLat, routeLng);
-      
+
       if (distance < minDistance) {
         minDistance = distance;
         nearestIndex = i;
       }
     }
 
-    console.log(`[SimpleRouteSimulator] Nearest point: index ${nearestIndex}, distance ${minDistance.toFixed(2)}m`);
+    console.log(
+      `[SimpleRouteSimulator] Nearest point: index ${nearestIndex}, distance ${minDistance.toFixed(
+        2
+      )}m`
+    );
     return nearestIndex;
   }
 
@@ -147,34 +153,47 @@ export class SimpleRouteSimulator {
     if (!this.isRunning) return;
 
     // Tính khoảng cách xe có thể đi được trong 1 interval
-    const distancePerUpdate = (this.speedKmH * 1000 / 3600) * (this.updateIntervalMs / 1000); // meters
+    const distancePerUpdate =
+      ((this.speedKmH * 1000) / 3600) * (this.updateIntervalMs / 1000); // meters
 
-    let remainingDistance = distancePerUpdate;
+    console.log(
+      `[Simulation:TICK] Distance to travel: ${distancePerUpdate.toFixed(
+        2
+      )}m at ${this.speedKmH} km/h`
+    );
 
-    while (remainingDistance > 0 && this.currentIndex < this.route.length - 1) {
-      const current = this.route[this.currentIndex];
-      const next = this.route[this.currentIndex + 1];
+    // Tăng traveled distance
+    this.traveledDistance += distancePerUpdate;
 
-      const segmentDistance = this.haversineDistance(
-        current[1], current[0],
-        next[1], next[0]
-      );
+    // Di chuyển currentIndex đến đúng vị trí dựa trên traveledDistance
+    let accumulatedDistance = 0;
+    for (let i = 0; i < this.route.length - 1; i++) {
+      const [lng1, lat1] = this.route[i];
+      const [lng2, lat2] = this.route[i + 1];
+      const segmentDist = this.haversineDistance(lat1, lng1, lat2, lng2);
 
-      if (remainingDistance >= segmentDistance) {
-        // Di chuyển sang điểm tiếp theo
-        this.currentIndex++;
-        this.traveledDistance += segmentDistance;
-        remainingDistance -= segmentDistance;
-      } else {
-        // Nội suy giữa 2 điểm
-        // Giữ nguyên index, emit vị trí giữa chừng
+      if (accumulatedDistance + segmentDist >= this.traveledDistance) {
+        // Xe đang ở trong segment i->i+1
+        this.currentIndex = i;
+        console.log(
+          `[Simulation:TICK] 📍 Current segment: ${i}->${
+            i + 1
+          }, traveled: ${this.traveledDistance.toFixed(
+            2
+          )}m/${this.totalDistance.toFixed(2)}m`
+        );
         break;
       }
+
+      accumulatedDistance += segmentDist;
     }
 
     // Kiểm tra đã đến đích chưa
-    if (this.currentIndex >= this.route.length - 1) {
-      console.log('[SimpleRouteSimulator] Reached destination');
+    if (
+      this.traveledDistance >= this.totalDistance ||
+      this.currentIndex >= this.route.length - 1
+    ) {
+      console.log("[SimpleRouteSimulator] Reached destination");
       this.pause();
       if (this.onComplete) {
         this.onComplete();
@@ -189,22 +208,55 @@ export class SimpleRouteSimulator {
     if (this.currentIndex >= this.route.length) return;
 
     const current = this.route[this.currentIndex];
-    const next = this.currentIndex < this.route.length - 1 
-      ? this.route[this.currentIndex + 1] 
-      : current;
+    const next =
+      this.currentIndex < this.route.length - 1
+        ? this.route[this.currentIndex + 1]
+        : current;
+
+    // Tính khoảng cách đã đi từ điểm current
+    const distanceToCurrentIndex = this.calculateDistanceToIndex(
+      this.currentIndex
+    );
+    const distanceInSegment = this.traveledDistance - distanceToCurrentIndex;
+
+    // Khoảng cách của segment hiện tại
+    const segmentDistance = this.haversineDistance(
+      current[1],
+      current[0],
+      next[1],
+      next[0]
+    );
+
+    // Tỷ lệ nội suy (0-1) trong segment
+    const fraction =
+      segmentDistance > 0
+        ? Math.min(distanceInSegment / segmentDistance, 1)
+        : 0;
+
+    // Nội suy vị trí thực tế giữa current và next
+    const interpolatedLat = current[1] + (next[1] - current[1]) * fraction;
+    const interpolatedLng = current[0] + (next[0] - current[0]) * fraction;
 
     const heading = this.calculateBearing(
-      current[1], current[0],
-      next[1], next[0]
+      current[1],
+      current[0],
+      next[1],
+      next[0]
     );
 
     const location: SimulatorLocation = {
-      latitude: current[1],
-      longitude: current[0],
+      latitude: interpolatedLat, // ✅ Vị trí nội suy (thay đổi liên tục)
+      longitude: interpolatedLng, // ✅ Vị trí nội suy (thay đổi liên tục)
       heading: heading,
       speed: (this.speedKmH * 1000) / 3600, // Convert to m/s
       timestamp: Date.now(),
     };
+
+    console.log(
+      `[Tracking:SIMULATION] Sent: ${interpolatedLat.toFixed(
+        6
+      )}, ${interpolatedLng.toFixed(6)}, ${this.speedKmH.toFixed(1)} km/h`
+    );
 
     if (this.onUpdate) {
       this.onUpdate(location);
@@ -214,15 +266,22 @@ export class SimpleRouteSimulator {
   /**
    * Tính khoảng cách Haversine (meters)
    */
-  private haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  private haversineDistance(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number {
     const R = 6371000; // Earth radius in meters
     const dLat = this.toRadians(lat2 - lat1);
     const dLon = this.toRadians(lon2 - lon1);
 
-    const a = 
+    const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      Math.cos(this.toRadians(lat1)) *
+        Math.cos(this.toRadians(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
@@ -231,14 +290,20 @@ export class SimpleRouteSimulator {
   /**
    * Tính bearing/heading từ điểm A -> B (0-360 độ)
    */
-  private calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  private calculateBearing(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number {
     const dLon = this.toRadians(lon2 - lon1);
     const lat1Rad = this.toRadians(lat1);
     const lat2Rad = this.toRadians(lat2);
 
     const y = Math.sin(dLon) * Math.cos(lat2Rad);
-    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
-              Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+    const x =
+      Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+      Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
 
     let bearing = Math.atan2(y, x);
     bearing = this.toDegrees(bearing);
