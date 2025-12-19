@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import { 
     View, Text, StyleSheet, FlatList, TouchableOpacity, 
-    ActivityIndicator, RefreshControl, StatusBar, TextInput, AppState 
+    ActivityIndicator, RefreshControl, StatusBar, TextInput
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons'
 import postTripService from '@/services/postTripService'
 
@@ -166,20 +167,23 @@ const OpenPostTripsScreen: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-    fetchPage(1)
-    
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active') {
-        setPageNumber(1)
-        fetchPage(1)
+  // Mỗi lần focus vào trang này sẽ fetch API mới (không cache)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 [OpenPostTrips] Screen focused - fetching fresh data...')
+      
+      // Reset states và fetch data mới
+      setItems([])
+      setPageNumber(1)
+      setHasMore(true)
+      fetchPage(1)
+      
+      // Cleanup khi blur (optional - có thể bỏ nếu muốn giữ data khi quay lại)
+      return () => {
+        console.log('👋 [OpenPostTrips] Screen blurred')
       }
-    })
-    
-    return () => {
-      subscription?.remove()
-    }
-  }, [searchQuery, sortField, sortDirection])
+    }, [searchQuery, sortField, sortDirection])
+  )
 
   const onRefresh = useCallback(() => {
     setRefreshing(true)

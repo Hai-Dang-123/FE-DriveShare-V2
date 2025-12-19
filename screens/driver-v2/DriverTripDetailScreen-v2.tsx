@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Location from "expo-location";
 // import * as Speech from 'expo-speech'
 // import { Ionicons, MaterialIcons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons'
@@ -388,7 +389,20 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [trip, setTrip] = useState<TripDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [screenFocused, setScreenFocused] = useState(true);
   const { user } = useAuth();
+  
+  // Track screen focus to hide overlays when navigating away
+  useFocusEffect(
+    useCallback(() => {
+      console.log('👁️ [DriverTripDetail] Screen focused');
+      setScreenFocused(true);
+      return () => {
+        console.log('👁️ [DriverTripDetail] Screen blurred - hiding overlays');
+        setScreenFocused(false);
+      };
+    }, [])
+  );
 
   const myDriverContract = useMemo(() => {
     if (!trip || !user) return null;
@@ -1817,12 +1831,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
       return;
     }
 
+    console.log('[Simulation] Route has', routeCoords.length, 'points');
+    console.log('[Simulation] First 3 points:', routeCoords.slice(0, 3));
+    console.log('[Simulation] Starting from index:', simulatorIndex);
+
     try {
       // Initialize simulator
       simulatorRef.current = new SimpleRouteSimulator({
         route: routeCoords,
-        speedKmH: 40, // 40 km/h
-        updateIntervalMs: 3000, // 3 seconds
+        speedKmH: 100, // 100 km/h - Faster for testing
+        updateIntervalMs: 1000, // 1 second - Update more frequently
         onUpdate: (location: SimulatorLocation) => {
           sendLocationToServer(
             location.latitude,
@@ -3375,50 +3393,58 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Chi tiết chuyến đi</Text>
-          <Text style={styles.subTitle}>{trip.tripCode}</Text>
-        </View>
-        <TouchableOpacity 
-          onPress={handleRefresh} 
-          style={{ padding: 4, marginRight: 8 }}
-          disabled={refreshing}
-        >
-          {refreshing ? (
-            <ActivityIndicator size="small" color="#2563EB" />
-          ) : (
-            <Ionicons name="refresh" size={22} color="#2563EB" />
-          )}
-        </TouchableOpacity>
-        
-        {/* Tracking Mode Toggle */}
-        <TouchableOpacity
-          onPress={() => setTrackingMode(prev => prev === 'simulation' ? 'real' : 'simulation')}
-          style={[styles.modeToggleBtn, trackingMode === 'simulation' ? styles.modeSimulation : styles.modeReal]}
-          disabled={navActive || isSimulationRunning}
-        >
-          <Ionicons 
-            name={trackingMode === 'simulation' ? 'game-controller' : 'navigate'} 
-            size={16} 
-            color="#fff" 
-          />
-          <Text style={styles.modeToggleText}>
-            {trackingMode === 'simulation' ? 'SIM' : 'GPS'}
-          </Text>
-        </TouchableOpacity>
-        
-        {/* SignalR Connection Status Badge */}
-        {signalRConnected && (
-          <View style={styles.signalRBadge}>
-            <View style={styles.signalRDot} />
-            <Text style={styles.signalRText}>Live</Text>
+        {/* Row 1: Back button + Title + Refresh */}
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#1F2937" />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Chi tiết chuyến đi</Text>
+            <Text style={styles.subTitle}>{trip.tripCode}</Text>
           </View>
-        )}
-        
-        <StatusPill value={trip.status} />
+          <TouchableOpacity 
+            onPress={handleRefresh} 
+            style={{ padding: 4 }}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color="#2563EB" />
+            ) : (
+              <Ionicons name="refresh" size={22} color="#2563EB" />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Row 2: Badges and Status */}
+        <View style={styles.headerBottomRow}>
+          {/* Tracking Mode Toggle */}
+          <TouchableOpacity
+            onPress={() => setTrackingMode(prev => prev === 'simulation' ? 'real' : 'simulation')}
+            style={[styles.modeToggleBtn, trackingMode === 'simulation' ? styles.modeSimulation : styles.modeReal]}
+            disabled={navActive || isSimulationRunning}
+          >
+            <Ionicons 
+              name={trackingMode === 'simulation' ? 'game-controller' : 'navigate'} 
+              size={16} 
+              color="#fff" 
+            />
+            <Text style={styles.modeToggleText}>
+              {trackingMode === 'simulation' ? 'SIM' : 'GPS'}
+            </Text>
+          </TouchableOpacity>
+          
+          {/* SignalR Connection Status Badge */}
+          {signalRConnected && (
+            <View style={styles.signalRBadge}>
+              <View style={styles.signalRDot} />
+              <Text style={styles.signalRText}>Live</Text>
+            </View>
+          )}
+          
+          <View style={{ flex: 1 }} />
+          
+          <StatusPill value={trip.status} />
+        </View>
       </View>
       
       {/* Overlay for Secondary Driver who has checked out */}
@@ -5573,17 +5599,17 @@ const DriverTripDetailScreenV2: React.FC = () => {
       </Modal>
 
       {/* OVERLAY - STATE 1: Chưa ký hợp đồng */}
-      {!isCheckedIn && needsContractSign && !showContractModal && !showDigitalSignatureTerms && !showContractOtpModal && (
+      {screenFocused && !isCheckedIn && needsContractSign && !showContractModal && !showDigitalSignatureTerms && !showContractOtpModal && (
         <Modal visible={true} transparent animationType="none">
           <View style={styles.overlayContainer} pointerEvents="box-none">
             {/* Map visible - 60-70% */}
-            <View style={styles.overlayMapSection} pointerEvents="none">
+            <View style={styles.overlayMapSection}>
               <VietMapUniversal 
                 coordinates={checkInRouteCoordinates.length > 0 ? checkInRouteCoordinates : (currentDriver?.startLat && currentDriver?.startLng ? [[currentDriver.startLng, currentDriver.startLat] as Position] : [])}
                 style={{ flex: 1 }}
                 navigationActive={false}
               />
-              <View style={styles.checkInMapDescOverlay}>
+              <View style={styles.checkInMapDescOverlay} pointerEvents="none">
                 <View style={styles.checkInMapDescBox}>
                   <Ionicons name="navigate" size={16} color="#2563EB" />
                   <Text style={styles.checkInMapDescText}>Đoạn đường đến điểm xuất phát</Text>
@@ -5593,7 +5619,15 @@ const DriverTripDetailScreenV2: React.FC = () => {
               {/* Back button */}
               <TouchableOpacity 
                 style={styles.overlayBackButton}
-                onPress={() => router.push('/(driver)/home')}
+                onPress={() => {
+                  console.log('🔙 [Overlay STATE 1] Back button pressed');
+                  if (router.canGoBack()) {
+                    router.back();
+                  } else {
+                    router.replace('/(driver)/home');
+                  }
+                }}
+                activeOpacity={0.7}
               >
                 <Ionicons name="arrow-back" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -5629,17 +5663,17 @@ const DriverTripDetailScreenV2: React.FC = () => {
       )}
       
       {/* OVERLAY - STATE 2: Đã ký hợp đồng, chưa check-in */}
-      {showOverlay && !needsContractSign && !showContractModal && !showDigitalSignatureTerms && !showContractOtpModal && !showCheckInModal && (
+      {screenFocused && showOverlay && !needsContractSign && !showContractModal && !showDigitalSignatureTerms && !showContractOtpModal && !showCheckInModal && (
         <Modal visible={true} transparent animationType="none">
           <View style={styles.overlayContainer} pointerEvents="box-none">
             {/* Map visible - 60-70% */}
-            <View style={styles.overlayMapSection} pointerEvents="none">
+            <View style={styles.overlayMapSection}>
               <VietMapUniversal 
                 coordinates={checkInRouteCoordinates.length > 0 ? checkInRouteCoordinates : (currentDriver?.startLat && currentDriver?.startLng ? [[currentDriver.startLng, currentDriver.startLat] as Position] : [])}
                 style={{ flex: 1 }}
                 navigationActive={false}
               />
-              <View style={styles.checkInMapDescOverlay}>
+              <View style={styles.checkInMapDescOverlay} pointerEvents="none">
                 <View style={styles.checkInMapDescBox}>
                   <Ionicons name="navigate" size={16} color="#2563EB" />
                   <Text style={styles.checkInMapDescText}>Đoạn đường đến điểm xuất phát</Text>
@@ -5649,7 +5683,15 @@ const DriverTripDetailScreenV2: React.FC = () => {
               {/* Back button */}
               <TouchableOpacity 
                 style={styles.overlayBackButton}
-                onPress={() => router.push('/(driver)/home')}
+                onPress={() => {
+                  console.log('🔙 [Overlay STATE 2] Back button pressed');
+                  if (router.canGoBack()) {
+                    router.back();
+                  } else {
+                    router.replace('/(driver)/home');
+                  }
+                }}
+                activeOpacity={0.7}
               >
                 <Ionicons name="arrow-back" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -5983,12 +6025,21 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    flexDirection: "row",
-    alignItems: "center",
     padding: 16,
+    paddingBottom: 12,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
+  },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  headerBottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   backBtn: { padding: 8, marginRight: 8 },
   title: { fontSize: 18, fontWeight: "700", color: "#111827" },
@@ -7401,6 +7452,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    zIndex: 1000,
   },
   overlayBottomSheet: {
     flex: 0.35, // 35% for bottom sheet

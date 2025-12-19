@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { SafeAreaView, View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { useAuth } from '@/hooks/useAuth'
-import { useNotification } from '@/hooks/useNotification'
 import { useAuthStore } from '@/stores/authStore'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import HeaderOwner from './components/HeaderOwner'
@@ -15,8 +14,6 @@ import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-ico
 
 const OwnerHomeScreen: React.FC = () => {
   const { user, wallet } = useAuth()
-  // Đăng ký device token để nhận push notification (với auto-refresh)
-  const { unreadCount } = useNotification(true)
   const [profile, setProfile] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
 

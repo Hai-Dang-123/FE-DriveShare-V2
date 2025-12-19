@@ -481,6 +481,7 @@ export interface WebNavigationProps {
   externalLocation?: [number, number] | null
   userMarkerBearing?: number | undefined
   hideInternalControls?: boolean
+  driverLocation?: { latitude: number; longitude: number; bearing?: number } | null
 }
 
 export const WebNavigation: React.FC<WebNavigationProps> = ({
