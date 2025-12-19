@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import {
   View,
   Text,
@@ -36,11 +42,16 @@ import tripService from "@/services/tripService";
 import vietmapService from "@/services/vietmapService";
 import tripProviderContractService from "@/services/tripProviderContractService";
 import tripDriverContractService from "@/services/tripDriverContractService";
-import tripDeliveryIssueService, { DeliveryIssueType } from "@/services/tripDeliveryIssueService";
+import tripDeliveryIssueService, {
+  DeliveryIssueType,
+} from "@/services/tripDeliveryIssueService";
 import assignmentService from "@/services/assignmentService";
 import { useAuth } from "@/hooks/useAuth";
-import * as ImagePicker from 'expo-image-picker';
-import { SimpleRouteSimulator, SimulatorLocation } from "@/utils/SimpleRouteSimulator";
+import * as ImagePicker from "expo-image-picker";
+import {
+  SimpleRouteSimulator,
+  SimulatorLocation,
+} from "@/utils/SimpleRouteSimulator";
 import { signalRTrackingService } from "@/services/signalRTrackingService";
 
 // Document Components
@@ -48,7 +59,9 @@ import { ContractDocument } from "@/components/documents/ContractDocument";
 import { DeliveryRecordDocument } from "@/components/documents/DeliveryRecordDocument";
 import { HandoverRecordDocument } from "@/components/documents/HandoverRecordDocument";
 import IssueImagePicker from "@/components/shared/IssueImagePicker";
-import HandoverChecklistEditor, { HandoverChecklistFormData } from "@/components/shared/HandoverChecklistEditor";
+import HandoverChecklistEditor, {
+  HandoverChecklistFormData,
+} from "@/components/shared/HandoverChecklistEditor";
 
 import VietMapUniversal from "@/components/map/VietMapUniversal";
 import NavigationHUD from "@/components/map/NavigationHUD";
@@ -67,37 +80,51 @@ import {
 } from "@/utils/navigation-metrics";
 
 // --- VehicleIssueType Helper ---
-type VehicleIssueType = 
-  | 'SCRATCH' | 'DENT' | 'CRACK' | 'PAINT_PEELING'
-  | 'DIRTY' | 'ODOR'
-  | 'MECHANICAL' | 'ELECTRICAL' | 'TIRE'
-  | 'MISSING_ITEM'
-  | 'OTHER';
+type VehicleIssueType =
+  | "SCRATCH"
+  | "DENT"
+  | "CRACK"
+  | "PAINT_PEELING"
+  | "DIRTY"
+  | "ODOR"
+  | "MECHANICAL"
+  | "ELECTRICAL"
+  | "TIRE"
+  | "MISSING_ITEM"
+  | "OTHER";
 
 const getIssueTypeLabel = (type: string): string => {
   const labels: Record<string, string> = {
-    SCRATCH: 'Trầy xước',
-    DENT: 'Móp méo',
-    CRACK: 'Nứt/Vỡ',
-    PAINT_PEELING: 'Tróc sơn',
-    DIRTY: 'Dơ bẩn',
-    ODOR: 'Có mùi hôi',
-    MECHANICAL: 'Lỗi động cơ',
-    ELECTRICAL: 'Lỗi điện',
-    TIRE: 'Lỗi lốp xe',
-    MISSING_ITEM: 'Mất phụ kiện',
-    OTHER: 'Khác',
+    SCRATCH: "Trầy xước",
+    DENT: "Móp méo",
+    CRACK: "Nứt/Vỡ",
+    PAINT_PEELING: "Tróc sơn",
+    DIRTY: "Dơ bẩn",
+    ODOR: "Có mùi hôi",
+    MECHANICAL: "Lỗi động cơ",
+    ELECTRICAL: "Lỗi điện",
+    TIRE: "Lỗi lốp xe",
+    MISSING_ITEM: "Mất phụ kiện",
+    OTHER: "Khác",
   };
   return labels[type] || type;
 };
 
 // --- Alert Helper (Web & Mobile compatible) ---
-const showAlertCrossPlatform = (title: string, message: string, onOk?: () => void) => {
+const showAlertCrossPlatform = (
+  title: string,
+  message: string,
+  onOk?: () => void
+) => {
   if (Platform.OS === "web") {
     window.alert(`${title}\n\n${message}`);
     if (onOk) onOk();
   } else {
-    Alert.alert(title, message, onOk ? [{ text: "OK", onPress: onOk }] : undefined);
+    Alert.alert(
+      title,
+      message,
+      onOk ? [{ text: "OK", onPress: onOk }] : undefined
+    );
   }
 };
 
@@ -391,14 +418,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [screenFocused, setScreenFocused] = useState(true);
   const { user } = useAuth();
-  
+
   // Track screen focus to hide overlays when navigating away
   useFocusEffect(
     useCallback(() => {
-      console.log('👁️ [DriverTripDetail] Screen focused');
+      console.log("👁️ [DriverTripDetail] Screen focused");
       setScreenFocused(true);
       return () => {
-        console.log('👁️ [DriverTripDetail] Screen blurred - hiding overlays');
+        console.log("👁️ [DriverTripDetail] Screen blurred - hiding overlays");
         setScreenFocused(false);
       };
     }, [])
@@ -418,19 +445,19 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const currentDriver = useMemo(() => {
     if (!trip || !user) return null;
     return (
-      trip.drivers?.find(
-        (d) => String(d.driverId) === String(user.userId)
-      ) || null
+      trip.drivers?.find((d) => String(d.driverId) === String(user.userId)) ||
+      null
     );
   }, [trip, user]);
 
   const isMainDriver = currentDriver?.type === "PRIMARY";
-  
+
   // Check if secondary driver has checked out and trip not completed yet
   const isSecondaryDriverCheckedOut = useMemo(() => {
     if (!currentDriver || !trip) return false;
     const isSecondary = currentDriver.type === "SECONDARY";
-    const hasCheckedOut = currentDriver.isFinished === true || !!currentDriver.offBoardTime;
+    const hasCheckedOut =
+      currentDriver.isFinished === true || !!currentDriver.offBoardTime;
     const tripNotCompleted = trip.status !== "COMPLETED";
     return isSecondary && hasCheckedOut && tripNotCompleted;
   }, [currentDriver, trip]);
@@ -493,7 +520,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       );
       const ok = res?.isSuccess ?? res?.statusCode === 200;
       if (!ok) {
-        showAlertCrossPlatform("Lỗi", res?.message || "Không thể gửi mã xác nhận");
+        showAlertCrossPlatform(
+          "Lỗi",
+          res?.message || "Không thể gửi mã xác nhận"
+        );
         return;
       }
       const sentTo =
@@ -603,7 +633,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
             const resp: any = await driverWorkSessionService.start({
               TripId: trip.tripId,
             });
-            console.log('[startNavigationToPickupAddress] Start session response:', JSON.stringify(resp, null, 2));
+            console.log(
+              "[startNavigationToPickupAddress] Start session response:",
+              JSON.stringify(resp, null, 2)
+            );
             if (!(resp?.isSuccess ?? resp?.statusCode === 200)) {
               showAlertCrossPlatform(
                 "Lỗi",
@@ -613,11 +646,23 @@ const DriverTripDetailScreenV2: React.FC = () => {
               return;
             }
             // backend returns sessionId in resp.result.sessionId
-            const sid = resp?.result?.sessionId ?? resp?.result?.SessionId ?? null;
-            console.log('[startNavigationToPickupAddress] Extracted session ID:', sid, 'type:', typeof sid);
-            if (!sid || typeof sid !== 'string') {
-              console.error('[startNavigationToPickupAddress] Invalid session ID:', sid);
-              showAlertCrossPlatform('Lỗi', 'Không nhận được ID phiên làm việc hợp lệ');
+            const sid =
+              resp?.result?.sessionId ?? resp?.result?.SessionId ?? null;
+            console.log(
+              "[startNavigationToPickupAddress] Extracted session ID:",
+              sid,
+              "type:",
+              typeof sid
+            );
+            if (!sid || typeof sid !== "string") {
+              console.error(
+                "[startNavigationToPickupAddress] Invalid session ID:",
+                sid
+              );
+              showAlertCrossPlatform(
+                "Lỗi",
+                "Không nhận được ID phiên làm việc hợp lệ"
+              );
               setPickupRouteCoords(null);
               return;
             }
@@ -648,23 +693,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
       setCanConfirmPickup(true);
       setJourneyPhase("TO_PICKUP");
       setStartModalOpen(false);
-      
+
       // ========== START TRACKING: CHOOSE MODE ==========
-      if (trackingMode === 'simulation') {
+      if (trackingMode === "simulation") {
         // Simulation Mode: Use RouteSimulator
         await startSimulation();
       } else {
         // Real Mode: Use GPS
         startLocationWatcher();
       }
-      
+
       try {
         Speech.speak("Bắt đầu dẫn đường đến điểm lấy hàng", {
           language: "vi-VN",
         });
-      } catch { }
+      } catch {}
     } catch (error: any) {
-      showAlertCrossPlatform("Lỗi", error?.message || "Không thể bắt đầu dẫn đường");
+      showAlertCrossPlatform(
+        "Lỗi",
+        error?.message || "Không thể bắt đầu dẫn đường"
+      );
     } finally {
       setStartingNav(false);
     }
@@ -758,7 +806,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
             const resp: any = await driverWorkSessionService.start({
               TripId: trip.tripId,
             });
-            console.log('[startNavigationToDeliveryAddress] Start session response:', JSON.stringify(resp, null, 2));
+            console.log(
+              "[startNavigationToDeliveryAddress] Start session response:",
+              JSON.stringify(resp, null, 2)
+            );
             if (!(resp?.isSuccess ?? resp?.statusCode === 200)) {
               showAlertCrossPlatform(
                 "Lỗi",
@@ -768,11 +819,23 @@ const DriverTripDetailScreenV2: React.FC = () => {
               return;
             }
             // backend returns sessionId in resp.result.sessionId
-            const sid = resp?.result?.sessionId ?? resp?.result?.SessionId ?? null;
-            console.log('[startNavigationToDeliveryAddress] Extracted session ID:', sid, 'type:', typeof sid);
-            if (!sid || typeof sid !== 'string') {
-              console.error('[startNavigationToDeliveryAddress] Invalid session ID:', sid);
-              showAlertCrossPlatform('Lỗi', 'Không nhận được ID phiên làm việc hợp lệ');
+            const sid =
+              resp?.result?.sessionId ?? resp?.result?.SessionId ?? null;
+            console.log(
+              "[startNavigationToDeliveryAddress] Extracted session ID:",
+              sid,
+              "type:",
+              typeof sid
+            );
+            if (!sid || typeof sid !== "string") {
+              console.error(
+                "[startNavigationToDeliveryAddress] Invalid session ID:",
+                sid
+              );
+              showAlertCrossPlatform(
+                "Lỗi",
+                "Không nhận được ID phiên làm việc hợp lệ"
+              );
               setDeliveryRouteCoords(null);
               return;
             }
@@ -801,23 +864,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
       setCanConfirmDelivery(true);
       setJourneyPhase("TO_DELIVERY");
       setStartModalOpen(false);
-      
+
       // ========== START TRACKING: CHOOSE MODE ==========
-      if (trackingMode === 'simulation') {
+      if (trackingMode === "simulation") {
         // Simulation Mode: Use RouteSimulator
         await startSimulation();
       } else {
         // Real Mode: Use GPS
         startLocationWatcher();
       }
-      
+
       try {
         Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
           language: "vi-VN",
         });
-      } catch { }
+      } catch {}
     } catch (error: any) {
-      showAlertCrossPlatform("Lỗi", error?.message || "Không thể bắt đầng dẫn đường");
+      showAlertCrossPlatform(
+        "Lỗi",
+        error?.message || "Không thể bắt đầng dẫn đường"
+      );
     } finally {
       setStartingNav(false);
     }
@@ -826,7 +892,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const startNavigationToReturnPoint = async () => {
     if (startingNav || !trip) return;
     setStartingNav(true);
-    
+
     // Check eligibility
     if (!eligibility) await loadEligibilityAndSession();
     if (eligibility && !eligibility.canDrive) {
@@ -836,7 +902,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         eligibility.message || "Bạn không đủ điều kiện lái xe hiện tại"
       );
     }
-    
+
     const contHours = continuousSeconds / 3600;
     if (contHours >= 4) {
       setStartingNav(false);
@@ -877,13 +943,13 @@ const DriverTripDetailScreenV2: React.FC = () => {
           returnPoint,
           "car"
         );
-        
+
         if (planned.coordinates?.length) {
           const coerced = planned.coordinates.map((c: any) => [
             Number(c[0]),
             Number(c[1]),
           ]) as [number, number][];
-          
+
           setRouteCoords(coerced);
           setVisibleRoute("overview");
           if (planned.instructions) setRouteInstructions(planned.instructions);
@@ -893,7 +959,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
             const resp: any = await driverWorkSessionService.start({
               TripId: trip.tripId,
             });
-            
+
             if (!(resp?.isSuccess ?? resp?.statusCode === 200)) {
               showAlertCrossPlatform(
                 "Lỗi",
@@ -902,14 +968,30 @@ const DriverTripDetailScreenV2: React.FC = () => {
               return;
             }
 
-            let sid = resp?.result?.sessionId ?? resp?.result?.driverWorkSessionId ?? resp?.result?.DriverWorkSessionId ?? null;
-            if (sid && typeof sid === 'object') {
-              sid = (sid as any).sessionId ?? (sid as any).DriverWorkSessionId ?? (sid as any).driverWorkSessionId ?? null;
+            let sid =
+              resp?.result?.sessionId ??
+              resp?.result?.driverWorkSessionId ??
+              resp?.result?.DriverWorkSessionId ??
+              null;
+            if (sid && typeof sid === "object") {
+              sid =
+                (sid as any).sessionId ??
+                (sid as any).DriverWorkSessionId ??
+                (sid as any).driverWorkSessionId ??
+                null;
             }
-            
-            if (!sid || typeof sid !== 'string') {
-              console.error('[startNavigationToReturnPoint] Invalid session ID:', sid, 'Response:', resp);
-              showAlertCrossPlatform('Lỗi', 'Không nhận được ID phiên làm việc hợp lệ');
+
+            if (!sid || typeof sid !== "string") {
+              console.error(
+                "[startNavigationToReturnPoint] Invalid session ID:",
+                sid,
+                "Response:",
+                resp
+              );
+              showAlertCrossPlatform(
+                "Lỗi",
+                "Không nhận được ID phiên làm việc hợp lệ"
+              );
               return;
             }
 
@@ -932,21 +1014,21 @@ const DriverTripDetailScreenV2: React.FC = () => {
           setNavHidden(false);
           setJourneyPhase("TO_DELIVERY"); // Reuse delivery phase for return journey
           setStartModalOpen(false);
-          
+
           // ========== START TRACKING: CHOOSE MODE ==========
-          if (trackingMode === 'simulation') {
+          if (trackingMode === "simulation") {
             // Simulation Mode: Use RouteSimulator
             await startSimulation();
           } else {
             // Real Mode: Use GPS
             startLocationWatcher();
           }
-          
+
           try {
             Speech.speak("Bắt đầu dẫn đường đến điểm trả xe", {
               language: "vi-VN",
             });
-          } catch { }
+          } catch {}
         } else {
           throw new Error("Không thể lập tuyến đường");
         }
@@ -954,7 +1036,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
         throw new Error(planErr?.message || "Không thể lập tuyến đường");
       }
     } catch (error: any) {
-      showAlertCrossPlatform("Lỗi", error?.message || "Không thể bắt đầu dẫn đường");
+      showAlertCrossPlatform(
+        "Lỗi",
+        error?.message || "Không thể bắt đầu dẫn đường"
+      );
     } finally {
       setStartingNav(false);
     }
@@ -1024,7 +1109,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   const submitContractOtp = async () => {
     const otp = otpDigits.join("");
-    if (otp.length < 6) return showAlertCrossPlatform("OTP", "Vui lòng nhập đủ 6 chữ số");
+    if (otp.length < 6)
+      return showAlertCrossPlatform("OTP", "Vui lòng nhập đủ 6 chữ số");
     if (!myDriverContract?.contractId) return;
     setSigningContract(true);
     try {
@@ -1033,7 +1119,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       const res: any = await tripDriverContractService.signContract(dto);
       const ok = res?.isSuccess ?? res?.statusCode === 200;
       if (!ok) {
-        showAlertCrossPlatform("Ký thất bại", res?.message || "Mã OTP không hợp lệ");
+        showAlertCrossPlatform(
+          "Ký thất bại",
+          res?.message || "Mã OTP không hợp lệ"
+        );
         return;
       }
       showAlertCrossPlatform("Thành công", "Ký hợp đồng thành công! ✅");
@@ -1079,7 +1168,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       );
       const ok = res?.isSuccess ?? res?.statusCode === 200;
       if (!ok) {
-        showAlertCrossPlatform("Lỗi", res?.message || "Không thể gửi mã xác nhận");
+        showAlertCrossPlatform(
+          "Lỗi",
+          res?.message || "Không thể gửi mã xác nhận"
+        );
         return;
       }
       const sentTo = res?.result?.sentTo || res?.message || null;
@@ -1118,7 +1210,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   const submitDeliveryOtp = async () => {
     const otp = deliveryOtpDigits.join("");
-    if (otp.length < 6) return showAlertCrossPlatform("OTP", "Vui lòng nhập đủ 6 chữ số");
+    if (otp.length < 6)
+      return showAlertCrossPlatform("OTP", "Vui lòng nhập đủ 6 chữ số");
     if (!activeDeliveryRecord) return;
     setDeliverySigningInProgress(true);
     try {
@@ -1129,7 +1222,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       const res: any = await tripService.signDeliveryRecord(dto);
       const ok = res?.isSuccess ?? res?.statusCode === 200;
       if (!ok) {
-        showAlertCrossPlatform("Ký thất bại", res?.message || "Mã OTP không hợp lệ");
+        showAlertCrossPlatform(
+          "Ký thất bại",
+          res?.message || "Mã OTP không hợp lệ"
+        );
         return;
       }
       showToast("Ký biên bản thành công");
@@ -1141,12 +1237,17 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (fresh?.isSuccess) {
         const rec = fresh.result;
         // Map deliveryRecordTerms to terms format for component
-        if (rec.deliveryRecordTemplate?.deliveryRecordTerms && Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)) {
-          rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map((term: any) => ({
-            deliveryRecordTermId: term.deliveryRecordTermId,
-            content: term.content || "",
-            displayOrder: term.displayOrder || 0,
-          }));
+        if (
+          rec.deliveryRecordTemplate?.deliveryRecordTerms &&
+          Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)
+        ) {
+          rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map(
+            (term: any) => ({
+              deliveryRecordTermId: term.deliveryRecordTermId,
+              content: term.content || "",
+              displayOrder: term.displayOrder || 0,
+            })
+          );
         } else {
           rec.terms = [];
         }
@@ -1188,12 +1289,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
       description: issueDescription,
       descriptionTrimmed: issueDescription.trim(),
     });
-    
+
     if (!activeDeliveryRecord || !tripId) {
       console.log("❌ Missing activeDeliveryRecord or tripId");
       return;
     }
-    
+
     if (!issueDescription.trim()) {
       console.log("❌ Description is empty");
       showAlertCrossPlatform("Lỗi", "Vui lòng nhập mô tả sự cố");
@@ -1212,26 +1313,33 @@ const DriverTripDetailScreenV2: React.FC = () => {
         Description: issueDescription.trim(),
       };
 
-      console.log("📝 Submitting issue report with", issueImages.length, "images");
+      console.log(
+        "📝 Submitting issue report with",
+        issueImages.length,
+        "images"
+      );
       console.log("📦 DTO:", dto);
-      
+
       // Send DTO + images in one request
-      const response = await tripDeliveryIssueService.reportIssue(dto, issueImages);
+      const response = await tripDeliveryIssueService.reportIssue(
+        dto,
+        issueImages
+      );
       console.log("📥 Response:", response);
-      
+
       if (response.isSuccess) {
         showAlertCrossPlatform(
-          "Thành công", 
-          issueImages.length > 0 
+          "Thành công",
+          issueImages.length > 0
             ? `Đã báo cáo sự cố với ${issueImages.length} ảnh minh chứng`
             : "Đã báo cáo sự cố thành công"
         );
-        
+
         // Close modal and reset form
         setShowIssueReportModal(false);
         setIssueDescription("");
         setIssueImages([]);
-        
+
         // Refresh delivery record to get updated issues
         console.log("🔄 Refreshing delivery record...");
         try {
@@ -1241,25 +1349,39 @@ const DriverTripDetailScreenV2: React.FC = () => {
           if (refreshRes?.isSuccess) {
             const rec = refreshRes.result;
             // Map terms
-            if (rec.deliveryRecordTemplate?.deliveryRecordTerms && Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)) {
-              rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map((term: any) => ({
-                deliveryRecordTermId: term.deliveryRecordTermId,
-                content: term.content || "",
-                displayOrder: term.displayOrder || 0,
-              }));
+            if (
+              rec.deliveryRecordTemplate?.deliveryRecordTerms &&
+              Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)
+            ) {
+              rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map(
+                (term: any) => ({
+                  deliveryRecordTermId: term.deliveryRecordTermId,
+                  content: term.content || "",
+                  displayOrder: term.displayOrder || 0,
+                })
+              );
             }
             setActiveDeliveryRecord(rec);
-            console.log("✅ Delivery record refreshed with issues:", rec.issues?.length || 0);
+            console.log(
+              "✅ Delivery record refreshed with issues:",
+              rec.issues?.length || 0
+            );
           }
         } catch (err) {
           console.error("❌ Failed to refresh delivery record:", err);
         }
       } else {
-        showAlertCrossPlatform("Lỗi", response.message || "Không thể báo cáo sự cố");
+        showAlertCrossPlatform(
+          "Lỗi",
+          response.message || "Không thể báo cáo sự cố"
+        );
       }
     } catch (error: any) {
       console.error("Error submitting issue:", error);
-      showAlertCrossPlatform("Lỗi", error?.message || "Có lỗi khi báo cáo sự cố");
+      showAlertCrossPlatform(
+        "Lỗi",
+        error?.message || "Có lỗi khi báo cáo sự cố"
+      );
     } finally {
       setSubmittingIssue(false);
     }
@@ -1271,10 +1393,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [navHidden, setNavHidden] = useState(false);
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [startingNav, setStartingNav] = useState(false);
-  
+
   // ========== TRACKING MODE STATES ==========
   // Toggle: 'simulation' | 'real'
-  const [trackingMode, setTrackingMode] = useState<'simulation' | 'real'>('simulation');
+  const [trackingMode, setTrackingMode] = useState<"simulation" | "real">(
+    "simulation"
+  );
   const [isSimulationRunning, setIsSimulationRunning] = useState(false);
   const [simulatorIndex, setSimulatorIndex] = useState(0);
   const simulatorRef = useRef<SimpleRouteSimulator | null>(null);
@@ -1289,22 +1413,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [signatureInProgress, setSignatureInProgress] = useState(false);
   const [pickupMarked, setPickupMarked] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  
+
   // Issue Report Modal State (for PICKUP)
   const [showIssueReportModal, setShowIssueReportModal] = useState(false);
-  const [issueType, setIssueType] = useState<DeliveryIssueType>(DeliveryIssueType.DAMAGED);
+  const [issueType, setIssueType] = useState<DeliveryIssueType>(
+    DeliveryIssueType.DAMAGED
+  );
   const [issueDescription, setIssueDescription] = useState("");
   const [issueImages, setIssueImages] = useState<(string | File)[]>([]);
   const [submittingIssue, setSubmittingIssue] = useState(false);
-  
+
   // Check-in Modal States
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [checkInImage, setCheckInImage] = useState<any>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
-  const [checkInRouteCoordinates, setCheckInRouteCoordinates] = useState<Position[]>([]);
+  const [checkInRouteCoordinates, setCheckInRouteCoordinates] = useState<
+    Position[]
+  >([]);
   const [overlayMapReady, setOverlayMapReady] = useState(false);
-  
+
   // Check-out Modal States
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const [checkOutImage, setCheckOutImage] = useState<any>(null);
@@ -1312,29 +1440,30 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   // Cache blob URLs for check-in/check-out images to prevent memory leaks
   const checkInImageUrl = useMemo(() => {
-    if (!checkInImage) return '';
+    if (!checkInImage) return "";
     if (checkInImage instanceof File) return URL.createObjectURL(checkInImage);
-    return checkInImage.uri || '';
+    return checkInImage.uri || "";
   }, [checkInImage]);
 
   const checkOutImageUrl = useMemo(() => {
-    if (!checkOutImage) return '';
-    if (checkOutImage instanceof File) return URL.createObjectURL(checkOutImage);
-    return checkOutImage.uri || '';
+    if (!checkOutImage) return "";
+    if (checkOutImage instanceof File)
+      return URL.createObjectURL(checkOutImage);
+    return checkOutImage.uri || "";
   }, [checkOutImage]);
 
   // Cleanup blob URLs
   useEffect(() => {
     return () => {
-      if (checkInImageUrl.startsWith('blob:')) {
+      if (checkInImageUrl.startsWith("blob:")) {
         URL.revokeObjectURL(checkInImageUrl);
       }
-      if (checkOutImageUrl.startsWith('blob:')) {
+      if (checkOutImageUrl.startsWith("blob:")) {
         URL.revokeObjectURL(checkOutImageUrl);
       }
     };
   }, [checkInImageUrl, checkOutImageUrl]);
-  
+
   // Vehicle handover states
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [activeHandoverRecord, setActiveHandoverRecord] = useState<any | null>(
@@ -1416,7 +1545,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
     null
   );
   const [continuousSeconds, setContinuousSeconds] = useState<number>(0);
-  const [showApproachingAlert, setShowApproachingAlert] = useState<boolean>(false);
+  const [showApproachingAlert, setShowApproachingAlert] =
+    useState<boolean>(false);
   const [approachAlertShown, setApproachAlertShown] = useState<boolean>(false);
   const [isSessionRunning, setIsSessionRunning] = useState<boolean>(false);
   const eligibilityTimerRef = useRef<any | null>(null);
@@ -1436,7 +1566,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       setLoading(false);
       return;
     }
-    
+
     fetchTripData();
     loadPickupMarked();
     // load initial eligibility (day/week totals)
@@ -1456,16 +1586,20 @@ const DriverTripDetailScreenV2: React.FC = () => {
     if (!trip || !tripId) return;
 
     const hasMultipleDrivers = (trip.drivers?.length || 0) > 1;
-    const isActiveTrip = ['IN_PROGRESS', 'READY_FOR_VEHICLE_HANDOVER', 'VEHICLE_HANDOVERED'].includes(trip.status);
+    const isActiveTrip = [
+      "IN_PROGRESS",
+      "READY_FOR_VEHICLE_HANDOVER",
+      "VEHICLE_HANDOVERED",
+    ].includes(trip.status);
 
     if (hasMultipleDrivers && isActiveTrip) {
-      console.log('[DriverTripDetail] Starting session polling (15s interval)');
+      console.log("[DriverTripDetail] Starting session polling (15s interval)");
       const interval = setInterval(() => {
         fetchCurrentSession();
       }, 15000); // 15 seconds
 
       return () => {
-        console.log('[DriverTripDetail] Stopping session polling');
+        console.log("[DriverTripDetail] Stopping session polling");
         clearInterval(interval);
       };
     }
@@ -1478,23 +1612,36 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
     const initSignalR = async () => {
       try {
-        const baseURL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.100.49:5246/';
+        const baseURL =
+          process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.100.49:5246/";
         await signalRTrackingService.init({
           baseURL,
           onConnectionChange: (connected) => {
-            console.log(`[SignalR:${trackingMode.toUpperCase()}] Connection status:`, connected);
+            console.log(
+              `[SignalR:${trackingMode.toUpperCase()}] Connection status:`,
+              connected
+            );
             setSignalRConnected(connected);
           },
           onError: (error) => {
-            console.error(`[SignalR:${trackingMode.toUpperCase()}] Error:`, error);
+            console.error(
+              `[SignalR:${trackingMode.toUpperCase()}] Error:`,
+              error
+            );
           },
         });
-        
+
         // Join trip group
         await signalRTrackingService.joinTripGroup(tripId);
-        console.log(`[SignalR:${trackingMode.toUpperCase()}] Joined trip group:`, tripId);
+        console.log(
+          `[SignalR:${trackingMode.toUpperCase()}] Joined trip group:`,
+          tripId
+        );
       } catch (error) {
-        console.error(`[SignalR:${trackingMode.toUpperCase()}] Init failed:`, error);
+        console.error(
+          `[SignalR:${trackingMode.toUpperCase()}] Init failed:`,
+          error
+        );
       }
     };
 
@@ -1505,7 +1652,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (tripId) {
         signalRTrackingService.leaveTripGroup(tripId);
         signalRTrackingService.disconnect();
-        console.log(`[SignalR:${trackingMode.toUpperCase()}] Cleanup - left trip group`);
+        console.log(
+          `[SignalR:${trackingMode.toUpperCase()}] Cleanup - left trip group`
+        );
       }
     };
   }, [tripId, trackingMode]);
@@ -1514,7 +1663,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
     try {
       const resp: any = await driverWorkSessionService.checkEligibility();
       const data = resp?.result ?? resp;
-      
+
       // Handle rate limiting
       if (resp?.statusCode === 429) {
         console.warn("[DriverTripDetail] Rate limited - eligibility check");
@@ -1527,14 +1676,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
         });
         return;
       }
-      
+
       const can = data?.CanDrive ?? data?.canDrive ?? true;
       const hoursToday =
         Number(
           data?.HoursDrivenToday ??
-          data?.hoursDrivenToday ??
-          data?.HoursDrivenThisDay ??
-          0
+            data?.hoursDrivenToday ??
+            data?.HoursDrivenThisDay ??
+            0
         ) || 0;
       const hoursWeek =
         Number(data?.HoursDrivenThisWeek ?? data?.hoursDrivenThisWeek ?? 0) ||
@@ -1550,9 +1699,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       // On network error, set permissive defaults to not block user
       setEligibility({
         canDrive: true,
-        message: e?.message?.includes("CORS") || e?.message?.includes("Network") 
-          ? "Không thể kết nối server. Vui lòng kiểm tra kết nối mạng." 
-          : "Tạm thời không thể kiểm tra điều kiện lái xe",
+        message:
+          e?.message?.includes("CORS") || e?.message?.includes("Network")
+            ? "Không thể kết nối server. Vui lòng kiểm tra kết nối mạng."
+            : "Tạm thời không thể kiểm tra điều kiện lái xe",
         hoursToday: 0,
         hoursWeek: 0,
       });
@@ -1609,92 +1759,115 @@ const DriverTripDetailScreenV2: React.FC = () => {
   useEffect(() => {
     const fetchCheckInRoute = async () => {
       if (!trip || !currentDriver) {
-        console.log('[CheckInRoute] No trip or currentDriver');
+        console.log("[CheckInRoute] No trip or currentDriver");
         return;
       }
-      
+
       const needsCheckIn = !currentDriver.isOnBoard;
-      
-      console.log('[CheckInRoute] needsCheckIn:', needsCheckIn, 'isOnBoard:', currentDriver.isOnBoard, 'mapReady:', overlayMapReady);
-      
+
+      console.log(
+        "[CheckInRoute] needsCheckIn:",
+        needsCheckIn,
+        "isOnBoard:",
+        currentDriver.isOnBoard,
+        "mapReady:",
+        overlayMapReady
+      );
+
       // Reset map ready state when needsCheckIn changes
       if (!needsCheckIn && overlayMapReady) {
         setOverlayMapReady(false);
-        console.log('[CheckInRoute] Reset map ready state');
+        console.log("[CheckInRoute] Reset map ready state");
         return;
       }
-      
+
       if (!needsCheckIn || !overlayMapReady) return;
-      
+
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          console.log('[CheckInRoute] Location permission denied');
+        if (status !== "granted") {
+          console.log("[CheckInRoute] Location permission denied");
           return;
         }
-        
-        const now = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+
+        const now = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
         const myLat = now.coords.latitude;
         const myLng = now.coords.longitude;
-        
+
         // Lấy điểm xuất phát của driver (startAddress) từ API
         const driverStartLat = currentDriver?.startLat;
         const driverStartLng = currentDriver?.startLng;
-        
-        console.log('[CheckInRoute] My current location:', myLat, myLng);
-        console.log('[CheckInRoute] Driver start location (from API):', driverStartLat, driverStartLng);
-        
+
+        console.log("[CheckInRoute] My current location:", myLat, myLng);
+        console.log(
+          "[CheckInRoute] Driver start location (from API):",
+          driverStartLat,
+          driverStartLng
+        );
+
         if (!driverStartLat || !driverStartLng) {
-          console.log('[CheckInRoute] No driver start location in API response');
+          console.log(
+            "[CheckInRoute] No driver start location in API response"
+          );
           return;
         }
-        
+
         // Fetch route from current location to driver's start address using planBetweenPoints
-        console.log('[CheckInRoute] Fetching route to driver start address...');
+        console.log("[CheckInRoute] Fetching route to driver start address...");
         const routeRes = await vietmapService.planBetweenPoints(
           [myLng, myLat],
           [driverStartLng, driverStartLat]
         );
-        
-        console.log('[CheckInRoute] Route result:', routeRes?.coordinates?.length || 0, 'points');
-        
-        if (routeRes && routeRes.coordinates && routeRes.coordinates.length > 0) {
+
+        console.log(
+          "[CheckInRoute] Route result:",
+          routeRes?.coordinates?.length || 0,
+          "points"
+        );
+
+        if (
+          routeRes &&
+          routeRes.coordinates &&
+          routeRes.coordinates.length > 0
+        ) {
           setCheckInRouteCoordinates(routeRes.coordinates as Position[]);
-          console.log('[CheckInRoute] ✓ Route set successfully');
+          console.log("[CheckInRoute] ✓ Route set successfully");
         } else {
           // Fallback to just two points
           const fallbackRoute = [
             [myLng, myLat] as Position,
-            [driverStartLng, driverStartLat] as Position
+            [driverStartLng, driverStartLat] as Position,
           ];
           setCheckInRouteCoordinates(fallbackRoute);
-          console.log('[CheckInRoute] ⚠ Using fallback route (2 points)');
+          console.log("[CheckInRoute] ⚠ Using fallback route (2 points)");
         }
       } catch (err) {
-        console.error('[CheckInRoute] Error:', err);
+        console.error("[CheckInRoute] Error:", err);
       }
     };
-    
+
     fetchCheckInRoute();
   }, [trip, currentDriver, overlayMapReady]);
 
   // Set overlay map ready after a short delay when driver not checked in
   useEffect(() => {
     if (!trip || !currentDriver) return;
-    
+
     const needsCheckIn = !currentDriver.isOnBoard;
-    
+
     if (needsCheckIn && !overlayMapReady) {
       // Wait for map to render before setting ready
       const timer = setTimeout(() => {
-        console.log('[CheckInRoute] ✓ Overlay map ready (delayed)');
+        console.log("[CheckInRoute] ✓ Overlay map ready (delayed)");
         setOverlayMapReady(true);
       }, 1500); // 1.5 second delay to ensure map is fully loaded
-      
+
       return () => clearTimeout(timer);
     } else if (!needsCheckIn && overlayMapReady) {
       setOverlayMapReady(false);
-      console.log('[CheckInRoute] Reset map ready state');
+      console.log("[CheckInRoute] Reset map ready state");
     }
   }, [currentDriver?.isOnBoard, overlayMapReady]);
 
@@ -1702,15 +1875,17 @@ const DriverTripDetailScreenV2: React.FC = () => {
     if (!tripId) return;
     try {
       setLoadingSession(true);
-      const res = await driverWorkSessionService.getCurrentSessionInTrip(tripId);
-      console.log('[DriverTripDetail] Current session:', res);
+      const res = await driverWorkSessionService.getCurrentSessionInTrip(
+        tripId
+      );
+      console.log("[DriverTripDetail] Current session:", res);
       if (res?.isSuccess && res?.result) {
         setCurrentSession(res.result);
       } else {
         setCurrentSession(null); // Không có ai đang lái
       }
     } catch (e: any) {
-      console.warn('[DriverTripDetail] Failed to fetch current session:', e);
+      console.warn("[DriverTripDetail] Failed to fetch current session:", e);
       setCurrentSession(null);
     } finally {
       setLoadingSession(false);
@@ -1763,20 +1938,22 @@ const DriverTripDetailScreenV2: React.FC = () => {
       await fetchCurrentSession();
     } catch (e: any) {
       console.error("[DriverTripDetail] fetchTripData error:", e);
-      
+
       // Provide user-friendly error messages
       let errorMsg = "Lỗi không xác định";
-      
+
       if (e?.code === "ERR_NETWORK" || e?.message?.includes("Network Error")) {
-        errorMsg = "Không thể kết nối đến server. Vui lòng kiểm tra:\n• Kết nối mạng\n• VPN (nếu có)\n• Cấu hình CORS của backend";
+        errorMsg =
+          "Không thể kết nối đến server. Vui lòng kiểm tra:\n• Kết nối mạng\n• VPN (nếu có)\n• Cấu hình CORS của backend";
       } else if (e?.response?.status === 429 || e?.message?.includes("429")) {
         errorMsg = "Quá nhiều yêu cầu. Vui lòng đợi ít phút rồi thử lại.";
       } else if (e?.message?.includes("CORS")) {
-        errorMsg = "Lỗi CORS: Backend chưa cho phép truy cập từ nguồn này.\nVui lòng liên hệ admin để cấu hình CORS.";
+        errorMsg =
+          "Lỗi CORS: Backend chưa cho phép truy cập từ nguồn này.\nVui lòng liên hệ admin để cấu hình CORS.";
       } else {
         errorMsg = e?.message || "Lỗi không xác định";
       }
-      
+
       setError(errorMsg);
     } finally {
       setLoading(false);
@@ -1798,7 +1975,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
    * Unified location sender - Works for both Simulation and Real modes
    * Sends location updates to SignalR so Owner/Provider can track in real-time
    */
-  const sendLocationToServer = async (lat: number, lng: number, bearing: number, speed: number) => {
+  const sendLocationToServer = async (
+    lat: number,
+    lng: number,
+    bearing: number,
+    speed: number
+  ) => {
     if (!tripId) return;
 
     // Update UI immediately
@@ -1809,38 +1991,53 @@ const DriverTripDetailScreenV2: React.FC = () => {
     // Send to SignalR if connected (works for both SIM and GPS modes)
     if (signalRConnected) {
       try {
-        await signalRTrackingService.sendLocationUpdate(tripId, lat, lng, bearing, speed);
-        console.log(`[Tracking:${trackingMode.toUpperCase()}] Sent: ${lat.toFixed(6)}, ${lng.toFixed(6)}, ${speed.toFixed(1)} km/h`);
+        await signalRTrackingService.sendLocationUpdate(
+          tripId,
+          lat,
+          lng,
+          bearing,
+          speed
+        );
+        console.log(
+          `[Tracking:${trackingMode.toUpperCase()}] Sent: ${lat.toFixed(
+            6
+          )}, ${lng.toFixed(6)}, ${speed.toFixed(1)} km/h`
+        );
       } catch (error) {
-        console.error(`[Tracking:${trackingMode.toUpperCase()}] Failed:`, error);
+        console.error(
+          `[Tracking:${trackingMode.toUpperCase()}] Failed:`,
+          error
+        );
       }
     } else {
-      console.warn(`[Tracking:${trackingMode.toUpperCase()}] SignalR not connected, location not sent`);
+      console.warn(
+        `[Tracking:${trackingMode.toUpperCase()}] SignalR not connected, location not sent`
+      );
     }
   };
 
   // ========== SIMULATION MODE FUNCTIONS ==========
   const startSimulation = async () => {
     if (!routeCoords || routeCoords.length === 0) {
-      showAlertCrossPlatform('Lỗi', 'Không có tuyến đường để giả lập');
+      showAlertCrossPlatform("Lỗi", "Không có tuyến đường để giả lập");
       return;
     }
 
     if (isSimulationRunning) {
-      console.warn('[Simulation] Already running');
+      console.warn("[Simulation] Already running");
       return;
     }
 
-    console.log('[Simulation] Route has', routeCoords.length, 'points');
-    console.log('[Simulation] First 3 points:', routeCoords.slice(0, 3));
-    console.log('[Simulation] Starting from index:', simulatorIndex);
+    console.log("[Simulation] Route has", routeCoords.length, "points");
+    console.log("[Simulation] First 3 points:", routeCoords.slice(0, 3));
+    console.log("[Simulation] Starting from index:", simulatorIndex);
 
     try {
       // Initialize simulator
       simulatorRef.current = new SimpleRouteSimulator({
         route: routeCoords,
-        speedKmH: 100, // 100 km/h - Faster for testing
-        updateIntervalMs: 1000, // 1 second - Update more frequently
+        speedKmH: 300, // 300 km/h - Very fast for testing
+        updateIntervalMs: 500, // 0.5 second - Update very frequently
         onUpdate: (location: SimulatorLocation) => {
           sendLocationToServer(
             location.latitude,
@@ -1850,19 +2047,22 @@ const DriverTripDetailScreenV2: React.FC = () => {
           );
         },
         onComplete: () => {
-          console.log('[Simulation] Completed');
+          console.log("[Simulation] Completed");
           setIsSimulationRunning(false);
-          showAlertCrossPlatform('Hoàn thành', 'Đã đến đích giả lập');
+          showAlertCrossPlatform("Hoàn thành", "Đã đến đích giả lập");
         },
       });
 
       // Start from saved index or 0
       simulatorRef.current.start(simulatorIndex);
       setIsSimulationRunning(true);
-      console.log('[Simulation] Started from index', simulatorIndex);
+      console.log("[Simulation] Started from index", simulatorIndex);
     } catch (error: any) {
-      console.error('[Simulation] Start failed:', error);
-      showAlertCrossPlatform('Lỗi', error?.message || 'Không thể bắt đầu giả lập');
+      console.error("[Simulation] Start failed:", error);
+      showAlertCrossPlatform(
+        "Lỗi",
+        error?.message || "Không thể bắt đầu giả lập"
+      );
     }
   };
 
@@ -1871,7 +2071,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       const currentIdx = simulatorRef.current.pause();
       setSimulatorIndex(currentIdx);
       setIsSimulationRunning(false);
-      console.log('[Simulation] Paused at index', currentIdx);
+      console.log("[Simulation] Paused at index", currentIdx);
     }
   };
 
@@ -1880,7 +2080,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       simulatorRef.current.stop();
       setIsSimulationRunning(false);
       setSimulatorIndex(0);
-      console.log('[Simulation] Stopped');
+      console.log("[Simulation] Stopped");
     }
   };
 
@@ -1935,14 +2135,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
       // Determine which route user is focusing on. If 'toPickup' or 'toDelivery' and we already have the planned route, use it.
       const routeToUse =
         visibleRoute === "toPickup" &&
-          pickupRouteCoords &&
-          pickupRouteCoords.length > 1
+        pickupRouteCoords &&
+        pickupRouteCoords.length > 1
           ? pickupRouteCoords
           : visibleRoute === "toDelivery" &&
             deliveryRouteCoords &&
             deliveryRouteCoords.length > 1
-            ? deliveryRouteCoords
-            : routeCoords;
+          ? deliveryRouteCoords
+          : routeCoords;
 
       // If user is focusing on pickup but we don't have its planned route yet, plan from current position -> pickup point
       if (
@@ -2010,14 +2210,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
       // Start navigation using the selected route (if available). We copy it into routeCoords so navigation uses it.
       const effectiveRoute =
         visibleRoute === "toPickup" &&
-          pickupRouteCoords &&
-          pickupRouteCoords.length > 1
+        pickupRouteCoords &&
+        pickupRouteCoords.length > 1
           ? pickupRouteCoords
           : visibleRoute === "toDelivery" &&
             deliveryRouteCoords &&
             deliveryRouteCoords.length > 1
-            ? deliveryRouteCoords
-            : routeCoords;
+          ? deliveryRouteCoords
+          : routeCoords;
       if (effectiveRoute && effectiveRoute.length > 1) {
         setRouteCoords(effectiveRoute);
       }
@@ -2034,16 +2234,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
         setJourneyPhase("TO_PICKUP");
       }
       setStartModalOpen(false);
-      
+
       // ========== START TRACKING: CHOOSE MODE ==========
-      if (trackingMode === 'simulation') {
+      if (trackingMode === "simulation") {
         // Simulation Mode: Use RouteSimulator
         await startSimulation();
       } else {
         // Real Mode: Use GPS
         startLocationWatcher();
       }
-      
+
       try {
         if (visibleRoute === "toDelivery")
           Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
@@ -2053,7 +2253,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           Speech.speak("Bắt đầu dẫn đường đến điểm lấy hàng", {
             language: "vi-VN",
           });
-      } catch { }
+      } catch {}
     } catch (error: any) {
       showAlertCrossPlatform("Lỗi", error.message);
     } finally {
@@ -2087,7 +2287,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       const pickupPoint =
         routeCoords && routeCoords.length ? (routeCoords[0] as Position) : null;
       if (!pickupPoint)
-        return showAlertCrossPlatform("Lỗi", "Không thể xác định toạ độ điểm lấy hàng");
+        return showAlertCrossPlatform(
+          "Lỗi",
+          "Không thể xác định toạ độ điểm lấy hàng"
+        );
 
       const planned = await vietmapService.planBetweenPoints(
         currentPosition,
@@ -2137,7 +2340,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
           ? (routeCoords[routeCoords.length - 1] as Position)
           : null);
       if (!deliveryPoint)
-        return showAlertCrossPlatform("Lỗi", "Không thể xác định toạ độ điểm giao hàng");
+        return showAlertCrossPlatform(
+          "Lỗi",
+          "Không thể xác định toạ độ điểm giao hàng"
+        );
 
       const planned = await vietmapService.planBetweenPoints(
         currentPosition,
@@ -2167,7 +2373,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       try {
         const s: any = watchSubRef.current;
         if (typeof s.remove === "function") s.remove();
-      } catch (e) { }
+      } catch (e) {}
       watchSubRef.current = null;
     }
 
@@ -2196,7 +2402,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         const longitude = loc.coords.longitude;
         const bearing = loc.coords.heading ?? 0;
         const speed = loc.coords.speed ?? 0;
-        
+
         // Update UI
         setCurrentPos(pos);
         if (loc.coords.heading) setCurrentHeading(loc.coords.heading);
@@ -2237,19 +2443,19 @@ const DriverTripDetailScreenV2: React.FC = () => {
       try {
         const s: any = watchSubRef.current;
         if (typeof s.remove === "function") s.remove();
-      } catch (e) { }
+      } catch (e) {}
       watchSubRef.current = null;
     }
-    
+
     // Stop Simulation
     stopSimulation();
-    
+
     setNavActive(false);
     setNavMinimized(false);
     setNavHidden(false);
     try {
       Speech.speak("Đã dừng dẫn đường", { language: "vi-VN" });
-    } catch { }
+    } catch {}
   };
 
   // Call backend to end current driver work session (but keep navigation UI active)
@@ -2321,7 +2527,6 @@ const DriverTripDetailScreenV2: React.FC = () => {
     stopNavigation();
   };
 
-
   // Resume a previously-paused work session by calling Start again
   const handleResumeSession = async () => {
     // Guard against double-tap: if already starting or session already running, return
@@ -2349,7 +2554,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       const resp: any = await driverWorkSessionService.start({
         TripId: trip.tripId,
       });
-      console.log('[handleResumeSession] Start session response:', JSON.stringify(resp, null, 2));
+      console.log(
+        "[handleResumeSession] Start session response:",
+        JSON.stringify(resp, null, 2)
+      );
       if (!(resp?.isSuccess ?? resp?.statusCode === 200)) {
         showAlertCrossPlatform(
           "Lỗi",
@@ -2359,10 +2567,18 @@ const DriverTripDetailScreenV2: React.FC = () => {
       }
       // backend returns sessionId in resp.result.sessionId
       const sid = resp?.result?.sessionId ?? resp?.result?.SessionId ?? null;
-      console.log('[handleResumeSession] Extracted session ID:', sid, 'type:', typeof sid);
-      if (!sid || typeof sid !== 'string') {
-        console.error('[handleResumeSession] Invalid session ID:', sid);
-        showAlertCrossPlatform('Lỗi', 'Không nhận được ID phiên làm việc hợp lệ');
+      console.log(
+        "[handleResumeSession] Extracted session ID:",
+        sid,
+        "type:",
+        typeof sid
+      );
+      if (!sid || typeof sid !== "string") {
+        console.error("[handleResumeSession] Invalid session ID:", sid);
+        showAlertCrossPlatform(
+          "Lỗi",
+          "Không nhận được ID phiên làm việc hợp lệ"
+        );
         return;
       }
       setDriverSessionId(sid);
@@ -2378,7 +2594,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       // DON'T call stopNavigation() - we want to keep navigation UI active when resuming
     } catch (e: any) {
       console.warn("[DriverTripDetail] resume session failed", e);
-      showAlertCrossPlatform("Lỗi", e?.message || "Không thể tiếp tục phiên làm việc");
+      showAlertCrossPlatform(
+        "Lỗi",
+        e?.message || "Không thể tiếp tục phiên làm việc"
+      );
     } finally {
       setIsResuming(false);
     }
@@ -2410,7 +2629,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       }
     } catch (e: any) {
       console.warn("[DriverTripDetail] changeStatus error", e);
-      showAlertCrossPlatform("Lỗi", e?.message || "Không thể cập nhật trạng thái chuyến");
+      showAlertCrossPlatform(
+        "Lỗi",
+        e?.message || "Không thể cập nhật trạng thái chuyến"
+      );
     }
 
     // Also end the current driver work session on the backend (keep nav UI active)
@@ -2418,12 +2640,23 @@ const DriverTripDetailScreenV2: React.FC = () => {
       try {
         // Extract string GUID - driverSessionId might be object like {sessionId: "guid"}
         let sessionIdToSend = driverSessionId;
-        if (sessionIdToSend && typeof sessionIdToSend === 'object') {
-          sessionIdToSend = (sessionIdToSend as any).sessionId ?? (sessionIdToSend as any).DriverWorkSessionId ?? (sessionIdToSend as any).driverWorkSessionId ?? null;
+        if (sessionIdToSend && typeof sessionIdToSend === "object") {
+          sessionIdToSend =
+            (sessionIdToSend as any).sessionId ??
+            (sessionIdToSend as any).DriverWorkSessionId ??
+            (sessionIdToSend as any).driverWorkSessionId ??
+            null;
         }
-        console.log('[confirmPickup] extracted sessionIdToSend:', sessionIdToSend, 'type:', typeof sessionIdToSend);
-        if (!sessionIdToSend || typeof sessionIdToSend !== 'string') {
-          console.error('[confirmPickup] Invalid session ID, skipping end call');
+        console.log(
+          "[confirmPickup] extracted sessionIdToSend:",
+          sessionIdToSend,
+          "type:",
+          typeof sessionIdToSend
+        );
+        if (!sessionIdToSend || typeof sessionIdToSend !== "string") {
+          console.error(
+            "[confirmPickup] Invalid session ID, skipping end call"
+          );
         } else {
           const endResp: any = await driverWorkSessionService.end({
             DriverWorkSessionId: sessionIdToSend,
@@ -2477,13 +2710,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
       Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
         language: "vi-VN",
       });
-    } catch { }
+    } catch {}
   };
 
   const [confirmingDelivery, setConfirmingDelivery] = useState(false);
   const [confirmingReturn, setConfirmingReturn] = useState(false);
   const [confirmingHandover, setConfirmingHandover] = useState(false);
-  const [confirmingVehicleReturning, setConfirmingVehicleReturning] = useState(false);
+  const [confirmingVehicleReturning, setConfirmingVehicleReturning] =
+    useState(false);
 
   // Helper to show alerts with web fallback
   const showAlert = (title: string, message?: string) => {
@@ -2496,7 +2730,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
     } catch (e) {
       try {
         showAlertCrossPlatform(title, message || "");
-      } catch { }
+      } catch {}
     }
   };
 
@@ -2540,12 +2774,23 @@ const DriverTripDetailScreenV2: React.FC = () => {
           try {
             // Extract string GUID - driverSessionId might be object like {sessionId: "guid"}
             let sessionIdToSend = driverSessionId;
-            if (sessionIdToSend && typeof sessionIdToSend === 'object') {
-              sessionIdToSend = (sessionIdToSend as any).sessionId ?? (sessionIdToSend as any).DriverWorkSessionId ?? (sessionIdToSend as any).driverWorkSessionId ?? null;
+            if (sessionIdToSend && typeof sessionIdToSend === "object") {
+              sessionIdToSend =
+                (sessionIdToSend as any).sessionId ??
+                (sessionIdToSend as any).DriverWorkSessionId ??
+                (sessionIdToSend as any).driverWorkSessionId ??
+                null;
             }
-            console.log('[confirmDelivery] extracted sessionIdToSend:', sessionIdToSend, 'type:', typeof sessionIdToSend);
-            if (!sessionIdToSend || typeof sessionIdToSend !== 'string') {
-              console.error('[confirmDelivery] Invalid session ID, skipping end call');
+            console.log(
+              "[confirmDelivery] extracted sessionIdToSend:",
+              sessionIdToSend,
+              "type:",
+              typeof sessionIdToSend
+            );
+            if (!sessionIdToSend || typeof sessionIdToSend !== "string") {
+              console.error(
+                "[confirmDelivery] Invalid session ID, skipping end call"
+              );
             } else {
               const endResp: any = await driverWorkSessionService.end({
                 DriverWorkSessionId: sessionIdToSend,
@@ -2573,7 +2818,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         setJourneyPhase("COMPLETED");
         try {
           Speech.speak("Đã hoàn thành đơn hàng", { language: "vi-VN" });
-        } catch { }
+        } catch {}
         await fetchTripData();
       } catch (e: any) {
         showAlert("Lỗi", e?.message || "Có lỗi khi xác nhận giao hàng");
@@ -2586,7 +2831,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
   };
 
   const openVehicleHandoverModal = async (recordId?: string) => {
-    if (!recordId) return showAlertCrossPlatform("Thông báo", "Không có biên bản");
+    if (!recordId)
+      return showAlertCrossPlatform("Thông báo", "Không có biên bản");
     setLoadingHandoverRecord(true);
     try {
       const res: any = await tripService.getVehicleHandoverRecord(recordId);
@@ -2621,25 +2867,31 @@ const DriverTripDetailScreenV2: React.FC = () => {
           })),
           // Map issues to ensure correct field names
           issues: (record.issues || []).map((issue: any) => ({
-            vehicleHandoverIssueId: issue.tripVehicleHandoverIssueId || issue.vehicleHandoverIssueId,
-            tripVehicleHandoverIssueId: issue.tripVehicleHandoverIssueId || issue.vehicleHandoverIssueId,
-            issueType: issue.issueType || 'OTHER',
-            description: issue.description || '',
-            status: issue.status || 'REPORTED',
-            estimatedCompensationAmount: issue.estimatedCompensationAmount || null,
+            vehicleHandoverIssueId:
+              issue.tripVehicleHandoverIssueId || issue.vehicleHandoverIssueId,
+            tripVehicleHandoverIssueId:
+              issue.tripVehicleHandoverIssueId || issue.vehicleHandoverIssueId,
+            issueType: issue.issueType || "OTHER",
+            description: issue.description || "",
+            status: issue.status || "REPORTED",
+            estimatedCompensationAmount:
+              issue.estimatedCompensationAmount || null,
             imageUrls: issue.imageUrls || [],
             surcharges: issue.surcharges || [],
           })),
           // Map surcharges from root level
           surcharges: (record.surcharges || []).map((surcharge: any) => ({
             tripSurchargeId: surcharge.tripSurchargeId,
-            type: surcharge.type || 'OTHER',
+            type: surcharge.type || "OTHER",
             amount: surcharge.amount || 0,
-            description: surcharge.description || '',
-            status: surcharge.status || 'PENDING',
+            description: surcharge.description || "",
+            status: surcharge.status || "PENDING",
           })),
         };
-        console.log("📸 Mapped termResults with images:", mappedRecord.termResults);
+        console.log(
+          "📸 Mapped termResults with images:",
+          mappedRecord.termResults
+        );
         console.log("🛠️ Mapped issues:", mappedRecord.issues);
         console.log("💰 Mapped surcharges:", mappedRecord.surcharges);
         setActiveHandoverRecord(mappedRecord);
@@ -2673,24 +2925,30 @@ const DriverTripDetailScreenV2: React.FC = () => {
           IsPassed: item.isPassed,
           Note: item.note || "",
           EvidenceImage: item.evidenceImage,
-        }))
+        })),
       });
-      
+
       if (res?.isSuccess) {
-        showAlertCrossPlatform("Thành công", "Đã cập nhật biên bản giao nhận xe");
+        showAlertCrossPlatform(
+          "Thành công",
+          "Đã cập nhật biên bản giao nhận xe"
+        );
         setShowHandoverEditor(false);
         await fetchTripData(); // Refresh trip data
-        
+
         // Reload the handover record to show updated data
         if (formData.recordId) {
           try {
-            const recordRes: any = await tripService.getVehicleHandoverRecord(formData.recordId);
+            const recordRes: any = await tripService.getVehicleHandoverRecord(
+              formData.recordId
+            );
             if (recordRes?.isSuccess) {
               const record = recordRes.result;
               const mappedRecord = {
                 ...record,
                 terms: (record.termResults || []).map((t: any) => ({
-                  tripVehicleHandoverTermResultId: t.tripVehicleHandoverTermResultId,
+                  tripVehicleHandoverTermResultId:
+                    t.tripVehicleHandoverTermResultId,
                   content: t.termContent,
                   isChecked: t.isPassed,
                   deviation: t.note || "",
@@ -2703,21 +2961,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   evidenceImageUrl: t.evidenceImageUrl || null,
                 })),
                 issues: (record.issues || []).map((issue: any) => ({
-                  vehicleHandoverIssueId: issue.tripVehicleHandoverIssueId || issue.vehicleHandoverIssueId,
-                  tripVehicleHandoverIssueId: issue.tripVehicleHandoverIssueId || issue.vehicleHandoverIssueId,
-                  issueType: issue.issueType || 'OTHER',
-                  description: issue.description || '',
-                  status: issue.status || 'REPORTED',
-                  estimatedCompensationAmount: issue.estimatedCompensationAmount || null,
+                  vehicleHandoverIssueId:
+                    issue.tripVehicleHandoverIssueId ||
+                    issue.vehicleHandoverIssueId,
+                  tripVehicleHandoverIssueId:
+                    issue.tripVehicleHandoverIssueId ||
+                    issue.vehicleHandoverIssueId,
+                  issueType: issue.issueType || "OTHER",
+                  description: issue.description || "",
+                  status: issue.status || "REPORTED",
+                  estimatedCompensationAmount:
+                    issue.estimatedCompensationAmount || null,
                   imageUrls: issue.imageUrls || [],
                   surcharges: issue.surcharges || [],
                 })),
                 surcharges: (record.surcharges || []).map((surcharge: any) => ({
                   tripSurchargeId: surcharge.tripSurchargeId,
-                  type: surcharge.type || 'OTHER',
+                  type: surcharge.type || "OTHER",
                   amount: surcharge.amount || 0,
-                  description: surcharge.description || '',
-                  status: surcharge.status || 'PENDING',
+                  description: surcharge.description || "",
+                  status: surcharge.status || "PENDING",
                 })),
               };
               setActiveHandoverRecord(mappedRecord);
@@ -2727,7 +2990,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
           }
         }
       } else {
-        showAlertCrossPlatform("Lỗi", res?.message || "Không thể cập nhật biên bản");
+        showAlertCrossPlatform(
+          "Lỗi",
+          res?.message || "Không thể cập nhật biên bản"
+        );
       }
     } catch (e: any) {
       console.error("Save handover checklist error:", e);
@@ -2922,10 +3188,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           );
           await fetchTripData();
         } else {
-          showAlert(
-            "Lỗi",
-            res?.message || "Không thể cập nhật trạng thái"
-          );
+          showAlert("Lỗi", res?.message || "Không thể cập nhật trạng thái");
         }
       } catch (e: any) {
         showAlert("Lỗi", e?.message || "Có lỗi khi xác nhận");
@@ -2991,45 +3254,56 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // --- Check-in Handler for Main Driver (change status + check-in) ---
   const handleMainDriverCheckIn = async () => {
     if (!trip || !checkInImage) {
-      showAlert('Lỗi', 'Vui lòng chụp ảnh minh chứng');
+      showAlert("Lỗi", "Vui lòng chụp ảnh minh chứng");
       return;
     }
     setCheckingIn(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Cần quyền vị trí để check-in.');
+      if (status !== "granted") {
+        throw new Error("Cần quyền vị trí để check-in.");
       }
-      const now = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const now = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
       const latitude = now.coords.latitude;
       const longitude = now.coords.longitude;
-      
+
       // Get current address (use coordinates as fallback)
       let currentAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
       try {
-        const results = await vietmapService.searchAddress('', [longitude, latitude]);
+        const results = await vietmapService.searchAddress("", [
+          longitude,
+          latitude,
+        ]);
         if (results && results.length > 0) {
           currentAddress = results[0].address || currentAddress;
         }
       } catch (e) {
-        console.warn('Get address failed', e);
+        console.warn("Get address failed", e);
       }
-      
+
       // Step 1: Change trip status to VEHICLE_HANDOVERED (only main driver)
       try {
         const statusRes: any = await tripService.changeStatus({
           TripId: trip.tripId,
-          NewStatus: 'VEHICLE_HANDOVERED'
+          NewStatus: "VEHICLE_HANDOVERED",
         });
         if (!statusRes?.isSuccess && statusRes?.statusCode !== 200) {
-          showAlert('Lỗi', statusRes?.message || 'Không thể thay đổi trạng thái chuyến đi');
+          showAlert(
+            "Lỗi",
+            statusRes?.message || "Không thể thay đổi trạng thái chuyến đi"
+          );
           return;
         }
       } catch (statusErr: any) {
-        showAlert('Lỗi', statusErr?.message || 'Không thể thay đổi trạng thái chuyến đi');
+        showAlert(
+          "Lỗi",
+          statusErr?.message || "Không thể thay đổi trạng thái chuyến đi"
+        );
         return;
       }
-      
+
       // Step 2: Check-in
       const res: any = await assignmentService.driverCheckIn(
         trip.tripId,
@@ -3038,18 +3312,20 @@ const DriverTripDetailScreenV2: React.FC = () => {
         currentAddress,
         checkInImage
       );
-      
+
       if (res?.isSuccess || res?.statusCode === 200) {
-        const warning = res?.result?.warning || '';
-        showToast('Xác nhận lấy xe & check-in thành công! Bắt đầu chuyến đi.' + warning);
+        const warning = res?.result?.warning || "";
+        showToast(
+          "Xác nhận lấy xe & check-in thành công! Bắt đầu chuyến đi." + warning
+        );
         setIsCheckedIn(true);
         setShowCheckInModal(false);
         await fetchTripData();
       } else {
-        showAlert('Lỗi', res?.message || 'Không thể check-in');
+        showAlert("Lỗi", res?.message || "Không thể check-in");
       }
     } catch (e: any) {
-      showAlert('Lỗi', e?.message || 'Có lỗi khi check-in');
+      showAlert("Lỗi", e?.message || "Có lỗi khi check-in");
     } finally {
       setCheckingIn(false);
     }
@@ -3058,30 +3334,35 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // --- Check-in Handler for Secondary Driver (check-in only) ---
   const handleCheckIn = async () => {
     if (!trip || !checkInImage) {
-      showAlert('Lỗi', 'Vui lòng chụp ảnh minh chứng');
+      showAlert("Lỗi", "Vui lòng chụp ảnh minh chứng");
       return;
     }
     setCheckingIn(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Cần quyền vị trí để check-in.');
+      if (status !== "granted") {
+        throw new Error("Cần quyền vị trí để check-in.");
       }
-      const now = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const now = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
       const latitude = now.coords.latitude;
       const longitude = now.coords.longitude;
-      
+
       // Get current address (use coordinates as fallback)
       let currentAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
       try {
-        const results = await vietmapService.searchAddress('', [longitude, latitude]);
+        const results = await vietmapService.searchAddress("", [
+          longitude,
+          latitude,
+        ]);
         if (results && results.length > 0) {
           currentAddress = results[0].address || currentAddress;
         }
       } catch (e) {
-        console.warn('Get address failed', e);
+        console.warn("Get address failed", e);
       }
-      
+
       // Call check-in API only
       const res: any = await assignmentService.driverCheckIn(
         trip.tripId,
@@ -3090,18 +3371,18 @@ const DriverTripDetailScreenV2: React.FC = () => {
         currentAddress,
         checkInImage
       );
-      
+
       if (res?.isSuccess || res?.statusCode === 200) {
-        const warning = res?.result?.warning || '';
-        showToast('Check-in thành công!' + warning);
+        const warning = res?.result?.warning || "";
+        showToast("Check-in thành công!" + warning);
         setIsCheckedIn(true);
         setShowCheckInModal(false);
         await fetchTripData();
       } else {
-        showAlert('Lỗi', res?.message || 'Không thể check-in');
+        showAlert("Lỗi", res?.message || "Không thể check-in");
       }
     } catch (e: any) {
-      showAlert('Lỗi', e?.message || 'Có lỗi khi check-in');
+      showAlert("Lỗi", e?.message || "Có lỗi khi check-in");
     } finally {
       setCheckingIn(false);
     }
@@ -3110,30 +3391,35 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // --- Check-out Handler for Secondary Driver ---
   const handleCheckOut = async () => {
     if (!trip || !checkOutImage) {
-      showAlert('Lỗi', 'Vui lòng chụp ảnh minh chứng');
+      showAlert("Lỗi", "Vui lòng chụp ảnh minh chứng");
       return;
     }
     setCheckingOut(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Cần quyền vị trí để check-out.');
+      if (status !== "granted") {
+        throw new Error("Cần quyền vị trí để check-out.");
       }
-      const now = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const now = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
       const latitude = now.coords.latitude;
       const longitude = now.coords.longitude;
-      
+
       // Get current address (use coordinates as fallback)
       let currentAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
       try {
-        const results = await vietmapService.searchAddress('', [longitude, latitude]);
+        const results = await vietmapService.searchAddress("", [
+          longitude,
+          latitude,
+        ]);
         if (results && results.length > 0) {
           currentAddress = results[0].address || currentAddress;
         }
       } catch (e) {
-        console.warn('Get address failed', e);
+        console.warn("Get address failed", e);
       }
-      
+
       // Call check-out API
       const res: any = await assignmentService.driverCheckOut(
         trip.tripId,
@@ -3142,17 +3428,17 @@ const DriverTripDetailScreenV2: React.FC = () => {
         currentAddress,
         checkOutImage
       );
-      
+
       if (res?.isSuccess || res?.statusCode === 200) {
-        const warning = res?.result?.warning || '';
-        showToast('Check-out thành công! Cảm ơn bạn!' + warning);
+        const warning = res?.result?.warning || "";
+        showToast("Check-out thành công! Cảm ơn bạn!" + warning);
         setShowCheckOutModal(false);
         await fetchTripData();
       } else {
-        showAlert('Lỗi', res?.message || 'Không thể check-out');
+        showAlert("Lỗi", res?.message || "Không thể check-out");
       }
     } catch (e: any) {
-      showAlert('Lỗi', e?.message || 'Có lỗi khi check-out');
+      showAlert("Lỗi", e?.message || "Có lỗi khi check-out");
     } finally {
       setCheckingOut(false);
     }
@@ -3169,8 +3455,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // Signing rules
   const isPickupSignAllowed = trip?.status === "LOADING";
   // DROPOFF: Driver phải đợi contact ký trước
-  const isDropoffSignAllowed = 
-    trip?.status === "UNLOADING" && 
+  const isDropoffSignAllowed =
+    trip?.status === "UNLOADING" &&
     activeDeliveryRecord?.contactSigned === true;
   const recordTerms =
     (activeDeliveryRecord &&
@@ -3189,8 +3475,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       return deliveryRouteCoords && deliveryRouteCoords.length > 0
         ? deliveryRouteCoords
         : routeCoords;
-    if (visibleRoute === "toReturn")
-      return routeCoords; // Use main routeCoords for return journey
+    if (visibleRoute === "toReturn") return routeCoords; // Use main routeCoords for return journey
     return routeCoords;
   })();
 
@@ -3216,30 +3501,31 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // helper: are we approaching the 4-hour continuous limit (TEST: 30 seconds for demo, production: 15 minutes)
   // const approachingContinuousLimit = continuousSeconds >= 4 * 3600 - 15 * 60; // PRODUCTION
   const approachingContinuousLimit = continuousSeconds >= 30; // TEST: Cảnh báo sau 30 giây
-  
+
   // Show an in-app banner and platform-specific toast/alert when approaching limit
   useEffect(() => {
     if (approachingContinuousLimit && !approachAlertShown) {
-      const message = 'Bạn sắp đạt giới hạn lái liên tục. Vui lòng nghỉ ngơi sớm để đảm bảo an toàn.';
+      const message =
+        "Bạn sắp đạt giới hạn lái liên tục. Vui lòng nghỉ ngơi sớm để đảm bảo an toàn.";
       setShowApproachingAlert(true);
       setApproachAlertShown(true);
 
       try {
-        if (Platform.OS === 'android' && ToastAndroid && ToastAndroid.show) {
+        if (Platform.OS === "android" && ToastAndroid && ToastAndroid.show) {
           ToastAndroid.show(message, ToastAndroid.LONG);
-        } else if (Platform.OS === 'web') {
+        } else if (Platform.OS === "web") {
           // Fallback for web: use window.alert if no global toast available
-          if (typeof window !== 'undefined' && (window as any).toast) {
+          if (typeof window !== "undefined" && (window as any).toast) {
             (window as any).toast(message);
-          } else if (typeof window !== 'undefined') {
+          } else if (typeof window !== "undefined") {
             // Keep non-blocking: use setTimeout to avoid blocking render
             setTimeout(() => window.alert(message), 50);
           }
         } else {
-          Alert.alert('Cảnh báo', message, [{ text: 'OK' }]);
+          Alert.alert("Cảnh báo", message, [{ text: "OK" }]);
         }
       } catch (e) {
-        console.warn('[DriverTripDetail] notify approaching limit failed', e);
+        console.warn("[DriverTripDetail] notify approaching limit failed", e);
       }
 
       // auto-hide banner after 8 seconds
@@ -3247,12 +3533,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
       return () => clearTimeout(t);
     }
   }, [approachingContinuousLimit, approachAlertShown]);
-  
+
   // ===== CHECK-IN FLOW LOGIC =====
   // Phân biệt tài xế có hợp đồng (external) vs tài xế nội bộ (internal/no contract)
   const hasDriverOwnerContract = myDriverContract !== null;
   const hasSignedContract = myDriverContract?.counterpartySigned === true;
-  
+
   // LOGIC FLOW:
   // 1. TÀI XẾ CÓ HỢP ĐỒNG (External Driver):
   //    - Bước 1: Ký hợp đồng (needsContractSign = true)
@@ -3261,34 +3547,37 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // 2. TÀI XẾ NỘI BỘ (Internal Driver - NO CONTRACT):
   //    - Bỏ qua Bước 1 (không cần ký hợp đồng)
   //    - Chuyển thẳng Bước 2: Check-in khi READY_FOR_VEHICLE_HANDOVER
-  
+
   // Hiển thị overlay khi:
   // - Driver chưa check-in VÀ
   // - (Có hợp đồng: chưa ký HOẶC chưa onboard) HOẶC (Không có hợp đồng: chưa onboard)
-  const showOverlay = !isCheckedIn && currentDriver && (
-    hasDriverOwnerContract 
-      ? (!hasSignedContract || !currentDriver.isOnBoard)  // External: yêu cầu ký + check-in
-      : !currentDriver.isOnBoard                          // Internal: chỉ yêu cầu check-in
-  );
-  
+  const showOverlay =
+    !isCheckedIn &&
+    currentDriver &&
+    (hasDriverOwnerContract
+      ? !hasSignedContract || !currentDriver.isOnBoard // External: yêu cầu ký + check-in
+      : !currentDriver.isOnBoard); // Internal: chỉ yêu cầu check-in
+
   // Hiển thị UI ký hợp đồng (CHỈ KHI CÓ HỢP ĐỒNG và chưa ký)
   const needsContractSign = hasDriverOwnerContract && !hasSignedContract;
-  
+
   // Hiển thị nút Check-in khi:
   // - (Đã ký hợp đồng HOẶC không có hợp đồng = tài xế nội bộ) VÀ
   // - TÀI CHÍNH: status = READY_FOR_VEHICLE_HANDOVER
   // - TÀI PHỤ: status khác PENDING_DRIVER_ASSIGNMENT và DONE_ASSIGNING_DRIVER
-  const canShowCheckInButton = (hasSignedContract || !hasDriverOwnerContract) && (
-    isMainDriver 
-      ? trip?.status === 'READY_FOR_VEHICLE_HANDOVER'
-      : (trip?.status !== 'PENDING_DRIVER_ASSIGNMENT' && trip?.status !== 'DONE_ASSIGNING_DRIVER')
-  );
-  
+  const canShowCheckInButton =
+    (hasSignedContract || !hasDriverOwnerContract) &&
+    (isMainDriver
+      ? trip?.status === "READY_FOR_VEHICLE_HANDOVER"
+      : trip?.status !== "PENDING_DRIVER_ASSIGNMENT" &&
+        trip?.status !== "DONE_ASSIGNING_DRIVER");
+
   // Helper: pick image for check-in
   const pickCheckInImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permissionResult =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permissionResult.granted === false) {
-      showAlert('Lỗi', 'Cần quyền truy cập thư viện ảnh');
+      showAlert("Lỗi", "Cần quyền truy cập thư viện ảnh");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -3299,26 +3588,30 @@ const DriverTripDetailScreenV2: React.FC = () => {
     });
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
-      
+
       // WEB: Convert to File object
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         try {
           const response = await fetch(asset.uri);
           const blob = await response.blob();
-          const file = new File([blob], asset.fileName || ('checkin-' + Date.now() + '.jpg'), {
-            type: asset.mimeType || 'image/jpeg'
-          });
+          const file = new File(
+            [blob],
+            asset.fileName || "checkin-" + Date.now() + ".jpg",
+            {
+              type: asset.mimeType || "image/jpeg",
+            }
+          );
           setCheckInImage(file);
         } catch (err) {
-          console.error('Failed to convert image to File:', err);
-          showAlert('Lỗi', 'Không thể xử lý ảnh');
+          console.error("Failed to convert image to File:", err);
+          showAlert("Lỗi", "Không thể xử lý ảnh");
         }
       } else {
         // MOBILE: React Native format
         setCheckInImage({
           uri: asset.uri,
-          type: asset.mimeType || 'image/jpeg',
-          name: asset.fileName || ('checkin-' + Date.now() + '.jpg')
+          type: asset.mimeType || "image/jpeg",
+          name: asset.fileName || "checkin-" + Date.now() + ".jpg",
         } as any);
       }
     }
@@ -3326,9 +3619,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   // Helper: pick image for check-out
   const pickCheckOutImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permissionResult =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permissionResult.granted === false) {
-      showAlert('Lỗi', 'Cần quyền truy cập thư viện ảnh');
+      showAlert("Lỗi", "Cần quyền truy cập thư viện ảnh");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -3339,26 +3633,30 @@ const DriverTripDetailScreenV2: React.FC = () => {
     });
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
-      
+
       // WEB: Convert to File object
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         try {
           const response = await fetch(asset.uri);
           const blob = await response.blob();
-          const file = new File([blob], asset.fileName || ('checkout-' + Date.now() + '.jpg'), {
-            type: asset.mimeType || 'image/jpeg'
-          });
+          const file = new File(
+            [blob],
+            asset.fileName || "checkout-" + Date.now() + ".jpg",
+            {
+              type: asset.mimeType || "image/jpeg",
+            }
+          );
           setCheckOutImage(file);
         } catch (err) {
-          console.error('Failed to convert image to File:', err);
-          showAlert('Lỗi', 'Không thể xử lý ảnh');
+          console.error("Failed to convert image to File:", err);
+          showAlert("Lỗi", "Không thể xử lý ảnh");
         }
       } else {
         // MOBILE: React Native format
         setCheckOutImage({
           uri: asset.uri,
-          type: asset.mimeType || 'image/jpeg',
-          name: asset.fileName || ('checkout-' + Date.now() + '.jpg')
+          type: asset.mimeType || "image/jpeg",
+          name: asset.fileName || "checkout-" + Date.now() + ".jpg",
         } as any);
       }
     }
@@ -3395,15 +3693,18 @@ const DriverTripDetailScreenV2: React.FC = () => {
       <View style={styles.header}>
         {/* Row 1: Back button + Title + Refresh */}
         <View style={styles.headerTopRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+          >
             <Ionicons name="arrow-back" size={24} color="#1F2937" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Chi tiết chuyến đi</Text>
             <Text style={styles.subTitle}>{trip.tripCode}</Text>
           </View>
-          <TouchableOpacity 
-            onPress={handleRefresh} 
+          <TouchableOpacity
+            onPress={handleRefresh}
             style={{ padding: 4 }}
             disabled={refreshing}
           >
@@ -3419,20 +3720,31 @@ const DriverTripDetailScreenV2: React.FC = () => {
         <View style={styles.headerBottomRow}>
           {/* Tracking Mode Toggle */}
           <TouchableOpacity
-            onPress={() => setTrackingMode(prev => prev === 'simulation' ? 'real' : 'simulation')}
-            style={[styles.modeToggleBtn, trackingMode === 'simulation' ? styles.modeSimulation : styles.modeReal]}
+            onPress={() =>
+              setTrackingMode((prev) =>
+                prev === "simulation" ? "real" : "simulation"
+              )
+            }
+            style={[
+              styles.modeToggleBtn,
+              trackingMode === "simulation"
+                ? styles.modeSimulation
+                : styles.modeReal,
+            ]}
             disabled={navActive || isSimulationRunning}
           >
-            <Ionicons 
-              name={trackingMode === 'simulation' ? 'game-controller' : 'navigate'} 
-              size={16} 
-              color="#fff" 
+            <Ionicons
+              name={
+                trackingMode === "simulation" ? "game-controller" : "navigate"
+              }
+              size={16}
+              color="#fff"
             />
             <Text style={styles.modeToggleText}>
-              {trackingMode === 'simulation' ? 'SIM' : 'GPS'}
+              {trackingMode === "simulation" ? "SIM" : "GPS"}
             </Text>
           </TouchableOpacity>
-          
+
           {/* SignalR Connection Status Badge */}
           {signalRConnected && (
             <View style={styles.signalRBadge}>
@@ -3440,29 +3752,42 @@ const DriverTripDetailScreenV2: React.FC = () => {
               <Text style={styles.signalRText}>Live</Text>
             </View>
           )}
-          
+
           <View style={{ flex: 1 }} />
-          
+
           <StatusPill value={trip.status} />
         </View>
       </View>
-      
+
       {/* Overlay for Secondary Driver who has checked out */}
       {isSecondaryDriverCheckedOut && (
         <View style={styles.checkoutOverlay}>
           <View style={styles.checkoutOverlayContent}>
             <View style={styles.checkoutIconCircle}>
-              <MaterialCommunityIcons name="check-circle" size={64} color="#10B981" />
+              <MaterialCommunityIcons
+                name="check-circle"
+                size={64}
+                color="#10B981"
+              />
             </View>
-            <Text style={styles.checkoutOverlayTitle}>Đã Check-out Thành Công</Text>
+            <Text style={styles.checkoutOverlayTitle}>
+              Đã Check-out Thành Công
+            </Text>
             <Text style={styles.checkoutOverlayMessage}>
               Bạn đã hoàn thành phần công việc của mình.{"\n"}
               Vui lòng chờ khi chuyến đi hoàn thành.
             </Text>
             <View style={styles.checkoutInfoBox}>
-              <MaterialCommunityIcons name="clock-check-outline" size={20} color="#6B7280" />
+              <MaterialCommunityIcons
+                name="clock-check-outline"
+                size={20}
+                color="#6B7280"
+              />
               <Text style={styles.checkoutInfoText}>
-                Thời gian check-out: {currentDriver?.offBoardTime ? new Date(currentDriver.offBoardTime).toLocaleString('vi-VN') : 'N/A'}
+                Thời gian check-out:{" "}
+                {currentDriver?.offBoardTime
+                  ? new Date(currentDriver.offBoardTime).toLocaleString("vi-VN")
+                  : "N/A"}
               </Text>
             </View>
           </View>
@@ -3488,90 +3813,105 @@ const DriverTripDetailScreenV2: React.FC = () => {
         </View>
       )}
 
-
-
       <ScrollView contentContainerStyle={styles.scrollContent}>
-
-
         {/* Warning Banner for VEHICLE_HANDOVERED status - PRIMARY DRIVER ONLY */}
-        {isMainDriver && trip.status === 'VEHICLE_HANDOVERED' && (() => {
-          // Check if driver has signed the handover record
-          const handoverRecord = (trip as any).handoverReadDTOs?.find(
-            (r: any) => r && r.type === "HANDOVER"
-          );
-          const driverHasSigned = handoverRecord?.receiverSigned;
-          const ownerHasSigned = handoverRecord?.handoverSigned;
+        {isMainDriver &&
+          trip.status === "VEHICLE_HANDOVERED" &&
+          (() => {
+            // Check if driver has signed the handover record
+            const handoverRecord = (trip as any).handoverReadDTOs?.find(
+              (r: any) => r && r.type === "HANDOVER"
+            );
+            const driverHasSigned = handoverRecord?.receiverSigned;
+            const ownerHasSigned = handoverRecord?.handoverSigned;
 
-          if (driverHasSigned && !ownerHasSigned) {
-            // Driver already signed, waiting for owner
-            return (
-              <View style={[styles.warningBanner, { backgroundColor: '#DBEAFE', borderLeftColor: '#3B82F6' }]}>
-                <View style={styles.warningIconContainer}>
-                  <Text style={styles.warningIcon}>⏳</Text>
+            if (driverHasSigned && !ownerHasSigned) {
+              // Driver already signed, waiting for owner
+              return (
+                <View
+                  style={[
+                    styles.warningBanner,
+                    { backgroundColor: "#DBEAFE", borderLeftColor: "#3B82F6" },
+                  ]}
+                >
+                  <View style={styles.warningIconContainer}>
+                    <Text style={styles.warningIcon}>⏳</Text>
+                  </View>
+                  <View style={styles.warningContent}>
+                    <Text style={[styles.warningTitle, { color: "#1E40AF" }]}>
+                      Đã ký biên bản giao xe
+                    </Text>
+                    <Text style={[styles.warningText, { color: "#1E3A8A" }]}>
+                      Bạn đã ký xác nhận biên bản giao xe. Đang đợi chủ xe xác
+                      nhận để bắt đầu chuyến đi.
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.warningContent}>
-                  <Text style={[styles.warningTitle, { color: '#1E40AF' }]}>Đã ký biên bản giao xe</Text>
-                  <Text style={[styles.warningText, { color: '#1E3A8A' }]}>
-                    Bạn đã ký xác nhận biên bản giao xe. Đang đợi chủ xe xác nhận để bắt đầu chuyến đi.
-                  </Text>
+              );
+            } else if (!driverHasSigned) {
+              // Driver hasn't signed yet
+              return (
+                <View style={styles.warningBanner}>
+                  <View style={styles.warningIconContainer}>
+                    <Text style={styles.warningIcon}>📝</Text>
+                  </View>
+                  <View style={styles.warningContent}>
+                    <Text style={styles.warningTitle}>
+                      Ghi nhận tình trạng xe
+                    </Text>
+                    <Text style={styles.warningText}>
+                      Vui lòng kiểm tra và ghi nhận tình trạng xe, sau đó ký
+                      biên bản giao xe để bắt đầu chuyến đi
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            );
-          } else if (!driverHasSigned) {
-            // Driver hasn't signed yet
-            return (
-              <View style={styles.warningBanner}>
-                <View style={styles.warningIconContainer}>
-                  <Text style={styles.warningIcon}>📝</Text>
-                </View>
-                <View style={styles.warningContent}>
-                  <Text style={styles.warningTitle}>Ghi nhận tình trạng xe</Text>
-                  <Text style={styles.warningText}>
-                    Vui lòng kiểm tra và ghi nhận tình trạng xe, sau đó ký biên bản giao xe để bắt đầu chuyến đi
-                  </Text>
-                </View>
-              </View>
-            );
-          }
-          return null; // Both signed - no banner needed
-        })()}
+              );
+            }
+            return null; // Both signed - no banner needed
+          })()}
 
         {/* Badges Row - Driver Role & Session Status */}
-        <View style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginHorizontal: 16,
-          marginTop: 16,
-          marginBottom: 8,
-          gap: 12,
-        }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginHorizontal: 16,
+            marginTop: 16,
+            marginBottom: 8,
+            gap: 12,
+          }}
+        >
           {/* Badge hiển thị ROLE của user hiện tại */}
           {currentDriver && (
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: isMainDriver ? '#3B82F6' : '#6B7280',
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 20,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.2,
-              shadowRadius: 3,
-              elevation: 4,
-            }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: isMainDriver ? "#3B82F6" : "#6B7280",
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 20,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.2,
+                shadowRadius: 3,
+                elevation: 4,
+              }}
+            >
               <MaterialCommunityIcons
                 name={isMainDriver ? "account-star" : "account"}
                 size={18}
                 color="#FFFFFF"
               />
-              <Text style={{
-                marginLeft: 6,
-                fontSize: 13,
-                fontWeight: '700',
-                color: '#FFFFFF',
-              }}>
+              <Text
+                style={{
+                  marginLeft: 6,
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: "#FFFFFF",
+                }}
+              >
                 {isMainDriver ? "Tài xế chính" : "Tài xế phụ"}
               </Text>
             </View>
@@ -3579,59 +3919,77 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
           {/* Badge hiển thị AI ĐANG LÁI */}
           {!loadingSession && (
-            <View style={{
-              flex: 1,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              backgroundColor: currentSession
-                ? (currentSession.isSelf ? '#10B981' : '#F59E0B')
-                : '#94A3B8',
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 20,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.2,
-              shadowRadius: 3,
-              elevation: 4,
-            }}>
+            <View
+              style={{
+                flex: 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                backgroundColor: currentSession
+                  ? currentSession.isSelf
+                    ? "#10B981"
+                    : "#F59E0B"
+                  : "#94A3B8",
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 20,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.2,
+                shadowRadius: 3,
+                elevation: 4,
+              }}
+            >
               <MaterialCommunityIcons
                 name={currentSession ? "steering" : "sleep"}
                 size={16}
                 color="#FFFFFF"
               />
               <View style={{ marginLeft: 6, flex: 1 }}>
-                <Text style={{
-                  fontSize: 12,
-                  fontWeight: '700',
-                  color: '#FFFFFF',
-                }} numberOfLines={1}>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "700",
+                    color: "#FFFFFF",
+                  }}
+                  numberOfLines={1}
+                >
                   {currentSession
-                    ? (currentSession.isSelf ? 'Bạn đang lái' : `${currentSession.role || 'Tài xế'} đang lái`)
-                    : 'Chưa bắt đầu'
-                  }
+                    ? currentSession.isSelf
+                      ? "Bạn đang lái"
+                      : `${currentSession.role || "Tài xế"} đang lái`
+                    : "Chưa bắt đầu"}
                 </Text>
                 {currentSession && (
                   <>
                     {!currentSession.isSelf && (
-                      <Text style={{
-                        fontSize: 10,
-                        color: '#FFFFFF',
-                        marginTop: 1,
-                        opacity: 0.9,
-                      }} numberOfLines={1}>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: "#FFFFFF",
+                          marginTop: 1,
+                          opacity: 0.9,
+                        }}
+                        numberOfLines={1}
+                      >
                         {currentSession.driverName}
                       </Text>
                     )}
                     {currentSession.startTime && (
-                      <Text style={{
-                        fontSize: 9,
-                        color: '#FFFFFF',
-                        marginTop: 1,
-                        opacity: 0.8,
-                      }} numberOfLines={1}>
-                        Bắt đầu: {new Date(currentSession.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      <Text
+                        style={{
+                          fontSize: 9,
+                          color: "#FFFFFF",
+                          marginTop: 1,
+                          opacity: 0.8,
+                        }}
+                        numberOfLines={1}
+                      >
+                        Bắt đầu:{" "}
+                        {new Date(currentSession.startTime).toLocaleTimeString(
+                          "vi-VN",
+                          { hour: "2-digit", minute: "2-digit" }
+                        )}
                       </Text>
                     )}
                   </>
@@ -3693,73 +4051,80 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     style={[
                       styles.smallToggleText,
                       visibleRoute === "overview" &&
-                      styles.smallToggleTextActive,
+                        styles.smallToggleTextActive,
                     ]}
                   >
                     Tổng quan
                   </Text>
                 </TouchableOpacity>
-                {['MOVING_TO_PICKUP', 'MOVING_TO_DROPOFF', 'LOADING', 'UNLOADING'].includes(trip.status) && (
-                <TouchableOpacity
-                  style={[
-                    styles.smallToggle,
-                    visibleRoute === "toPickup" && styles.smallToggleActive,
-                    { marginLeft: 8 },
-                  ]}
-                  onPress={handleShowPickup}
-                >
-                  <Text
+                {[
+                  "MOVING_TO_PICKUP",
+                  "MOVING_TO_DROPOFF",
+                  "LOADING",
+                  "UNLOADING",
+                ].includes(trip.status) && (
+                  <TouchableOpacity
                     style={[
-                      styles.smallToggleText,
-                      visibleRoute === "toPickup" &&
-                      styles.smallToggleTextActive,
+                      styles.smallToggle,
+                      visibleRoute === "toPickup" && styles.smallToggleActive,
+                      { marginLeft: 8 },
                     ]}
+                    onPress={handleShowPickup}
                   >
-                    Đến lấy hàng
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={[
+                        styles.smallToggleText,
+                        visibleRoute === "toPickup" &&
+                          styles.smallToggleTextActive,
+                      ]}
+                    >
+                      Đến lấy hàng
+                    </Text>
+                  </TouchableOpacity>
                 )}
 
-                {['MOVING_TO_DROPOFF', 'LOADING', 'UNLOADING'].includes(trip.status) && (
-                <TouchableOpacity
-                  style={[
-                    styles.smallToggle,
-                    visibleRoute === "toDelivery" && styles.smallToggleActive,
-                    { marginLeft: 8 },
-                  ]}
-                  onPress={handleShowDelivery}
-                >
-                  <Text
+                {["MOVING_TO_DROPOFF", "LOADING", "UNLOADING"].includes(
+                  trip.status
+                ) && (
+                  <TouchableOpacity
                     style={[
-                      styles.smallToggleText,
-                      visibleRoute === "toDelivery" &&
-                      styles.smallToggleTextActive,
+                      styles.smallToggle,
+                      visibleRoute === "toDelivery" && styles.smallToggleActive,
+                      { marginLeft: 8 },
                     ]}
+                    onPress={handleShowDelivery}
                   >
-                    Đến giao hàng
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={[
+                        styles.smallToggleText,
+                        visibleRoute === "toDelivery" &&
+                          styles.smallToggleTextActive,
+                      ]}
+                    >
+                      Đến giao hàng
+                    </Text>
+                  </TouchableOpacity>
                 )}
 
-                {trip.status === 'READY_FOR_VEHICLE_RETURN' && (
-                <TouchableOpacity
-                  style={[
-                    styles.smallToggle,
-                    visibleRoute === "toReturn" && styles.smallToggleActive,
-                    { marginLeft: 8 },
-                  ]}
-                  onPress={() => setVisibleRoute("toReturn")}
-                >
-                  <Text
+                {trip.status === "READY_FOR_VEHICLE_RETURN" && (
+                  <TouchableOpacity
                     style={[
-                      styles.smallToggleText,
-                      visibleRoute === "toReturn" &&
-                      styles.smallToggleTextActive,
+                      styles.smallToggle,
+                      visibleRoute === "toReturn" && styles.smallToggleActive,
+                      { marginLeft: 8 },
                     ]}
+                    onPress={() => setVisibleRoute("toReturn")}
                   >
-                    Đến trả xe
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={[
+                        styles.smallToggleText,
+                        visibleRoute === "toReturn" &&
+                          styles.smallToggleTextActive,
+                      ]}
+                    >
+                      Đến trả xe
+                    </Text>
+                  </TouchableOpacity>
                 )}
               </View>
 
@@ -3770,16 +4135,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     (navActive ||
                       (eligibility && !eligibility.canDrive) ||
                       continuousSeconds / 3600 >= 4) &&
-                    styles.mapFabDisabled,
+                      styles.mapFabDisabled,
                   ]}
                   onPress={
                     visibleRoute === "toPickup"
                       ? startNavigationToPickupAddress
                       : visibleRoute === "toDelivery"
-                        ? startNavigationToDeliveryAddress
-                        : visibleRoute === "toReturn"
-                          ? startNavigationToReturnPoint
-                          : startNavigation
+                      ? startNavigationToDeliveryAddress
+                      : visibleRoute === "toReturn"
+                      ? startNavigationToReturnPoint
+                      : startNavigation
                   }
                   disabled={
                     navActive ||
@@ -3792,10 +4157,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     {navActive
                       ? "Đang dẫn đường"
                       : visibleRoute === "toPickup"
-                        ? "Bắt đầu đi đến điểm lấy hàng"
-                        : visibleRoute === "toDelivery"
-                          ? "Bắt đầu đi đến điểm giao hàng"
-                          : "Bắt đầu đi"}
+                      ? "Bắt đầu đi đến điểm lấy hàng"
+                      : visibleRoute === "toDelivery"
+                      ? "Bắt đầu đi đến điểm giao hàng"
+                      : "Bắt đầu đi"}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -3809,8 +4174,6 @@ const DriverTripDetailScreenV2: React.FC = () => {
           </View>
         </View>
 
-        
-
         {/* Summary Card */}
         <View style={styles.card}>
           <SectionHeader
@@ -3823,14 +4186,21 @@ const DriverTripDetailScreenV2: React.FC = () => {
             }
             title="Tóm tắt chuyến"
           />
-          <KeyValue label="Điểm lấy hàng" value={trip.shippingRoute.startAddress} />
-          <KeyValue label="Điểm giao hàng" value={trip.shippingRoute.endAddress} />
+          <KeyValue
+            label="Điểm lấy hàng"
+            value={trip.shippingRoute.startAddress}
+          />
+          <KeyValue
+            label="Điểm giao hàng"
+            value={trip.shippingRoute.endAddress}
+          />
           <KeyValue label="Điểm lấy xe" value={trip.vehiclePickupAddress} />
           <KeyValue label="Điểm trả xe" value={trip.vehicleDropoffAddress} />
           <KeyValue
             label="Xe"
-            value={`${trip.vehicle.plateNumber} • ${trip.vehicle.vehicleTypeName ?? ""
-              }`}
+            value={`${trip.vehicle.plateNumber} • ${
+              trip.vehicle.vehicleTypeName ?? ""
+            }`}
           />
           <KeyValue
             label="Tài xế"
@@ -3886,7 +4256,6 @@ const DriverTripDetailScreenV2: React.FC = () => {
             </View>
           ))}
         </View>
-        
 
         {/* CARD: Vehicle Handover Records - PRIMARY DRIVER ONLY */}
         {isMainDriver && (
@@ -3902,8 +4271,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
               title="Biên bản giao nhận xe"
             />
             {!trip.tripVehicleHandoverRecordId &&
-              !trip.tripVehicleReturnRecordId ? (
-              <Text style={styles.emptyText}>Chưa có biên bản giao nhận xe</Text>
+            !trip.tripVehicleReturnRecordId ? (
+              <Text style={styles.emptyText}>
+                Chưa có biên bản giao nhận xe
+              </Text>
             ) : (
               <View>
                 {/* Biên bản giao xe (HANDOVER) */}
@@ -3983,36 +4354,42 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
             {/* Driver Role Badge */}
             {currentDriver && (
-              <View style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginTop: 12,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                backgroundColor: isMainDriver ? "#EBF5FF" : "#F3F4F6",
-                borderRadius: 8,
-                borderLeftWidth: 3,
-                borderLeftColor: isMainDriver ? "#3B82F6" : "#6B7280",
-              }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginTop: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  backgroundColor: isMainDriver ? "#EBF5FF" : "#F3F4F6",
+                  borderRadius: 8,
+                  borderLeftWidth: 3,
+                  borderLeftColor: isMainDriver ? "#3B82F6" : "#6B7280",
+                }}
+              >
                 <MaterialCommunityIcons
                   name={isMainDriver ? "account-star" : "account"}
                   size={20}
                   color={isMainDriver ? "#3B82F6" : "#6B7280"}
                 />
-                <Text style={{
-                  marginLeft: 8,
-                  fontSize: 14,
-                  fontWeight: "600",
-                  color: isMainDriver ? "#1E40AF" : "#374151",
-                }}>
+                <Text
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 14,
+                    fontWeight: "600",
+                    color: isMainDriver ? "#1E40AF" : "#374151",
+                  }}
+                >
                   {isMainDriver ? "Tài xế chính" : "Tài xế phụ"}
                 </Text>
                 {!isMainDriver && (
-                  <Text style={{
-                    marginLeft: 8,
-                    fontSize: 12,
-                    color: "#6B7280",
-                  }}>
+                  <Text
+                    style={{
+                      marginLeft: 8,
+                      fontSize: 12,
+                      color: "#6B7280",
+                    }}
+                  >
                     (Chỉ xem hợp đồng của bạn)
                   </Text>
                 )}
@@ -4068,8 +4445,6 @@ const DriverTripDetailScreenV2: React.FC = () => {
           </View>
         )}
 
-       
-
         {/* Delivery Records - PRIMARY DRIVER ONLY */}
         {isMainDriver && trip.deliveryRecords?.length > 0 && (
           <View style={styles.card}>
@@ -4089,16 +4464,27 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   setLoadingDeliveryRecord(false);
                   if (res?.isSuccess) {
                     const rec = res.result;
-                    console.log("📋 Delivery Record Data:", JSON.stringify(rec, null, 2));
+                    console.log(
+                      "📋 Delivery Record Data:",
+                      JSON.stringify(rec, null, 2)
+                    );
                     console.log("🔍 Record type field:", rec.type);
                     console.log("🔍 Record recordType field:", rec.recordType);
                     // Map deliveryRecordTerms to terms format for component
-                    if (rec.deliveryRecordTemplate?.deliveryRecordTerms && Array.isArray(rec.deliveryRecordTemplate.deliveryRecordTerms)) {
-                      rec.terms = rec.deliveryRecordTemplate.deliveryRecordTerms.map((term: any) => ({
-                        deliveryRecordTermId: term.deliveryRecordTermId,
-                        content: term.content || "",
-                        displayOrder: term.displayOrder || 0,
-                      }));
+                    if (
+                      rec.deliveryRecordTemplate?.deliveryRecordTerms &&
+                      Array.isArray(
+                        rec.deliveryRecordTemplate.deliveryRecordTerms
+                      )
+                    ) {
+                      rec.terms =
+                        rec.deliveryRecordTemplate.deliveryRecordTerms.map(
+                          (term: any) => ({
+                            deliveryRecordTermId: term.deliveryRecordTermId,
+                            content: term.content || "",
+                            displayOrder: term.displayOrder || 0,
+                          })
+                        );
                     } else {
                       rec.terms = [];
                     }
@@ -4231,11 +4617,19 @@ const DriverTripDetailScreenV2: React.FC = () => {
           />
           {/* Approaching continuous-drive limit banner (visible on both web & mobile) */}
           {showApproachingAlert && (
-            <View style={styles.approachAlertContainer} pointerEvents="box-none">
+            <View
+              style={styles.approachAlertContainer}
+              pointerEvents="box-none"
+            >
               <View style={styles.approachAlert}>
-                <MaterialCommunityIcons name="alert" size={18} color="#92400E" />
+                <MaterialCommunityIcons
+                  name="alert"
+                  size={18}
+                  color="#92400E"
+                />
                 <Text style={styles.approachAlertText} numberOfLines={2}>
-                  Bạn sắp đạt giới hạn lái liên tục. Vui lòng nghỉ ngơi sớm để đảm bảo an toàn.
+                  Bạn sắp đạt giới hạn lái liên tục. Vui lòng nghỉ ngơi sớm để
+                  đảm bảo an toàn.
                 </Text>
               </View>
             </View>
@@ -4267,35 +4661,35 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 <Text style={styles.navMainBtnText}>📦 Đã tới lấy hàng</Text>
               </TouchableOpacity>
             )}
-            {journeyPhase === "TO_DELIVERY" && 
-             trip.status !== "RETURNING_VEHICLE" && 
-             trip.status !== "READY_FOR_VEHICLE_RETURN" && (
-              <TouchableOpacity
-                style={[
-                  styles.navMainBtn,
-                  styles.btnGreen,
-                  (!effectiveCanConfirmDelivery || confirmingDelivery) &&
-                  styles.btnDisabled,
-                ]}
-                onPress={() => {
-                  console.debug("navBtn press: DELIVERY", {
-                    journeyPhase,
-                    effectiveCanConfirmDelivery,
-                    navActive,
-                    confirmingDelivery,
-                  });
-                  confirmDelivery();
-                }}
-                onPressIn={() => console.debug("navBtn pressIn: DELIVERY")}
-                disabled={!effectiveCanConfirmDelivery || confirmingDelivery}
-              >
-                {confirmingDelivery ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <Text style={styles.navMainBtnText}>✅ Đã giao hàng</Text>
-                )}
-              </TouchableOpacity>
-            )}
+            {journeyPhase === "TO_DELIVERY" &&
+              trip.status !== "RETURNING_VEHICLE" &&
+              trip.status !== "READY_FOR_VEHICLE_RETURN" && (
+                <TouchableOpacity
+                  style={[
+                    styles.navMainBtn,
+                    styles.btnGreen,
+                    (!effectiveCanConfirmDelivery || confirmingDelivery) &&
+                      styles.btnDisabled,
+                  ]}
+                  onPress={() => {
+                    console.debug("navBtn press: DELIVERY", {
+                      journeyPhase,
+                      effectiveCanConfirmDelivery,
+                      navActive,
+                      confirmingDelivery,
+                    });
+                    confirmDelivery();
+                  }}
+                  onPressIn={() => console.debug("navBtn pressIn: DELIVERY")}
+                  disabled={!effectiveCanConfirmDelivery || confirmingDelivery}
+                >
+                  {confirmingDelivery ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.navMainBtnText}>✅ Đã giao hàng</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             {trip.status === "READY_FOR_VEHICLE_RETURN" && (
               <TouchableOpacity
                 style={[
@@ -4315,7 +4709,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 {confirmingVehicleReturning ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.navMainBtnText}>🚗 Đã đến nơi trả xe</Text>
+                  <Text style={styles.navMainBtnText}>
+                    🚗 Đã đến nơi trả xe
+                  </Text>
                 )}
               </TouchableOpacity>
             )}
@@ -4338,7 +4734,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 {confirmingReturn ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.navMainBtnText}>🚗 Xác nhận đã trả xe</Text>
+                  <Text style={styles.navMainBtnText}>
+                    🚗 Xác nhận đã trả xe
+                  </Text>
                 )}
               </TouchableOpacity>
             )}
@@ -4347,7 +4745,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 style={[
                   styles.resumeBtn,
                   (eligibility && !eligibility.canDrive) ||
-                    continuousSeconds / 3600 >= 4
+                  continuousSeconds / 3600 >= 4
                     ? styles.btnDisabled
                     : {},
                   { marginRight: 6 },
@@ -4423,26 +4821,43 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   contractType="DRIVER_CONTRACT"
                   contractValue={myDriverContract.contractValue}
                   currency={myDriverContract.currency}
-                  effectiveDate={myDriverContract.effectiveDate || new Date().toISOString()}
+                  effectiveDate={
+                    myDriverContract.effectiveDate || new Date().toISOString()
+                  }
                   terms={(myDriverContract.terms || [])
                     .slice()
                     .sort((a, b) => (a.order || 0) - (b.order || 0))
                     .map((t) => ({
                       contractTermId: t.contractTermId,
                       order: t.order || 0,
-                      content: t.content
+                      content: t.content,
                     }))}
-                  ownerName={trip?.owner?.companyName || trip?.owner?.fullName || "---"}
+                  ownerName={
+                    trip?.owner?.companyName || trip?.owner?.fullName || "---"
+                  }
                   counterpartyName={user?.userName || "---"}
                   ownerSigned={myDriverContract.ownerSigned || false}
                   ownerSignAt={myDriverContract.ownerSignAt || null}
-                  counterpartySigned={myDriverContract.counterpartySigned || false}
-                  counterpartySignAt={myDriverContract.counterpartySignAt || null}
+                  counterpartySigned={
+                    myDriverContract.counterpartySigned || false
+                  }
+                  counterpartySignAt={
+                    myDriverContract.counterpartySignAt || null
+                  }
                 />
               ) : (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                <View
+                  style={{
+                    flex: 1,
+                    justifyContent: "center",
+                    alignItems: "center",
+                    padding: 20,
+                  }}
+                >
                   <ActivityIndicator size="large" color="#2563EB" />
-                  <Text style={{ marginTop: 10, color: '#6B7280' }}>Đang tải hợp đồng...</Text>
+                  <Text style={{ marginTop: 10, color: "#6B7280" }}>
+                    Đang tải hợp đồng...
+                  </Text>
                 </View>
               )}
             </ScrollView>
@@ -4789,8 +5204,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
               <Text style={{ fontWeight: "700" }}>
                 {activeDeliveryRecord?.tripDeliveryRecordId
                   ? `Biên bản: ${activeDeliveryRecord.tripDeliveryRecordId
-                    .substring(0, 8)
-                    .toUpperCase()}`
+                      .substring(0, 8)
+                      .toUpperCase()}`
                   : ""}
               </Text>
               <Text style={{ color: "#6B7280", marginTop: 6 }}>
@@ -4986,29 +5401,36 @@ const DriverTripDetailScreenV2: React.FC = () => {
             <View style={styles.modalFooter}>
               {/* Report Issue Button - Only for PICKUP records */}
               {(() => {
-                const recordType = activeDeliveryRecord.recordType || activeDeliveryRecord.type;
+                const recordType =
+                  activeDeliveryRecord.recordType || activeDeliveryRecord.type;
                 const isPickup = recordType === "PICKUP";
                 console.log("🔔 Report Issue Button Check:", {
                   recordType: activeDeliveryRecord.recordType,
                   type: activeDeliveryRecord.type,
                   finalType: recordType,
-                  isPickup: isPickup
+                  isPickup: isPickup,
                 });
-                
+
                 if (isPickup) {
                   return (
                     <TouchableOpacity
                       style={styles.reportIssueButton}
                       onPress={handleOpenIssueReport}
                     >
-                      <MaterialIcons name="report-problem" size={20} color="#DC2626" />
-                      <Text style={styles.reportIssueButtonText}>Báo cáo sự cố</Text>
+                      <MaterialIcons
+                        name="report-problem"
+                        size={20}
+                        color="#DC2626"
+                      />
+                      <Text style={styles.reportIssueButtonText}>
+                        Báo cáo sự cố
+                      </Text>
                     </TouchableOpacity>
                   );
                 }
                 return null;
               })()}
-              
+
               <TouchableOpacity
                 style={styles.pdfButton}
                 onPress={() => {
@@ -5019,9 +5441,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     .then((r) =>
                       r?.result
                         ? Linking.openURL(r.result)
-                        : showAlertCrossPlatform("Thông báo", "Chưa có file PDF")
+                        : showAlertCrossPlatform(
+                            "Thông báo",
+                            "Chưa có file PDF"
+                          )
                     )
-                    .catch(() => showAlertCrossPlatform("Lỗi", "Không tải được PDF"));
+                    .catch(() =>
+                      showAlertCrossPlatform("Lỗi", "Không tải được PDF")
+                    );
                 }}
               >
                 <MaterialCommunityIcons
@@ -5040,10 +5467,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
                       activeDeliveryRecord.type) === "PICKUP"
                       ? isPickupSignAllowed
                       : (activeDeliveryRecord.recordType ??
-                        activeDeliveryRecord.type) === "DROPOFF"
-                        ? isDropoffSignAllowed
-                        : false)) &&
-                  styles.btnDisabled,
+                          activeDeliveryRecord.type) === "DROPOFF"
+                      ? isDropoffSignAllowed
+                      : false)) &&
+                    styles.btnDisabled,
                 ]}
                 disabled={
                   activeDeliveryRecord.driverSigned ||
@@ -5052,21 +5479,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     activeDeliveryRecord.type) === "PICKUP"
                     ? isPickupSignAllowed
                     : (activeDeliveryRecord.recordType ??
-                      activeDeliveryRecord.type) === "DROPOFF"
-                      ? isDropoffSignAllowed
-                      : false)
+                        activeDeliveryRecord.type) === "DROPOFF"
+                    ? isDropoffSignAllowed
+                    : false)
                 }
                 onPress={async () => {
                   // Check if DROPOFF and contact hasn't signed yet
-                  const recordType = activeDeliveryRecord.recordType ?? activeDeliveryRecord.type;
-                  if (recordType === "DROPOFF" && !activeDeliveryRecord.contactSigned) {
+                  const recordType =
+                    activeDeliveryRecord.recordType ??
+                    activeDeliveryRecord.type;
+                  if (
+                    recordType === "DROPOFF" &&
+                    !activeDeliveryRecord.contactSigned
+                  ) {
                     showAlertCrossPlatform(
                       "Chưa thể ký",
                       "Vui lòng đợi khách hàng ký xác nhận trước khi bạn có thể ký biên bản DROPOFF."
                     );
                     return;
                   }
-                  
+
                   // Start multi-step signing flow: show confirmation -> send OTP -> enter OTP
                   setShowDeliverySignFlowModal(true);
                 }}
@@ -5077,9 +5509,11 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   <Text style={styles.signButtonText}>
                     {activeDeliveryRecord.driverSigned
                       ? "Đã Ký Tên"
-                      : (activeDeliveryRecord.recordType ?? activeDeliveryRecord.type) === "DROPOFF" && !activeDeliveryRecord.contactSigned
-                        ? "Đợi khách hàng ký..."
-                        : "Ký Xác Nhận"}
+                      : (activeDeliveryRecord.recordType ??
+                          activeDeliveryRecord.type) === "DROPOFF" &&
+                        !activeDeliveryRecord.contactSigned
+                      ? "Đợi khách hàng ký..."
+                      : "Ký Xác Nhận"}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -5107,53 +5541,63 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
       {/* Confirm ready to return vehicle bar - PRIMARY DRIVER ONLY */}
       {/* Hidden when fullscreen navigation is active (navActive && !navMinimized) */}
-      {isMainDriver && trip.status === "READY_FOR_VEHICLE_RETURN" && !(navActive && !navMinimized) && (
-        <View style={styles.returnVehicleBar} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[styles.returnBtn, confirmingVehicleReturning && styles.btnDisabled]}
-            onPress={confirmReadyToReturnVehicle}
-            disabled={confirmingVehicleReturning}
-          >
-            {confirmingVehicleReturning ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.returnBtnText}>Xác nhận đã trả xe</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
+      {isMainDriver &&
+        trip.status === "READY_FOR_VEHICLE_RETURN" &&
+        !(navActive && !navMinimized) && (
+          <View style={styles.returnVehicleBar} pointerEvents="box-none">
+            <TouchableOpacity
+              style={[
+                styles.returnBtn,
+                confirmingVehicleReturning && styles.btnDisabled,
+              ]}
+              onPress={confirmReadyToReturnVehicle}
+              disabled={confirmingVehicleReturning}
+            >
+              {confirmingVehicleReturning ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.returnBtnText}>Xác nhận đã trả xe</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
       {/* Confirm vehicle returned bar - PRIMARY DRIVER ONLY */}
       {/* Hidden when fullscreen navigation is active (navActive && !navMinimized) */}
-      {isMainDriver && trip.status === "RETURNING_VEHICLE" && !(navActive && !navMinimized) && (
-        <View style={styles.returnVehicleBar} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[styles.returnBtn, confirmingReturn && styles.btnDisabled]}
-            onPress={confirmVehicleReturn}
-            disabled={confirmingReturn}
-          >
-            {confirmingReturn ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.returnBtnText}>Xác nhận đã trả xe</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
+      {isMainDriver &&
+        trip.status === "RETURNING_VEHICLE" &&
+        !(navActive && !navMinimized) && (
+          <View style={styles.returnVehicleBar} pointerEvents="box-none">
+            <TouchableOpacity
+              style={[styles.returnBtn, confirmingReturn && styles.btnDisabled]}
+              onPress={confirmVehicleReturn}
+              disabled={confirmingReturn}
+            >
+              {confirmingReturn ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.returnBtnText}>Xác nhận đã trả xe</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
       {/* Check-out button - SECONDARY DRIVER ONLY */}
       {/* Hidden when fullscreen navigation is active (navActive && !navMinimized) */}
-      {!isMainDriver && currentDriver?.isOnBoard && !currentDriver.isFinished && !(navActive && !navMinimized) && (
-        <View style={styles.returnVehicleBar} pointerEvents="box-none">
-          <TouchableOpacity
-            style={[styles.returnBtn, { backgroundColor: '#10B981' }]}
-            onPress={() => setShowCheckOutModal(true)}
-          >
-            <Text style={styles.returnBtnText}>CHECK-OUT</Text>
-            <Ionicons name="log-out" size={20} color="#FFF" />
-          </TouchableOpacity>
-        </View>
-      )}
+      {!isMainDriver &&
+        currentDriver?.isOnBoard &&
+        !currentDriver.isFinished &&
+        !(navActive && !navMinimized) && (
+          <View style={styles.returnVehicleBar} pointerEvents="box-none">
+            <TouchableOpacity
+              style={[styles.returnBtn, { backgroundColor: "#10B981" }]}
+              onPress={() => setShowCheckOutModal(true)}
+            >
+              <Text style={styles.returnBtnText}>CHECK-OUT</Text>
+              <Ionicons name="log-out" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        )}
 
       {/* --- VEHICLE HANDOVER RECORD MODAL (A4 STYLE) --- */}
       {showHandoverModal && activeHandoverRecord && (
@@ -5199,121 +5643,261 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 ownerCompany={trip?.owner?.fullName}
                 termResults={activeHandoverRecord.termResults || []}
               />
-              
+
               {/* Issues & Surcharges Section - Only for RETURN type */}
-              {activeHandoverRecord.type === 'RETURN' && activeHandoverRecord.issues && activeHandoverRecord.issues.length > 0 && (
-                <View style={styles.issuesSection}>
-                  <View style={styles.issuesSectionHeader}>
-                    <MaterialCommunityIcons name="alert-circle-outline" size={24} color="#DC2626" />
-                    <Text style={styles.issuesSectionTitle}>Sự cố & Bồi thường ({activeHandoverRecord.issues.length})</Text>
-                  </View>
-                  
-                  {activeHandoverRecord.issues.map((issue: any, idx: number) => (
-                    <View key={issue.vehicleHandoverIssueId || idx} style={styles.issueCard}>
-                      <View style={styles.issueCardHeader}>
-                        <View style={styles.issueTypeTag}>
-                          <Text style={styles.issueTypeText}>
-                            {getIssueTypeLabel(issue.issueType)}
-                          </Text>
-                        </View>
-                        <View style={[styles.issueStatusBadge, { backgroundColor: issue.status === 'RESOLVED' ? '#DCFCE7' : '#FEF3C7' }]}>
-                          <Text style={[styles.issueStatusText, { color: issue.status === 'RESOLVED' ? '#059669' : '#F59E0B' }]}>
-                            {issue.status === 'RESOLVED' ? 'Đã giải quyết' : 'Đã báo cáo'}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      <Text style={styles.issueDescription}>{issue.description}</Text>
-                      
-                      {issue.imageUrls && issue.imageUrls.length > 0 && (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.issueImagesScroll}>
-                          {issue.imageUrls.map((url: string, imgIdx: number) => (
-                            <Image key={imgIdx} source={{ uri: url }} style={styles.issueImage} />
-                          ))}
-                        </ScrollView>
-                      )}
-                      
-                      {issue.estimatedCompensationAmount && (
-                        <View style={styles.compensationBox}>
-                          <MaterialCommunityIcons name="cash-multiple" size={16} color="#F59E0B" />
-                          <Text style={styles.compensationText}>
-                            Bồi thường dự kiến: <Text style={styles.compensationAmount}>{issue.estimatedCompensationAmount.toLocaleString('vi-VN')} đ</Text>
-                          </Text>
-                        </View>
-                      )}
-                      
-                      {issue.surcharges && issue.surcharges.length > 0 && (
-                        <View style={styles.surchargesBox}>
-                          <Text style={styles.surchargesTitle}>Phiếu thu đã tạo:</Text>
-                          {issue.surcharges.map((surcharge: any, sIdx: number) => (
-                            <View key={sIdx} style={styles.surchargeItem}>
-                              <Text style={styles.surchargeAmount}>{surcharge.amount.toLocaleString('vi-VN')} đ</Text>
-                              <View style={[styles.surchargeStatusBadge, { backgroundColor: surcharge.status === 'PAID' ? '#DCFCE7' : '#FEF3C7' }]}>
-                                <Text style={[styles.surchargeStatusText, { color: surcharge.status === 'PAID' ? '#059669' : '#F59E0B' }]}>
-                                  {surcharge.status === 'PAID' ? '✅ Đã trả' : '⏳ Chờ thanh toán'}
-                                </Text>
-                              </View>
+              {activeHandoverRecord.type === "RETURN" &&
+                activeHandoverRecord.issues &&
+                activeHandoverRecord.issues.length > 0 && (
+                  <View style={styles.issuesSection}>
+                    <View style={styles.issuesSectionHeader}>
+                      <MaterialCommunityIcons
+                        name="alert-circle-outline"
+                        size={24}
+                        color="#DC2626"
+                      />
+                      <Text style={styles.issuesSectionTitle}>
+                        Sự cố & Bồi thường ({activeHandoverRecord.issues.length}
+                        )
+                      </Text>
+                    </View>
+
+                    {activeHandoverRecord.issues.map(
+                      (issue: any, idx: number) => (
+                        <View
+                          key={issue.vehicleHandoverIssueId || idx}
+                          style={styles.issueCard}
+                        >
+                          <View style={styles.issueCardHeader}>
+                            <View style={styles.issueTypeTag}>
+                              <Text style={styles.issueTypeText}>
+                                {getIssueTypeLabel(issue.issueType)}
+                              </Text>
                             </View>
-                          ))}
+                            <View
+                              style={[
+                                styles.issueStatusBadge,
+                                {
+                                  backgroundColor:
+                                    issue.status === "RESOLVED"
+                                      ? "#DCFCE7"
+                                      : "#FEF3C7",
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.issueStatusText,
+                                  {
+                                    color:
+                                      issue.status === "RESOLVED"
+                                        ? "#059669"
+                                        : "#F59E0B",
+                                  },
+                                ]}
+                              >
+                                {issue.status === "RESOLVED"
+                                  ? "Đã giải quyết"
+                                  : "Đã báo cáo"}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <Text style={styles.issueDescription}>
+                            {issue.description}
+                          </Text>
+
+                          {issue.imageUrls && issue.imageUrls.length > 0 && (
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              style={styles.issueImagesScroll}
+                            >
+                              {issue.imageUrls.map(
+                                (url: string, imgIdx: number) => (
+                                  <Image
+                                    key={imgIdx}
+                                    source={{ uri: url }}
+                                    style={styles.issueImage}
+                                  />
+                                )
+                              )}
+                            </ScrollView>
+                          )}
+
+                          {issue.estimatedCompensationAmount && (
+                            <View style={styles.compensationBox}>
+                              <MaterialCommunityIcons
+                                name="cash-multiple"
+                                size={16}
+                                color="#F59E0B"
+                              />
+                              <Text style={styles.compensationText}>
+                                Bồi thường dự kiến:{" "}
+                                <Text style={styles.compensationAmount}>
+                                  {issue.estimatedCompensationAmount.toLocaleString(
+                                    "vi-VN"
+                                  )}{" "}
+                                  đ
+                                </Text>
+                              </Text>
+                            </View>
+                          )}
+
+                          {issue.surcharges && issue.surcharges.length > 0 && (
+                            <View style={styles.surchargesBox}>
+                              <Text style={styles.surchargesTitle}>
+                                Phiếu thu đã tạo:
+                              </Text>
+                              {issue.surcharges.map(
+                                (surcharge: any, sIdx: number) => (
+                                  <View key={sIdx} style={styles.surchargeItem}>
+                                    <Text style={styles.surchargeAmount}>
+                                      {surcharge.amount.toLocaleString("vi-VN")}{" "}
+                                      đ
+                                    </Text>
+                                    <View
+                                      style={[
+                                        styles.surchargeStatusBadge,
+                                        {
+                                          backgroundColor:
+                                            surcharge.status === "PAID"
+                                              ? "#DCFCE7"
+                                              : "#FEF3C7",
+                                        },
+                                      ]}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.surchargeStatusText,
+                                          {
+                                            color:
+                                              surcharge.status === "PAID"
+                                                ? "#059669"
+                                                : "#F59E0B",
+                                          },
+                                        ]}
+                                      >
+                                        {surcharge.status === "PAID"
+                                          ? "✅ Đã trả"
+                                          : "⏳ Chờ thanh toán"}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                )
+                              )}
+                            </View>
+                          )}
                         </View>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              )}
-              
+                      )
+                    )}
+                  </View>
+                )}
+
               {/* All Surcharges Summary Section - Only for RETURN type */}
-              {activeHandoverRecord?.type === 'RETURN' && activeHandoverRecord?.surcharges && activeHandoverRecord.surcharges.length > 0 && (
-                <View style={styles.allSurchargesSection}>
-                  <View style={styles.issuesSectionHeader}>
-                    <MaterialCommunityIcons name="cash-multiple" size={24} color="#F59E0B" />
-                    <Text style={styles.issuesSectionTitle}>Tổng hợp phiếu thu bồi thường</Text>
-                  </View>
-                  
-                  {activeHandoverRecord.surcharges.map((surcharge: any, idx: number) => (
-                    <View key={surcharge.tripSurchargeId || idx} style={styles.surchargeCard}>
-                      <View style={styles.surchargeCardHeader}>
-                        <View style={styles.issueTypeTag}>
-                          <Text style={styles.issueTypeText}>
-                            {getIssueTypeLabel(surcharge.type)}
-                          </Text>
-                        </View>
-                        <View style={[styles.surchargeStatusBadge, { backgroundColor: surcharge.status === 'PAID' ? '#DCFCE7' : '#FEF3C7' }]}>
-                          <Text style={[styles.surchargeStatusText, { color: surcharge.status === 'PAID' ? '#059669' : '#F59E0B' }]}>
-                            {surcharge.status === 'PAID' ? '✅ Đã trả' : '⏳ Chờ thanh toán'}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      {surcharge.description && (
-                        <Text style={styles.surchargeDesc}>{surcharge.description}</Text>
-                      )}
-                      
-                      <View style={styles.surchargeAmountBox}>
-                        <MaterialCommunityIcons name="currency-usd" size={18} color="#059669" />
-                        <Text style={styles.surchargeAmountLabel}>Số tiền:</Text>
-                        <Text style={styles.surchargeAmountValue}>{surcharge.amount.toLocaleString('vi-VN')} đ</Text>
-                      </View>
+              {activeHandoverRecord?.type === "RETURN" &&
+                activeHandoverRecord?.surcharges &&
+                activeHandoverRecord.surcharges.length > 0 && (
+                  <View style={styles.allSurchargesSection}>
+                    <View style={styles.issuesSectionHeader}>
+                      <MaterialCommunityIcons
+                        name="cash-multiple"
+                        size={24}
+                        color="#F59E0B"
+                      />
+                      <Text style={styles.issuesSectionTitle}>
+                        Tổng hợp phiếu thu bồi thường
+                      </Text>
                     </View>
-                  ))}
-                  
-                  {/* Total Summary */}
-                  <View style={styles.totalSurchargeBox}>
-                    <Text style={styles.totalSurchargeLabel}>Tổng cộng:</Text>
-                    <Text style={styles.totalSurchargeAmount}>
-                      {activeHandoverRecord.surcharges.reduce((sum: number, s: any) => sum + (s.amount || 0), 0).toLocaleString('vi-VN')} đ
-                    </Text>
+
+                    {activeHandoverRecord.surcharges.map(
+                      (surcharge: any, idx: number) => (
+                        <View
+                          key={surcharge.tripSurchargeId || idx}
+                          style={styles.surchargeCard}
+                        >
+                          <View style={styles.surchargeCardHeader}>
+                            <View style={styles.issueTypeTag}>
+                              <Text style={styles.issueTypeText}>
+                                {getIssueTypeLabel(surcharge.type)}
+                              </Text>
+                            </View>
+                            <View
+                              style={[
+                                styles.surchargeStatusBadge,
+                                {
+                                  backgroundColor:
+                                    surcharge.status === "PAID"
+                                      ? "#DCFCE7"
+                                      : "#FEF3C7",
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.surchargeStatusText,
+                                  {
+                                    color:
+                                      surcharge.status === "PAID"
+                                        ? "#059669"
+                                        : "#F59E0B",
+                                  },
+                                ]}
+                              >
+                                {surcharge.status === "PAID"
+                                  ? "✅ Đã trả"
+                                  : "⏳ Chờ thanh toán"}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {surcharge.description && (
+                            <Text style={styles.surchargeDesc}>
+                              {surcharge.description}
+                            </Text>
+                          )}
+
+                          <View style={styles.surchargeAmountBox}>
+                            <MaterialCommunityIcons
+                              name="currency-usd"
+                              size={18}
+                              color="#059669"
+                            />
+                            <Text style={styles.surchargeAmountLabel}>
+                              Số tiền:
+                            </Text>
+                            <Text style={styles.surchargeAmountValue}>
+                              {surcharge.amount.toLocaleString("vi-VN")} đ
+                            </Text>
+                          </View>
+                        </View>
+                      )
+                    )}
+
+                    {/* Total Summary */}
+                    <View style={styles.totalSurchargeBox}>
+                      <Text style={styles.totalSurchargeLabel}>Tổng cộng:</Text>
+                      <Text style={styles.totalSurchargeAmount}>
+                        {activeHandoverRecord.surcharges
+                          .reduce(
+                            (sum: number, s: any) => sum + (s.amount || 0),
+                            0
+                          )
+                          .toLocaleString("vi-VN")}{" "}
+                        đ
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              )}
+                )}
             </ScrollView>
             <View style={styles.paperFooter}>
-                <View style={{ flexDirection: "row", gap: 8, width: "100%" }}>
-                  {/* Edit Button - Show if not signed yet AND trip status is VEHICLE_HANDOVERED for HANDOVER type */}
-                  {activeHandoverRecord && !activeHandoverRecord.handoverSigned && !activeHandoverRecord.receiverSigned && (
-                    activeHandoverRecord.type === "RETURN" || 
-                    (activeHandoverRecord.type === "HANDOVER" && trip?.status === "VEHICLE_HANDOVERED")
-                  ) && (
+              <View style={{ flexDirection: "row", gap: 8, width: "100%" }}>
+                {/* Edit Button - Show if not signed yet AND trip status is VEHICLE_HANDOVERED for HANDOVER type */}
+                {activeHandoverRecord &&
+                  !activeHandoverRecord.handoverSigned &&
+                  !activeHandoverRecord.receiverSigned &&
+                  (activeHandoverRecord.type === "RETURN" ||
+                    (activeHandoverRecord.type === "HANDOVER" &&
+                      trip?.status === "VEHICLE_HANDOVERED")) && (
                     <TouchableOpacity
                       style={[styles.actionBtnSecondary, { flex: 1 }]}
                       onPress={handleOpenHandoverEditor}
@@ -5328,85 +5912,102 @@ const DriverTripDetailScreenV2: React.FC = () => {
                     </TouchableOpacity>
                   )}
 
-                  <TouchableOpacity
-                    style={[styles.actionBtnSecondary, { flex: 1 }]}
-                    onPress={() =>
-                      openVehicleHandoverPdf(
-                        activeHandoverRecord?.tripVehicleHandoverRecordId
-                      )
-                    }
-                  >
-                    <MaterialCommunityIcons
-                      name="file-pdf-box"
-                      size={18}
-                      color="#374151"
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text style={styles.actionBtnTextSec}>PDF</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtnSecondary, { flex: 1 }]}
+                  onPress={() =>
+                    openVehicleHandoverPdf(
+                      activeHandoverRecord?.tripVehicleHandoverRecordId
+                    )
+                  }
+                >
+                  <MaterialCommunityIcons
+                    name="file-pdf-box"
+                    size={18}
+                    color="#374151"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.actionBtnTextSec}>PDF</Text>
+                </TouchableOpacity>
 
-                  {/* Check if current user (driver) hasn't signed yet */}
-                  {activeHandoverRecord &&
-                    (() => {
-                      // For HANDOVER: Driver signs as receiver (getting vehicle from owner)
-                      // For RETURN: Driver signs as receiver (getting vehicle back from owner after trip)
-                      // Driver must wait for owner to sign first (handoverSigned = true)
-                      
-                      const isHandoverType = activeHandoverRecord.type === "HANDOVER";
-                      const isReturnType = activeHandoverRecord.type === "RETURN";
-                      const driverHasNotSigned = !activeHandoverRecord.receiverSigned;
-                      const ownerHasSigned = activeHandoverRecord.handoverSigned;
-                      
-                      // For HANDOVER: Only allow when trip status is VEHICLE_HANDOVERED and owner signed
-                      const canSignHandover = isHandoverType && 
-                        trip?.status === "VEHICLE_HANDOVERED" && 
-                       
-                        driverHasNotSigned;
-                      
-                      // For RETURN: Only allow after owner has signed first
-                      const canSignReturn = isReturnType && 
-                        ownerHasSigned && 
-                        driverHasNotSigned;
+                {/* Check if current user (driver) hasn't signed yet */}
+                {activeHandoverRecord &&
+                  (() => {
+                    // For HANDOVER: Driver signs as receiver (getting vehicle from owner)
+                    // For RETURN: Driver signs as receiver (getting vehicle back from owner after trip)
+                    // Driver must wait for owner to sign first (handoverSigned = true)
 
-                      if (canSignHandover || canSignReturn) {
-                        return (
-                          <TouchableOpacity
-                            style={[styles.actionBtnPrimary, { flex: 1 }]}
-                            onPress={sendOtpForSigning}
-                            disabled={sendingHandoverOtp}
-                          >
-                            {sendingHandoverOtp ? (
-                              <ActivityIndicator color="#FFF" size="small" />
-                            ) : (
-                              <Text style={styles.actionBtnTextPri}>
-                                Ký biên bản
-                              </Text>
-                            )}
-                          </TouchableOpacity>
-                        );
-                      }
-                      
-                      // Show waiting message if owner hasn't signed yet
-                      if ((isHandoverType || isReturnType) && !ownerHasSigned && driverHasNotSigned) {
-                        return (
-                          <View style={[styles.actionBtnSecondary, { flex: 1, opacity: 0.6 }]}>
-                            <Text style={[styles.actionBtnTextSec, { fontSize: 13 }]}>
-                              Đợi chủ xe ký xác nhận
+                    const isHandoverType =
+                      activeHandoverRecord.type === "HANDOVER";
+                    const isReturnType = activeHandoverRecord.type === "RETURN";
+                    const driverHasNotSigned =
+                      !activeHandoverRecord.receiverSigned;
+                    const ownerHasSigned = activeHandoverRecord.handoverSigned;
+
+                    // For HANDOVER: Only allow when trip status is VEHICLE_HANDOVERED and owner signed
+                    const canSignHandover =
+                      isHandoverType &&
+                      trip?.status === "VEHICLE_HANDOVERED" &&
+                      driverHasNotSigned;
+
+                    // For RETURN: Only allow after owner has signed first
+                    const canSignReturn =
+                      isReturnType && ownerHasSigned && driverHasNotSigned;
+
+                    if (canSignHandover || canSignReturn) {
+                      return (
+                        <TouchableOpacity
+                          style={[styles.actionBtnPrimary, { flex: 1 }]}
+                          onPress={sendOtpForSigning}
+                          disabled={sendingHandoverOtp}
+                        >
+                          {sendingHandoverOtp ? (
+                            <ActivityIndicator color="#FFF" size="small" />
+                          ) : (
+                            <Text style={styles.actionBtnTextPri}>
+                              Ký biên bản
                             </Text>
-                          </View>
-                        );
-                      }
-                      
-                      return null;
-                    })()}
-                </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    }
+
+                    // Show waiting message if owner hasn't signed yet
+                    if (
+                      (isHandoverType || isReturnType) &&
+                      !ownerHasSigned &&
+                      driverHasNotSigned
+                    ) {
+                      return (
+                        <View
+                          style={[
+                            styles.actionBtnSecondary,
+                            { flex: 1, opacity: 0.6 },
+                          ]}
+                        >
+                          <Text
+                            style={[styles.actionBtnTextSec, { fontSize: 13 }]}
+                          >
+                            Đợi chủ xe ký xác nhận
+                          </Text>
+                        </View>
+                      );
+                    }
+
+                    return null;
+                  })()}
+              </View>
             </View>
           </View>
         </View>
       )}
 
       {/* Handover Checklist Editor Modal */}
-      <Modal visible={showHandoverEditor && !!activeHandoverRecord} transparent animationType="slide" onRequestClose={() => setShowHandoverEditor(false)}>
+      <Modal
+        visible={showHandoverEditor && !!activeHandoverRecord}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowHandoverEditor(false)}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalFullscreen}>
             {activeHandoverRecord && (
@@ -5415,15 +6016,19 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   recordId: activeHandoverRecord.tripVehicleHandoverRecordId,
                   currentOdometer: activeHandoverRecord.currentOdometer || 0,
                   fuelLevel: activeHandoverRecord.fuelLevel || 0,
-                  isEngineLightOn: activeHandoverRecord.isEngineLightOn || false,
-                  notes: activeHandoverRecord.notes || '',
-                  checklistItems: (activeHandoverRecord.terms || []).map((term: any) => ({
-                    tripVehicleHandoverTermResultId: term.tripVehicleHandoverTermResultId,
-                    content: term.content,
-                    isPassed: term.isChecked,
-                    note: term.deviation || '',
-                    evidenceImageUrl: term.evidenceImageUrl,
-                  })),
+                  isEngineLightOn:
+                    activeHandoverRecord.isEngineLightOn || false,
+                  notes: activeHandoverRecord.notes || "",
+                  checklistItems: (activeHandoverRecord.terms || []).map(
+                    (term: any) => ({
+                      tripVehicleHandoverTermResultId:
+                        term.tripVehicleHandoverTermResultId,
+                      content: term.content,
+                      isPassed: term.isChecked,
+                      note: term.deviation || "",
+                      evidenceImageUrl: term.evidenceImageUrl,
+                    })
+                  ),
                 }}
                 onSave={handleSaveHandoverChecklist}
                 onCancel={() => setShowHandoverEditor(false)}
@@ -5505,7 +6110,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.issueReportModal}>
             <View style={styles.issueReportHeader}>
-              <Text style={styles.issueReportTitle}>Báo cáo sự cố hàng hóa</Text>
+              <Text style={styles.issueReportTitle}>
+                Báo cáo sự cố hàng hóa
+              </Text>
               <TouchableOpacity onPress={() => setShowIssueReportModal(false)}>
                 <Ionicons name="close" size={24} color="#374151" />
               </TouchableOpacity>
@@ -5516,10 +6123,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
               <Text style={styles.issueLabel}>Loại sự cố:</Text>
               <View style={styles.issueTypeContainer}>
                 {[
-                  { type: DeliveryIssueType.DAMAGED, label: "Hàng hư hỏng", icon: "broken-image" },
-                  { type: DeliveryIssueType.LOST, label: "Thiếu hàng", icon: "inventory-2" },
-                  { type: DeliveryIssueType.WRONG_ITEM, label: "Sai hàng", icon: "error-outline" },
-                  { type: DeliveryIssueType.LATE, label: "Giao trễ", icon: "schedule" },
+                  {
+                    type: DeliveryIssueType.DAMAGED,
+                    label: "Hàng hư hỏng",
+                    icon: "broken-image",
+                  },
+                  {
+                    type: DeliveryIssueType.LOST,
+                    label: "Thiếu hàng",
+                    icon: "inventory-2",
+                  },
+                  {
+                    type: DeliveryIssueType.WRONG_ITEM,
+                    label: "Sai hàng",
+                    icon: "error-outline",
+                  },
+                  {
+                    type: DeliveryIssueType.LATE,
+                    label: "Giao trễ",
+                    icon: "schedule",
+                  },
                 ].map((item) => (
                   <TouchableOpacity
                     key={item.type}
@@ -5582,7 +6205,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 style={[
                   styles.actionBtnPrimary,
                   { flex: 1 },
-                  (!issueDescription.trim() || submittingIssue) && styles.btnDisabled,
+                  (!issueDescription.trim() || submittingIssue) &&
+                    styles.btnDisabled,
                 ]}
                 onPress={handleSubmitIssueReport}
                 disabled={!issueDescription.trim() || submittingIssue}
@@ -5599,149 +6223,206 @@ const DriverTripDetailScreenV2: React.FC = () => {
       </Modal>
 
       {/* OVERLAY - STATE 1: Chưa ký hợp đồng */}
-      {screenFocused && !isCheckedIn && needsContractSign && !showContractModal && !showDigitalSignatureTerms && !showContractOtpModal && (
-        <Modal visible={true} transparent animationType="none">
-          <View style={styles.overlayContainer} pointerEvents="box-none">
-            {/* Map visible - 60-70% */}
-            <View style={styles.overlayMapSection}>
-              <VietMapUniversal 
-                coordinates={checkInRouteCoordinates.length > 0 ? checkInRouteCoordinates : (currentDriver?.startLat && currentDriver?.startLng ? [[currentDriver.startLng, currentDriver.startLat] as Position] : [])}
-                style={{ flex: 1 }}
-                navigationActive={false}
-              />
-              <View style={styles.checkInMapDescOverlay} pointerEvents="none">
-                <View style={styles.checkInMapDescBox}>
-                  <Ionicons name="navigate" size={16} color="#2563EB" />
-                  <Text style={styles.checkInMapDescText}>Đoạn đường đến điểm xuất phát</Text>
-                </View>
-              </View>
-              
-              {/* Back button */}
-              <TouchableOpacity 
-                style={styles.overlayBackButton}
-                onPress={() => {
-                  console.log('🔙 [Overlay STATE 1] Back button pressed');
-                  if (router.canGoBack()) {
-                    router.back();
-                  } else {
-                    router.replace('/(driver)/home');
+      {screenFocused &&
+        !isCheckedIn &&
+        needsContractSign &&
+        !showContractModal &&
+        !showDigitalSignatureTerms &&
+        !showContractOtpModal && (
+          <Modal visible={true} transparent animationType="none">
+            <View style={styles.overlayContainer} pointerEvents="box-none">
+              {/* Map visible - 60-70% */}
+              <View style={styles.overlayMapSection}>
+                <VietMapUniversal
+                  coordinates={
+                    checkInRouteCoordinates.length > 0
+                      ? checkInRouteCoordinates
+                      : currentDriver?.startLat && currentDriver?.startLng
+                      ? [
+                          [
+                            currentDriver.startLng,
+                            currentDriver.startLat,
+                          ] as Position,
+                        ]
+                      : []
                   }
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="arrow-back" size={24} color="#FFF" />
-              </TouchableOpacity>
-            </View>
-            
-            {/* Bottom Sheet - 30-40% */}
-            <View style={styles.overlayBottomSheet} pointerEvents="box-none">
-              <View style={styles.sheetHandle} />
-              <View style={styles.sheetContent} pointerEvents="box-none">
-                <View style={styles.sheetHeader}>
-                  <MaterialCommunityIcons name="file-document-edit" size={48} color="#2563EB" />
-                  <Text style={styles.sheetTitle}>BƯỚC 1: KÝ HỢP ĐỒNG</Text>
-                  <Text style={styles.sheetSubtitle}>
-                    Vui lòng ký hợp đồng điện tử để nhận nhiệm vụ và xem chi tiết khách hàng.
-                  </Text>
+                  style={{ flex: 1 }}
+                  navigationActive={false}
+                />
+                <View style={styles.checkInMapDescOverlay} pointerEvents="none">
+                  <View style={styles.checkInMapDescBox}>
+                    <Ionicons name="navigate" size={16} color="#2563EB" />
+                    <Text style={styles.checkInMapDescText}>
+                      Đoạn đường đến điểm xuất phát
+                    </Text>
+                  </View>
                 </View>
-                
-                <TouchableOpacity 
-                  style={styles.sheetPrimaryButton}
+
+                {/* Back button */}
+                <TouchableOpacity
+                  style={styles.overlayBackButton}
                   onPress={() => {
-                    console.log('[ContractSign] TouchableOpacity pressed');
-                    handleSendContractOtp();
+                    console.log("🔙 [Overlay STATE 1] Back button pressed");
+                    if (router.canGoBack()) {
+                      router.back();
+                    } else {
+                      router.replace("/(driver)/home");
+                    }
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.sheetButtonText}>XEM & KÝ NGAY</Text>
-                  <Ionicons name="arrow-forward" size={20} color="#FFF" />
+                  <Ionicons name="arrow-back" size={24} color="#FFF" />
                 </TouchableOpacity>
               </View>
-            </View>
-          </View>
-        </Modal>
-      )}
-      
-      {/* OVERLAY - STATE 2: Đã ký hợp đồng, chưa check-in */}
-      {screenFocused && showOverlay && !needsContractSign && !showContractModal && !showDigitalSignatureTerms && !showContractOtpModal && !showCheckInModal && (
-        <Modal visible={true} transparent animationType="none">
-          <View style={styles.overlayContainer} pointerEvents="box-none">
-            {/* Map visible - 60-70% */}
-            <View style={styles.overlayMapSection}>
-              <VietMapUniversal 
-                coordinates={checkInRouteCoordinates.length > 0 ? checkInRouteCoordinates : (currentDriver?.startLat && currentDriver?.startLng ? [[currentDriver.startLng, currentDriver.startLat] as Position] : [])}
-                style={{ flex: 1 }}
-                navigationActive={false}
-              />
-              <View style={styles.checkInMapDescOverlay} pointerEvents="none">
-                <View style={styles.checkInMapDescBox}>
-                  <Ionicons name="navigate" size={16} color="#2563EB" />
-                  <Text style={styles.checkInMapDescText}>Đoạn đường đến điểm xuất phát</Text>
+
+              {/* Bottom Sheet - 30-40% */}
+              <View style={styles.overlayBottomSheet} pointerEvents="box-none">
+                <View style={styles.sheetHandle} />
+                <View style={styles.sheetContent} pointerEvents="box-none">
+                  <View style={styles.sheetHeader}>
+                    <MaterialCommunityIcons
+                      name="file-document-edit"
+                      size={48}
+                      color="#2563EB"
+                    />
+                    <Text style={styles.sheetTitle}>BƯỚC 1: KÝ HỢP ĐỒNG</Text>
+                    <Text style={styles.sheetSubtitle}>
+                      Vui lòng ký hợp đồng điện tử để nhận nhiệm vụ và xem chi
+                      tiết khách hàng.
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.sheetPrimaryButton}
+                    onPress={() => {
+                      console.log("[ContractSign] TouchableOpacity pressed");
+                      handleSendContractOtp();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.sheetButtonText}>XEM & KÝ NGAY</Text>
+                    <Ionicons name="arrow-forward" size={20} color="#FFF" />
+                  </TouchableOpacity>
                 </View>
               </View>
-              
-              {/* Back button */}
-              <TouchableOpacity 
-                style={styles.overlayBackButton}
-                onPress={() => {
-                  console.log('🔙 [Overlay STATE 2] Back button pressed');
-                  if (router.canGoBack()) {
-                    router.back();
-                  } else {
-                    router.replace('/(driver)/home');
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="arrow-back" size={24} color="#FFF" />
-              </TouchableOpacity>
             </View>
-            
-            {/* Bottom Sheet - 30-40% */}
-            <View style={styles.overlayBottomSheet} pointerEvents="auto">
-              <View style={styles.sheetHandle} />
-              <View style={styles.sheetContent}>
-                <View style={styles.sheetHeader}>
-                  <MaterialCommunityIcons name="car-key" size={48} color="#F59E0B" />
-                  <Text style={styles.sheetTitle}>
-                    {hasDriverOwnerContract ? 'BƯỚC 2: NHẬN XE' : 'NHẬN XE & CHECK-IN'}
-                  </Text>
-                  
-                  {!canShowCheckInButton ? (
-                    <View style={styles.waitingBox}>
-                      <ActivityIndicator color="#F59E0B" />
-                      <Text style={styles.waitingText}>
-                        Đang chờ Owner điều phối xe...
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.sheetSubtitle}>
-                      Xe đã sẵn sàng! Vui lòng đến bãi xe và xác nhận lấy xe.
+          </Modal>
+        )}
+
+      {/* OVERLAY - STATE 2: Đã ký hợp đồng, chưa check-in */}
+      {screenFocused &&
+        showOverlay &&
+        !needsContractSign &&
+        !showContractModal &&
+        !showDigitalSignatureTerms &&
+        !showContractOtpModal &&
+        !showCheckInModal && (
+          <Modal visible={true} transparent animationType="none">
+            <View style={styles.overlayContainer} pointerEvents="box-none">
+              {/* Map visible - 60-70% */}
+              <View style={styles.overlayMapSection}>
+                <VietMapUniversal
+                  coordinates={
+                    checkInRouteCoordinates.length > 0
+                      ? checkInRouteCoordinates
+                      : currentDriver?.startLat && currentDriver?.startLng
+                      ? [
+                          [
+                            currentDriver.startLng,
+                            currentDriver.startLat,
+                          ] as Position,
+                        ]
+                      : []
+                  }
+                  style={{ flex: 1 }}
+                  navigationActive={false}
+                />
+                <View style={styles.checkInMapDescOverlay} pointerEvents="none">
+                  <View style={styles.checkInMapDescBox}>
+                    <Ionicons name="navigate" size={16} color="#2563EB" />
+                    <Text style={styles.checkInMapDescText}>
+                      Đoạn đường đến điểm xuất phát
                     </Text>
+                  </View>
+                </View>
+
+                {/* Back button */}
+                <TouchableOpacity
+                  style={styles.overlayBackButton}
+                  onPress={() => {
+                    console.log("🔙 [Overlay STATE 2] Back button pressed");
+                    if (router.canGoBack()) {
+                      router.back();
+                    } else {
+                      router.replace("/(driver)/home");
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-back" size={24} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Bottom Sheet - 30-40% */}
+              <View style={styles.overlayBottomSheet} pointerEvents="auto">
+                <View style={styles.sheetHandle} />
+                <View style={styles.sheetContent}>
+                  <View style={styles.sheetHeader}>
+                    <MaterialCommunityIcons
+                      name="car-key"
+                      size={48}
+                      color="#F59E0B"
+                    />
+                    <Text style={styles.sheetTitle}>
+                      {hasDriverOwnerContract
+                        ? "BƯỚC 2: NHẬN XE"
+                        : "NHẬN XE & CHECK-IN"}
+                    </Text>
+
+                    {!canShowCheckInButton ? (
+                      <View style={styles.waitingBox}>
+                        <ActivityIndicator color="#F59E0B" />
+                        <Text style={styles.waitingText}>
+                          Đang chờ Owner điều phối xe...
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.sheetSubtitle}>
+                        Xe đã sẵn sàng! Vui lòng đến bãi xe và xác nhận lấy xe.
+                      </Text>
+                    )}
+                  </View>
+
+                  {canShowCheckInButton && (
+                    <TouchableOpacity
+                      style={[
+                        styles.sheetPrimaryButton,
+                        { backgroundColor: "#F59E0B" },
+                      ]}
+                      onPress={() => setShowCheckInModal(true)}
+                    >
+                      <Text style={styles.sheetButtonText}>
+                        {isMainDriver
+                          ? "XÁC NHẬN ĐÃ LẤY XE & CHECK-IN"
+                          : "CHECK-IN"}
+                      </Text>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color="#FFF"
+                      />
+                    </TouchableOpacity>
                   )}
                 </View>
-                
-                {canShowCheckInButton && (
-                  <TouchableOpacity 
-                    style={[styles.sheetPrimaryButton, { backgroundColor: '#F59E0B' }]}
-                    onPress={() => setShowCheckInModal(true)}
-                  >
-                    <Text style={styles.sheetButtonText}>
-                      {isMainDriver ? 'XÁC NHẬN ĐÃ LẤY XE & CHECK-IN' : 'CHECK-IN'}
-                    </Text>
-                    <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-                  </TouchableOpacity>
-                )}
               </View>
             </View>
-          </View>
-        </Modal>
-      )}
+          </Modal>
+        )}
 
       {/* CHECK-IN DETAIL MODAL */}
-      <Modal 
-        visible={showCheckInModal} 
-        transparent 
+      <Modal
+        visible={showCheckInModal}
+        transparent
         animationType="slide"
         onRequestClose={() => setShowCheckInModal(false)}
       >
@@ -5753,27 +6434,27 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.checkInModalContent}>
               <View style={styles.checkInInfoBox}>
                 <Ionicons name="information-circle" size={20} color="#2563EB" />
                 <Text style={styles.checkInInfoText}>
-                  {isMainDriver 
-                    ? 'Vui lòng chụp ảnh minh chứng tại bãi xe để xác nhận bạn đã lấy xe và check-in. Hệ thống sẽ tự động chuyển trạng thái chuyến đi.'
-                    : 'Vui lòng chụp ảnh minh chứng tại bãi xe để xác nhận bạn đã đến và check-in.'}
+                  {isMainDriver
+                    ? "Vui lòng chụp ảnh minh chứng tại bãi xe để xác nhận bạn đã lấy xe và check-in. Hệ thống sẽ tự động chuyển trạng thái chuyến đi."
+                    : "Vui lòng chụp ảnh minh chứng tại bãi xe để xác nhận bạn đã đến và check-in."}
                 </Text>
               </View>
-              
+
               <Text style={styles.checkInLabel}>Ảnh minh chứng (*)</Text>
-              
+
               {checkInImage ? (
                 <View style={styles.checkInImagePreview}>
-                  <Image 
-                    source={{ uri: checkInImageUrl }} 
+                  <Image
+                    source={{ uri: checkInImageUrl }}
                     style={styles.checkInImage}
                     resizeMode="cover"
                   />
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.checkInImageRemove}
                     onPress={() => setCheckInImage(null)}
                   >
@@ -5781,7 +6462,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.checkInImagePicker}
                   onPress={pickCheckInImage}
                 >
@@ -5789,27 +6470,30 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   <Text style={styles.checkInImagePickerText}>Chụp ảnh</Text>
                 </TouchableOpacity>
               )}
-              
+
               <View style={styles.checkInWarningBox}>
                 <Ionicons name="alert-circle" size={20} color="#F59E0B" />
                 <Text style={styles.checkInWarningText}>
-                  Hệ thống sẽ tự động kiểm tra vị trí của bạn so với bãi xe. 
-                  Nếu cách quá xa (&gt;5km) sẽ có cảnh báo.
+                  Hệ thống sẽ tự động kiểm tra vị trí của bạn so với bãi xe. Nếu
+                  cách quá xa (&gt;5km) sẽ có cảnh báo.
                 </Text>
               </View>
             </ScrollView>
-            
+
             <View style={styles.checkInModalFooter}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.btnSecondary}
                 onPress={() => setShowCheckInModal(false)}
                 disabled={checkingIn}
               >
                 <Text style={styles.btnSecondaryText}>Hủy</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.btnPrimary, (!checkInImage || checkingIn) && styles.btnDisabled]}
+
+              <TouchableOpacity
+                style={[
+                  styles.btnPrimary,
+                  (!checkInImage || checkingIn) && styles.btnDisabled,
+                ]}
                 onPress={isMainDriver ? handleMainDriverCheckIn : handleCheckIn}
                 disabled={!checkInImage || checkingIn}
               >
@@ -5817,7 +6501,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   <ActivityIndicator color="#FFF" size="small" />
                 ) : (
                   <Text style={styles.btnPrimaryText}>
-                    {isMainDriver ? 'Xác nhận lấy xe & Check-in' : 'Xác nhận Check-in'}
+                    {isMainDriver
+                      ? "Xác nhận lấy xe & Check-in"
+                      : "Xác nhận Check-in"}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -5827,9 +6513,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       </Modal>
 
       {/* CHECK-OUT DETAIL MODAL */}
-      <Modal 
-        visible={showCheckOutModal} 
-        transparent 
+      <Modal
+        visible={showCheckOutModal}
+        transparent
         animationType="slide"
         onRequestClose={() => setShowCheckOutModal(false)}
       >
@@ -5841,25 +6527,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.checkInModalContent}>
               <View style={styles.checkInInfoBox}>
                 <Ionicons name="information-circle" size={20} color="#10B981" />
                 <Text style={styles.checkInInfoText}>
-                  Vui lòng chụp ảnh minh chứng để xác nhận bạn đã hoàn thành nhiệm vụ và check-out khỏi chuyến đi.
+                  Vui lòng chụp ảnh minh chứng để xác nhận bạn đã hoàn thành
+                  nhiệm vụ và check-out khỏi chuyến đi.
                 </Text>
               </View>
-              
+
               <Text style={styles.checkInLabel}>Ảnh minh chứng (*)</Text>
-              
+
               {checkOutImage ? (
                 <View style={styles.checkInImagePreview}>
-                  <Image 
-                    source={{ uri: checkOutImageUrl }} 
+                  <Image
+                    source={{ uri: checkOutImageUrl }}
                     style={styles.checkInImage}
                     resizeMode="cover"
                   />
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.checkInImageRemove}
                     onPress={() => setCheckOutImage(null)}
                   >
@@ -5867,7 +6554,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.checkInImagePicker}
                   onPress={pickCheckOutImage}
                 >
@@ -5875,27 +6562,31 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   <Text style={styles.checkInImagePickerText}>Chụp ảnh</Text>
                 </TouchableOpacity>
               )}
-              
+
               <View style={styles.checkInWarningBox}>
                 <Ionicons name="alert-circle" size={20} color="#F59E0B" />
                 <Text style={styles.checkInWarningText}>
-                  Hệ thống sẽ tự động kiểm tra vị trí của bạn so với điểm trả xe. 
-                  Nếu cách quá xa (&gt;5km) sẽ có cảnh báo.
+                  Hệ thống sẽ tự động kiểm tra vị trí của bạn so với điểm trả
+                  xe. Nếu cách quá xa (&gt;5km) sẽ có cảnh báo.
                 </Text>
               </View>
             </ScrollView>
-            
+
             <View style={styles.checkInModalFooter}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.btnSecondary}
                 onPress={() => setShowCheckOutModal(false)}
                 disabled={checkingOut}
               >
                 <Text style={styles.btnSecondaryText}>Hủy</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.btnPrimary, { backgroundColor: '#10B981' }, (!checkOutImage || checkingOut) && styles.btnDisabled]}
+
+              <TouchableOpacity
+                style={[
+                  styles.btnPrimary,
+                  { backgroundColor: "#10B981" },
+                  (!checkOutImage || checkingOut) && styles.btnDisabled,
+                ]}
                 onPress={handleCheckOut}
                 disabled={!checkOutImage || checkingOut}
               >
@@ -5917,28 +6608,28 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F3F4F6" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   scrollContent: { padding: 16, paddingBottom: 120 },
-  
+
   // Checkout Overlay Styles
   checkoutOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 80,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
     zIndex: 9999,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
   },
   checkoutOverlayContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 32,
-    alignItems: 'center',
+    alignItems: "center",
     maxWidth: 400,
-    width: '100%',
-    shadowColor: '#000',
+    width: "100%",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
@@ -5948,40 +6639,40 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#ECFDF5',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#ECFDF5",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 24,
   },
   checkoutOverlayTitle: {
     fontSize: 24,
-    fontWeight: '800',
-    color: '#111827',
+    fontWeight: "800",
+    color: "#111827",
     marginBottom: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
   checkoutOverlayMessage: {
     fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
+    color: "#6B7280",
+    textAlign: "center",
     lineHeight: 24,
     marginBottom: 24,
   },
   checkoutInfoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 10,
     gap: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   checkoutInfoText: {
     fontSize: 13,
-    color: '#374151',
-    fontWeight: '600',
+    color: "#374151",
+    fontWeight: "600",
     flex: 1,
   },
 
@@ -6052,7 +6743,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   pillText: { fontSize: 11, fontWeight: "700" },
-  
+
   // Mode Toggle Button
   modeToggleBtn: {
     flexDirection: "row",
@@ -6130,7 +6821,6 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   smallToggle: {
-
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
@@ -6334,32 +7024,32 @@ const styles = StyleSheet.create({
   },
   navActionBarAbove: { zIndex: 2500 },
   approachAlertContainer: {
-    position: 'absolute',
+    position: "absolute",
     top: 16,
     left: 20,
     right: 20,
     zIndex: 4000,
-    alignItems: 'center',
+    alignItems: "center",
   },
   approachAlert: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: "#FEF3C7",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FCD34D',
-    shadowColor: '#000',
+    borderColor: "#FCD34D",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 6,
   },
   approachAlertText: {
-    color: '#92400E',
-    fontWeight: '700',
+    color: "#92400E",
+    fontWeight: "700",
     fontSize: 13,
     flex: 1,
   },
@@ -6521,13 +7211,13 @@ const styles = StyleSheet.create({
     padding: 20,
     maxHeight: "80%",
   },
-  modalFullscreen: { 
-    width: "100%", 
-    height: "95%", 
-    backgroundColor: "#FFFFFF", 
-    borderRadius: 12, 
-    overflow: "hidden", 
-    marginTop: 20 
+  modalFullscreen: {
+    width: "100%",
+    height: "95%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    overflow: "hidden",
+    marginTop: 20,
   },
   paperHeader: {
     flexDirection: "row",
@@ -6766,7 +7456,7 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: "#F9FAFB",
   },
-  
+
   // Issues & Surcharges Section
   issuesSection: {
     marginTop: 20,
@@ -6780,47 +7470,47 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   issuesSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     marginBottom: 16,
   },
   issuesSectionTitle: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#DC2626',
+    fontWeight: "800",
+    color: "#DC2626",
   },
   issueCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#FEE2E2',
-    shadowColor: '#000',
+    borderColor: "#FEE2E2",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
   },
   issueCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 10,
   },
   issueTypeTag: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: "#FEF3C7",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#FCD34D',
+    borderColor: "#FCD34D",
   },
   issueTypeText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#92400E',
+    fontWeight: "700",
+    color: "#92400E",
   },
   issueStatusBadge: {
     paddingHorizontal: 8,
@@ -6829,11 +7519,11 @@ const styles = StyleSheet.create({
   },
   issueStatusText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   issueDescription: {
     fontSize: 14,
-    color: '#374151',
+    color: "#374151",
     lineHeight: 20,
     marginBottom: 10,
   },
@@ -6845,54 +7535,54 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 8,
     marginRight: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
   },
   compensationBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: "#FEF3C7",
     padding: 10,
     borderRadius: 8,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#FCD34D',
+    borderColor: "#FCD34D",
   },
   compensationText: {
     fontSize: 13,
-    color: '#78350F',
-    fontWeight: '500',
+    color: "#78350F",
+    fontWeight: "500",
   },
   compensationAmount: {
-    fontWeight: '800',
-    color: '#F59E0B',
+    fontWeight: "800",
+    color: "#F59E0B",
   },
   surchargesBox: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F9FAFB",
     padding: 10,
     borderRadius: 8,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   surchargesTitle: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
+    fontWeight: "700",
+    color: "#6B7280",
     marginBottom: 8,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   surchargeItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 6,
   },
   surchargeAmount: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: "700",
+    color: "#111827",
   },
   surchargeStatusBadge: {
     paddingHorizontal: 8,
@@ -6901,90 +7591,90 @@ const styles = StyleSheet.create({
   },
   surchargeStatusText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
-  
+
   // All Surcharges Summary Section
   allSurchargesSection: {
     marginTop: 16,
     paddingTop: 20,
     borderTopWidth: 2,
-    borderTopColor: '#FEE2E2',
-    backgroundColor: '#FFFBEB',
+    borderTopColor: "#FEE2E2",
+    backgroundColor: "#FFFBEB",
     padding: 16,
     borderRadius: 12,
     marginHorizontal: 16,
     marginBottom: 16,
   },
   surchargeCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#FEE2E2',
-    shadowColor: '#000',
+    borderColor: "#FEE2E2",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
   },
   surchargeCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 10,
   },
   surchargeDesc: {
     fontSize: 14,
-    color: '#374151',
+    color: "#374151",
     lineHeight: 20,
     marginBottom: 10,
   },
   surchargeAmountBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    backgroundColor: '#DCFCE7',
+    backgroundColor: "#DCFCE7",
     padding: 10,
     borderRadius: 8,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#86EFAC',
+    borderColor: "#86EFAC",
   },
   surchargeAmountLabel: {
     fontSize: 13,
-    color: '#166534',
-    fontWeight: '600',
+    color: "#166534",
+    fontWeight: "600",
   },
   surchargeAmountValue: {
     fontSize: 15,
-    fontWeight: '800',
-    color: '#059669',
-    marginLeft: 'auto',
+    fontWeight: "800",
+    color: "#059669",
+    marginLeft: "auto",
   },
   totalSurchargeBox: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FEF3C7',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
     padding: 16,
     borderRadius: 12,
     marginTop: 8,
     borderWidth: 2,
-    borderColor: '#FCD34D',
+    borderColor: "#FCD34D",
   },
   totalSurchargeLabel: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#92400E',
+    fontWeight: "800",
+    color: "#92400E",
   },
   totalSurchargeAmount: {
     fontSize: 18,
-    fontWeight: '900',
-    color: '#F59E0B',
+    fontWeight: "900",
+    color: "#F59E0B",
   },
-  
+
   // btnDisabled: { backgroundColor: '#9CA3AF', opacity: 0.7 },
 
   // OTP
@@ -7402,31 +8092,31 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
   },
-  
+
   // Overlay Styles
   overlayContainer: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: "#000",
   },
   overlayMapSection: {
     flex: 0.65, // 65% for map
   },
   checkInMapDescOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 16,
     left: 16,
     right: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   checkInMapDescBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 24,
     gap: 8,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -7434,20 +8124,20 @@ const styles = StyleSheet.create({
   },
   checkInMapDescText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   overlayBackButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 16,
     left: 16,
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -7456,10 +8146,10 @@ const styles = StyleSheet.create({
   },
   overlayBottomSheet: {
     flex: 0.35, // 35% for bottom sheet
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -7468,44 +8158,44 @@ const styles = StyleSheet.create({
   sheetHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: "#E5E7EB",
     borderRadius: 2,
-    alignSelf: 'center',
+    alignSelf: "center",
     marginTop: 12,
     marginBottom: 16,
   },
   sheetContent: {
     flex: 1,
     padding: 24,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   sheetHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: 12,
   },
   sheetTitle: {
     fontSize: 20,
-    fontWeight: '800',
-    color: '#111827',
-    textAlign: 'center',
+    fontWeight: "800",
+    color: "#111827",
+    textAlign: "center",
     letterSpacing: 0.5,
   },
   sheetSubtitle: {
     fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
+    color: "#6B7280",
+    textAlign: "center",
     lineHeight: 20,
     marginTop: 4,
   },
   sheetPrimaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563EB',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2563EB",
     paddingVertical: 16,
     borderRadius: 12,
     gap: 8,
-    shadowColor: '#2563EB',
+    shadowColor: "#2563EB",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -7513,154 +8203,154 @@ const styles = StyleSheet.create({
   },
   sheetButtonText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFF',
+    fontWeight: "700",
+    color: "#FFF",
   },
   waitingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
-    backgroundColor: '#FFFBEB',
+    backgroundColor: "#FFFBEB",
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FEF3C7',
+    borderColor: "#FEF3C7",
     marginTop: 12,
   },
   waitingText: {
     fontSize: 14,
-    color: '#92400E',
-    fontWeight: '500',
+    color: "#92400E",
+    fontWeight: "500",
     flex: 1,
   },
-  
+
   // Check-in Modal Styles
   checkInModalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
     padding: 20,
   },
   checkInModalCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
     borderRadius: 16,
-    maxHeight: '85%',
-    overflow: 'hidden',
+    maxHeight: "85%",
+    overflow: "hidden",
   },
   checkInModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: "#F3F4F6",
   },
   checkInModalTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: "700",
+    color: "#111827",
   },
   checkInModalContent: {
     padding: 20,
   },
   checkInInfoBox: {
-    flexDirection: 'row',
-    backgroundColor: '#EFF6FF',
+    flexDirection: "row",
+    backgroundColor: "#EFF6FF",
     padding: 12,
     borderRadius: 8,
     gap: 10,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#DBEAFE',
+    borderColor: "#DBEAFE",
   },
   checkInInfoText: {
     flex: 1,
     fontSize: 13,
-    color: '#1E40AF',
+    color: "#1E40AF",
     lineHeight: 18,
   },
   checkInLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
     marginBottom: 12,
   },
   checkInImagePicker: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: "#F9FAFB",
     borderWidth: 2,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
+    borderColor: "#E5E7EB",
+    borderStyle: "dashed",
     borderRadius: 12,
     padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 16,
   },
   checkInImagePickerText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
     marginTop: 8,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   checkInImagePreview: {
-    position: 'relative',
+    position: "relative",
     marginBottom: 16,
   },
   checkInImage: {
-    width: '100%',
+    width: "100%",
     height: 200,
     borderRadius: 12,
   },
   checkInImageRemove: {
-    position: 'absolute',
+    position: "absolute",
     top: 8,
     right: 8,
-    backgroundColor: '#FFF',
+    backgroundColor: "#FFF",
     borderRadius: 12,
   },
   checkInWarningBox: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFBEB',
+    flexDirection: "row",
+    backgroundColor: "#FFFBEB",
     padding: 12,
     borderRadius: 8,
     gap: 10,
     borderWidth: 1,
-    borderColor: '#FEF3C7',
+    borderColor: "#FEF3C7",
   },
   checkInWarningText: {
     flex: 1,
     fontSize: 12,
-    color: '#92400E',
+    color: "#92400E",
     lineHeight: 18,
   },
   checkInModalFooter: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: "#F3F4F6",
   },
   btnSecondary: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
   },
   btnSecondaryText: {
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
   },
   btnPrimary: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
+    backgroundColor: "#2563EB",
+    alignItems: "center",
   },
   btnPrimaryText: {
-    fontWeight: '600',
-    color: '#FFF',
+    fontWeight: "600",
+    color: "#FFF",
   },
 });
 
