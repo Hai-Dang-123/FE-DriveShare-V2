@@ -105,12 +105,7 @@ const OwnerHomeScreen: React.FC = () => {
 
         <View style={styles.bodyContent}>
 
-          <WalletCard 
-            wallet={wallet}
-            balance={balance} 
-            onDeposit={handleDeposit} 
-            onWithdraw={handleWithdraw} 
-          />
+          <WalletCard wallet={wallet} />
           {/* 2. Thống kê Hoạt động */}
           <View>
             <Text style={styles.sectionTitle}>Thống kê Hoạt động</Text>

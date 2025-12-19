@@ -236,7 +236,7 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
       </View>
 
       {/* 3. STATUS FILTER CHIPS */}
-      <View style={styles.statusFilterRow}>
+      {/* <View style={styles.statusFilterRow}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -271,7 +271,7 @@ const VehiclesManagementScreen: React.FC<Props> = ({ onBack }) => {
             );
           })}
         </ScrollView>
-      </View>
+      </View> */}
 
       {/* 4. VEHICLE LIST */}
       <View style={styles.listContainer}>

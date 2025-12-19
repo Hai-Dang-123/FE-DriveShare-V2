@@ -314,7 +314,7 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
       </View>
 
       {/* STATUS FILTER CHIPS */}
-      <View style={styles.statusFilterRow}>
+      {/* <View style={styles.statusFilterRow}>
         {["ALL", "PENDING", "APPROVED", "REJECTED", "IN_TRANSIT", "DELIVERED", "COMPLETED"].map(
           (status) => (
             <TouchableOpacity
@@ -342,7 +342,7 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
             </TouchableOpacity>
           )
         )}
-      </View>
+      </View> */}
 
       {/* LIST */}
       <View style={styles.listContainer}>

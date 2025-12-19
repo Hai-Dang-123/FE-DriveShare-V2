@@ -396,7 +396,7 @@ const PostsManagementScreen: React.FC<Props> = ({ onBack }) => {
       </View>
 
       {/* STATUS FILTER (Fixed size issue) */}
-      {renderStatusChips(viewMode)}
+      {/* {renderStatusChips(viewMode)} */}
 
       {/* CONTENT LIST */}
       <View style={styles.content}>

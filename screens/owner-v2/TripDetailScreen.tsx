@@ -1301,10 +1301,10 @@ const TripDetailScreen: React.FC = () => {
             </Text>
           </View>
           
-          <TouchableOpacity onPress={toggleSimulation} style={styles.simulationBtn}>
+          {/* <TouchableOpacity onPress={toggleSimulation} style={styles.simulationBtn}>
             <Text style={{ fontSize: 18, marginRight: 4 }}>{simulationActive ? "⏸️" : "▶️"}</Text>
             <Text style={styles.simulationText}>{simulationActive ? "Tạm dừng" : "Giả lập"}</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
       </View>
 
@@ -1407,13 +1407,13 @@ const TripDetailScreen: React.FC = () => {
                 />
               </View>
             )}
-            <View style={styles.floatingProgress}>
+            {/* <View style={styles.floatingProgress}>
               <RouteProgressBar
                 currentDistance={currentDistance}
                 totalDistance={trip.tripRoute?.distanceKm || 100}
                 durationMinutes={trip.tripRoute?.durationMinutes || 60}
               />
-            </View>
+            </View> */}
           </View>
         </View>
 

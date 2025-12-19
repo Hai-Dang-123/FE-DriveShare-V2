@@ -429,7 +429,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
       </View>
 
       {/* Status Filter Chips */}
-      <View style={styles.statusFilterRow}>
+      {/* <View style={styles.statusFilterRow}>
         {["ALL", "PENDING", "IN_USE", "IN_PROGRESS", "COMPLETED"].map(
           (status) => (
             <TouchableOpacity
@@ -457,7 +457,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
             </TouchableOpacity>
           )
         )}
-      </View>
+      </View> */}
       <View style={styles.bodyContainer}>{renderContent()}</View>
       <ItemFormModal
         visible={isItemModalOpen}
