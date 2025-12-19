@@ -5,7 +5,6 @@ import { View, StyleSheet, ScrollView, StatusBar, Text, RefreshControl } from 'r
 import { useFocusEffect } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '@/hooks/useAuth'
-import { useNotification } from '@/hooks/useNotification'
 import { useAuthStore } from '@/stores/authStore'
 import HeaderDriver from './components/HeaderDriver'
 import DriverManagementTabs from './components/DriverManagementTabs'
@@ -18,8 +17,6 @@ import { ekycService } from '@/services/ekycService'
 
 const DriverHomeScreen: React.FC = () => {
   const { user, wallet } = useAuth()
-  // Đăng ký device token để nhận push notification (với auto-refresh)
-  const { unreadCount } = useNotification(true)
   const authStore = useAuthStore
 
   // profile from server (prefer) or from global auth store

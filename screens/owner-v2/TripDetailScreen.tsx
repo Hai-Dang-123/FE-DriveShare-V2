@@ -341,10 +341,20 @@ const TripDetailScreen: React.FC = () => {
 
   // SignalR real-time tracking
   const [driverLocation, setDriverLocation] = useState<{latitude: number; longitude: number; bearing?: number} | null>(null);
+  const signalREnabled = trip?.status === 'MOVING_TO_PICKUP' || trip?.status === 'READY_FOR_VEHICLE_RETURN'|| trip?.status === 'MOVING_TO_DROPOFF';
+  
+  console.log('[Owner TripDetail] SignalR Debug:', {
+    tripId,
+    tripStatus: trip?.status,
+    signalREnabled,
+  });
+  
   const { location, connected, error } = useSignalRLocation({
     tripId,
-    enabled: trip?.status === 'IN_PROGRESS' || trip?.status === 'VEHICLE_HANDOVERED',
+    enabled: signalREnabled,
   });
+  
+  console.log('[Owner TripDetail] SignalR State:', { connected, hasLocation: !!location, error });
 
   // Update driver location when received
   useEffect(() => {
@@ -1250,20 +1260,15 @@ const TripDetailScreen: React.FC = () => {
 
       {/* HEADER */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <View style={{ alignItems: "center" }}>
-          <Text style={styles.headerTitle}>Chi Tiết Chuyến Đi</Text>
-          <Text style={styles.headerSubTitle}>{trip.tripCode}</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {connected && (
-            <View style={styles.signalRBadge}>
-              <View style={styles.signalRDot} />
-              <Text style={styles.signalRText}>Live</Text>
-            </View>
-          )}
+        {/* Row 1: Back button + Title + Trip Code + Refresh */}
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#1F2937" />
+          </TouchableOpacity>
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text style={styles.headerTitle}>Chi Tiết Chuyến Đi</Text>
+            <Text style={styles.headerSubTitle}>{trip.tripCode}</Text>
+          </View>
           <TouchableOpacity 
             onPress={handleRefresh} 
             style={{ padding: 4 }}
@@ -1275,8 +1280,30 @@ const TripDetailScreen: React.FC = () => {
               <Ionicons name="refresh" size={22} color="#2563EB" />
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={toggleSimulation} style={{ padding: 4 }}>
-            <Text style={{ fontSize: 20 }}>{simulationActive ? "⏸️" : "▶️"}</Text>
+        </View>
+
+        {/* Row 2: Live badge + Simulation control */}
+        <View style={styles.headerBottomRow}>
+          {/* Always show Live badge with connection status */}
+          <View style={[
+            styles.signalRBadge,
+            !connected && styles.signalRBadgeDisconnected
+          ]}>
+            <View style={[
+              styles.signalRDot,
+              !connected && styles.signalRDotDisconnected
+            ]} />
+            <Text style={[
+              styles.signalRText,
+              !connected && styles.signalRTextDisconnected
+            ]}>
+              {connected ? 'Live' : 'Offline'}
+            </Text>
+          </View>
+          
+          <TouchableOpacity onPress={toggleSimulation} style={styles.simulationBtn}>
+            <Text style={{ fontSize: 18, marginRight: 4 }}>{simulationActive ? "⏸️" : "▶️"}</Text>
+            <Text style={styles.simulationText}>{simulationActive ? "Tạm dừng" : "Giả lập"}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1368,6 +1395,7 @@ const TripDetailScreen: React.FC = () => {
               coordinates={routeCoords || []}
               showUserLocation={false}
               style={{ height: 450 }}
+              driverLocation={driverLocation}
             />
             {simulationActive && routeFeature && (
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -3435,16 +3463,23 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
     borderColor: "#E5E7EB",
   },
-  backBtn: { padding: 8, marginLeft: -8 },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  headerBottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  backBtn: { padding: 8, marginLeft: -8, marginRight: 8 },
   headerTitle: {
     fontSize: 18,
     fontWeight: "800",
@@ -3457,6 +3492,21 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "600",
   },
+  simulationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  simulationText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
   signalRBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3468,16 +3518,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#10B981',
   },
+  signalRBadgeDisconnected: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#9CA3AF',
+  },
   signalRDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#10B981',
   },
+  signalRDotDisconnected: {
+    backgroundColor: '#9CA3AF',
+  },
   signalRText: {
     fontSize: 11,
     fontWeight: '700',
     color: '#065F46',
+  },
+  signalRTextDisconnected: {
+    color: '#6B7280',
   },
 
   // Stepper

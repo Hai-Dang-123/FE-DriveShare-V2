@@ -326,6 +326,7 @@ export interface SafeVietMapProps {
   onLocationUpdate?: (pos: [number, number]) => void
   externalLocation?: [number, number] | null
   userMarkerBearing?: number | undefined
+  driverLocation?: { latitude: number; longitude: number; bearing?: number } | null
 }
 
 // Define interface for ref methods

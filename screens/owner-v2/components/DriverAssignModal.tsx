@@ -70,15 +70,26 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
     setDriverLoading(true)
     try {
       const res: any = await ownerDriverLinkService.getMyDrivers(page, 10)
-      if (res?.isSuccess || res?.statusCode === 200) {
-        const payload = res?.result ?? res
+      console.log('🚗 [DriverAssignModal] API Response:', JSON.stringify(res, null, 2))
+      
+      // Support multiple response formats: { isSuccess, result } OR { success, data } OR direct data
+      if (res?.isSuccess || res?.statusCode === 200 || res?.success) {
+        // Try multiple paths: res.result, res.data, or res itself
+        const payload = res?.result ?? res?.data ?? res
         const list: LinkedDriverDTO[] = payload?.data || []
         const total = payload?.totalCount ?? list.length
+        
+        console.log('📋 [DriverAssignModal] Parsed drivers:', list.length, 'Total:', total)
+        console.log('👥 [DriverAssignModal] Drivers data:', JSON.stringify(list, null, 2))
+        
         setDrivers(prev => (page === 1 ? list : [...prev, ...list]))
         setDriverTotal(total)
         setDriverPage(page)
+      } else {
+        console.warn('⚠️ [DriverAssignModal] Unexpected response format:', res)
       }
     } catch (e: any) {
+      console.error('❌ [DriverAssignModal] Error loading drivers:', e)
       Alert.alert('Lỗi', 'Không thể tải danh sách tài xế')
     } finally {
       setDriverLoading(false)
@@ -165,10 +176,12 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
                     <Ionicons name="time-outline" size={10} color="#6B7280" />
                     <Text style={styles.statText}>Tuần: {hoursWeek}h</Text>
                 </View>
-                <View style={[styles.statusDot, { backgroundColor: canDrive ? '#10B981' : '#EF4444' }]} />
-                <Text style={[styles.statusText, { color: canDrive ? '#10B981' : '#EF4444' }]}>
-                    {canDrive ? 'Sẵn sàng' : 'Không đủ giờ lái'}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={[styles.statusDot, { backgroundColor: canDrive ? '#10B981' : '#EF4444' }]} />
+                  <Text style={[styles.statusText, { color: canDrive ? '#10B981' : '#EF4444' }]}>
+                      {canDrive ? 'Sẵn sàng' : 'Không đủ giờ lái'}
+                  </Text>
+                </View>
             </View>
           </View>
         </View>
@@ -442,8 +455,8 @@ const styles = StyleSheet.create({
   configSection: { padding: 16, paddingTop: 0 },
 
   // Driver List Horizontal
-  driverListContainer: { flexDirection: 'row' },
-  emptyText: { color: '#9CA3AF', fontStyle: 'italic', marginLeft: 8 },
+  driverListContainer: { flexDirection: 'row', minHeight: 160 },
+  emptyText: { color: '#9CA3AF', fontStyle: 'italic', marginLeft: 8, paddingVertical: 20 },
 
   // Driver Card
   driverCard: { width: 140, marginRight: 12, backgroundColor: '#FFF', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 4, elevation: 2 },

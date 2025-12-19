@@ -118,7 +118,11 @@ export default function OwnerProfileScreen() {
               <Ionicons name="location-outline" size={20} color="#6B7280" />
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Địa chỉ</Text>
-                <Text style={styles.infoValue}>{profile.address}</Text>
+                <Text style={styles.infoValue}>
+                  {typeof profile.address === 'string'
+                    ? profile.address
+                    : (profile.address as { address?: string })?.address ?? 'N/A'}
+                </Text>
               </View>
             </View>
           )}

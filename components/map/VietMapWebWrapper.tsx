@@ -22,6 +22,7 @@ export interface VietMapWebWrapperProps {
   onMapClick?: (coordinates: [number, number]) => void
   userMarkerPosition?: [number, number]
   userMarkerBearing?: number
+  driverLocation?: { latitude: number; longitude: number; bearing?: number } | null
 }
 
 // CDN VietMap GL JS v6 (Link chuẩn)
@@ -42,11 +43,13 @@ export const VietMapWebWrapper: React.FC<VietMapWebWrapperProps> = ({
   onMapReady,
   onMapClick,
   userMarkerPosition,
-  userMarkerBearing
+  userMarkerBearing,
+  driverLocation
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
+  const driverMarkerRef = useRef<any>(null)
   
   const [isMapLoaded, setIsMapLoaded] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -239,6 +242,51 @@ export const VietMapWebWrapper: React.FC<VietMapWebWrapperProps> = ({
         map.easeTo({ center: userMarkerPosition })
     }
   }, [userMarkerPosition, userMarkerBearing, isMapLoaded, navigationActive])
+
+  // 6. Driver Marker (for Owner view - showing driver's real-time location)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !isMapLoaded || !driverLocation) {
+      // Remove marker if no driver location
+      if (driverMarkerRef.current) {
+        driverMarkerRef.current.remove()
+        driverMarkerRef.current = null
+      }
+      return
+    }
+
+    const driverPos: [number, number] = [driverLocation.longitude, driverLocation.latitude]
+
+    if (!driverMarkerRef.current) {
+      const el = document.createElement('div')
+      el.innerHTML = `
+        <div style="
+          width: 32px; 
+          height: 32px; 
+          background: #10B981; 
+          border: 3px solid white; 
+          border-radius: 50%; 
+          box-shadow: 0 2px 10px rgba(16, 185, 129, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+        ">🚗</div>
+      `
+      driverMarkerRef.current = new window.vietmapgl.Marker({ 
+        element: el, 
+        rotationAlignment: 'map',
+        rotation: driverLocation.bearing || 0
+      })
+        .setLngLat(driverPos)
+        .addTo(map)
+    } else {
+      driverMarkerRef.current.setLngLat(driverPos)
+      if (driverLocation.bearing !== undefined) {
+        driverMarkerRef.current.setRotation(driverLocation.bearing)
+      }
+    }
+  }, [driverLocation, isMapLoaded])
 
   useEffect(() => { loadVietMapSDK() }, [])
   useEffect(() => {

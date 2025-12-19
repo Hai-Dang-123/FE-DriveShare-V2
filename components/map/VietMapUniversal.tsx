@@ -21,6 +21,7 @@ export interface VietMapUniversalProps {
   userMarkerBearing?: number | undefined
   primaryRouteColor?: string
   secondaryRouteColor?: string
+  driverLocation?: { latitude: number; longitude: number; bearing?: number } | null
 }
 
 const LoadingFallback = () => (
@@ -39,7 +40,8 @@ const VietMapUniversal = forwardRef<SafeVietMapRef, VietMapUniversalProps>((prop
     navigationActive = false,
     useWebNavigation = false,
     externalLocation,
-    userMarkerBearing
+    userMarkerBearing,
+    driverLocation
   } = props
 
   const renderWebComponent = () => {
@@ -49,9 +51,9 @@ const VietMapUniversal = forwardRef<SafeVietMapRef, VietMapUniversalProps>((prop
     if (shouldNavigate) {
       // When app-level navigation is active, hide the WebNavigation's internal HUD/controls
       // to avoid duplicate FABs and speed badge overlapping with app UI.
-      return <WebNavigation {...props} coordinates={coordinates} externalLocation={externalLocation} userMarkerBearing={userMarkerBearing} hideInternalControls={navigationActive} />
+      return <WebNavigation {...props} coordinates={coordinates} externalLocation={externalLocation} userMarkerBearing={userMarkerBearing} hideInternalControls={navigationActive} driverLocation={driverLocation} />
     }
-    return <VietMapWebWrapper {...props} coordinates={coordinates} userMarkerPosition={externalLocation ?? undefined} userMarkerBearing={userMarkerBearing} secondaryRoute={props.secondaryRoute} primaryRouteColor={props.primaryRouteColor} secondaryRouteColor={props.secondaryRouteColor} />
+    return <VietMapWebWrapper {...props} coordinates={coordinates} userMarkerPosition={externalLocation ?? undefined} userMarkerBearing={userMarkerBearing} secondaryRoute={props.secondaryRoute} primaryRouteColor={props.primaryRouteColor} secondaryRouteColor={props.secondaryRouteColor} driverLocation={driverLocation} />
   }
 
   return (
@@ -66,6 +68,7 @@ const VietMapUniversal = forwardRef<SafeVietMapRef, VietMapUniversalProps>((prop
             coordinates={coordinates}
             externalLocation={externalLocation}
             userMarkerBearing={userMarkerBearing}
+            driverLocation={driverLocation}
           />
         )}
     </Suspense>

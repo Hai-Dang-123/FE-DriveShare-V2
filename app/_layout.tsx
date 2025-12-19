@@ -2,9 +2,13 @@ import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/hooks/useAuth';
+import { useNotification } from '@/hooks/useNotification';
 
 export default function RootLayout() {
   const { restoreSession } = useAuth();
+  
+  // Đăng ký notification và auto-refresh tại root level (chỉ 1 instance duy nhất)
+  useNotification(true);
 
   useEffect(() => {
     // Khi app mở lại, tự khôi phục session từ AsyncStorage
