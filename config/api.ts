@@ -2,7 +2,8 @@ import { getToken } from "@/utils/token";
 import axios from "axios";
 
 // Load baseURL from environment variable
-const baseURL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://192.168.100.49:5246/';
+const baseURL =
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:5246/";
 
 const api = axios.create({
   baseURL,

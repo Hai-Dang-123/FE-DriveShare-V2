@@ -111,8 +111,10 @@ export default function DriverLayout() {
 
       {/* Ẩn các màn hình khác */}
       <Tabs.Screen name="my-trips" options={{ href: null }} />
+      <Tabs.Screen name="my-trips-list" options={{ href: null }} />
       <Tabs.Screen name="post-trips" options={{ href: null }} />
       <Tabs.Screen name="my-team" options={{ href: null }} />
+      <Tabs.Screen name="activity-logs" options={{ href: null }} />
       <Tabs.Screen name="trip" options={{ href: null }} />
       <Tabs.Screen name="trip-post" options={{ href: null }} />
     </Tabs>
