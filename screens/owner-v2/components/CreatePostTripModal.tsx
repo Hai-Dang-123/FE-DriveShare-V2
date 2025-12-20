@@ -239,6 +239,7 @@ import contractTemplateService from '@/services/contractTemplateService'
 import walletService from '@/services/walletService'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import AddressAutocomplete from '@/components/AddressAutocomplete'
+import { useRouter } from 'expo-router'
 
 interface CreatePostTripModalProps {
   visible: boolean
@@ -262,6 +263,7 @@ interface DetailFormState {
 }
 
 const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onClose, tripId, onCreated, driverAnalysis }) => {
+  const router = useRouter()
   const [title, setTitle] = useState('Tìm thêm tài xế cho chuyến')
   const [description, setDescription] = useState('Cần bổ sung tài xế, ưu tiên kinh nghiệm và đúng giờ.')
     const [payloadKg, setPayloadKg] = useState('')
@@ -810,8 +812,32 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                                     <View style={{ height: 12 }} />
                                     <Text style={styles.label}>Số dư ví của bạn</Text>
                                     <Text style={styles.walletBalance}>₫ {formatMoney(String(wallet?.balance ?? wallet?.Balance ?? 0))}</Text>
-                                    {sufficientBalance === true && <Text style={{ color: '#059669', marginTop: 6 }}>Số dư đủ để thanh toán.</Text>}
-                                    {sufficientBalance === false && <Text style={{ color: '#DC2626', marginTop: 6 }}>Số dư không đủ. Vui lòng nạp thêm.</Text>}
+                                    {sufficientBalance === true && <Text style={{ color: '#059669', marginTop: 6 }}>✓ Số dư đủ để thanh toán.</Text>}
+                                    {sufficientBalance === false && (
+                                      <View>
+                                        <View style={styles.balanceWarning}>
+                                          <Ionicons name="alert-circle" size={16} color="#F59E0B" />
+                                          <Text style={{ color: '#F59E0B', marginLeft: 4, fontSize: 13 }}>Số dư không đủ. Vui lòng nạp thêm.</Text>
+                                        </View>
+                                        <TouchableOpacity
+                                          style={styles.topupButton}
+                                          onPress={() => {
+                                            const total = details.reduce((sum, d) => {
+                                              const count = parseInt(d.requiredCount || '0', 10)
+                                              const price = parseFloat(d.pricePerPerson || '0')
+                                              const bonus = parseFloat(d.bonusAmount || '0')
+                                              return sum + (count * (price + bonus))
+                                            }, 0)
+                                            const currentBalance = Number(wallet?.balance ?? wallet?.Balance ?? 0) || 0
+                                            const deficit = Math.max(0, total - currentBalance)
+                                            router.push(`/(wallet)/wallet-operations?amount=${deficit}`)
+                                          }}
+                                        >
+                                          <MaterialCommunityIcons name="wallet-plus" size={20} color="#fff" />
+                                          <Text style={styles.topupButtonText}>Nạp tiền ngay</Text>
+                                        </TouchableOpacity>
+                                      </View>
+                                    )}
                                 </View>
                             </View>
             )}
@@ -995,7 +1021,40 @@ const styles = StyleSheet.create({
     acceptText: { fontSize: 13, color: '#374151' },
     totalAmount: { fontSize: 20, fontWeight: '800', color: '#111827', marginTop: 6 },
     walletBalance: { fontSize: 15, fontWeight: '700', color: '#111827', marginTop: 6 },
-        errorText: { color: '#DC2626', fontSize: 12, marginTop: 6 }
+        errorText: { color: '#DC2626', fontSize: 12, marginTop: 6 },
+    
+    // Balance Warning & Topup Button
+    balanceWarning: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#FEF3C7',
+      padding: 12,
+      borderRadius: 8,
+      marginTop: 8,
+      borderWidth: 1,
+      borderColor: '#FCD34D'
+    },
+    topupButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#10B981',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      marginTop: 12,
+      gap: 8,
+      shadowColor: '#10B981',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 4
+    },
+    topupButtonText: {
+      color: '#fff',
+      fontSize: 14,
+      fontWeight: '700'
+    }
 })
 
 export default CreatePostTripModal

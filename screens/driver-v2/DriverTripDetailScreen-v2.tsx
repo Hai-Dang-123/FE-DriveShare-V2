@@ -93,6 +93,30 @@ type VehicleIssueType =
   | "MISSING_ITEM"
   | "OTHER";
 
+// --- LIQUIDATION REPORT INTERFACES ---
+interface LiquidationItem {
+  Description: string;
+  Amount: number;
+  IsNegative: boolean;
+}
+
+interface PersonReport {
+  UserId: string;
+  FullName: string;
+  Email: string;
+  Role: string;
+  Items: LiquidationItem[];
+  FinalWalletChange: number;
+}
+
+interface LiquidationReport {
+  TripId: string;
+  TripCode: string;
+  OwnerReport: PersonReport;
+  ProviderReport: PersonReport;
+  DriverReports: PersonReport[];
+}
+
 const getIssueTypeLabel = (type: string): string => {
   const labels: Record<string, string> = {
     SCRATCH: "Trầy xước",
@@ -171,6 +195,191 @@ const showConfirmCrossPlatform = (
       );
     }
   });
+};
+
+// --- COMPONENT: DRIVER LIQUIDATION REPORT ---
+const DriverLiquidationReportView = ({ 
+  report, 
+  driverUserId,
+  isExpanded, 
+  onToggle 
+}: { 
+  report: LiquidationReport;
+  driverUserId: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) => {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(amount);
+  };
+
+  // Find driver's report
+  const driverReport = report.DriverReports.find(d => d.UserId === driverUserId);
+  
+  if (!driverReport) return null;
+
+  // Calculate totals
+  const totalIncome = driverReport.Items
+    .filter(item => !item.IsNegative)
+    .reduce((sum, item) => sum + item.Amount, 0);
+  
+  const totalDeduction = driverReport.Items
+    .filter(item => item.IsNegative)
+    .reduce((sum, item) => sum + item.Amount, 0);
+
+  return (
+    <View style={styles.liquidationContainer}>
+      {/* Header with Toggle */}
+      <TouchableOpacity 
+        style={styles.liquidationTitleContainer}
+        onPress={onToggle}
+        activeOpacity={0.8}
+      >
+        <View style={styles.liquidationHeaderRow1}>
+          <View style={styles.liquidationTitleIcon}>
+            <Ionicons name="wallet" size={32} color="#FFF" />
+          </View>
+          <Text style={styles.liquidationTitle}>Báo Cáo Thu Nhập</Text>
+          <TouchableOpacity style={styles.toggleButton} onPress={onToggle}>
+            <Ionicons 
+              name={isExpanded ? "chevron-up" : "chevron-down"} 
+              size={24} 
+              color="#FFF" 
+            />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.liquidationHeaderRow2}>
+          <Text style={styles.liquidationSubtitle}>Chuyến đi: {report.TripCode}</Text>
+          <View style={styles.completedBadge}>
+            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+            <Text style={styles.completedBadgeText}>Hoàn thành</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Collapsible Content */}
+      {isExpanded && (
+        <>
+          {/* Financial Summary */}
+          <View style={styles.financialSummaryCard}>
+            <View style={styles.financialGrid}>
+              <View style={[styles.financialGridItem, { backgroundColor: '#ECFDF5', borderColor: '#10B981' }]}>
+                <Ionicons name="trending-up" size={24} color="#10B981" />
+                <Text style={styles.financialGridLabel}>Tổng Thu</Text>
+                <Text style={[styles.financialGridValue, { color: '#10B981' }]}>
+                  {formatCurrency(totalIncome)}
+                </Text>
+              </View>
+
+              <View style={[styles.financialGridItem, { backgroundColor: '#FEF2F2', borderColor: '#DC2626' }]}>
+                <Ionicons name="trending-down" size={24} color="#DC2626" />
+                <Text style={styles.financialGridLabel}>Tổng Trừ</Text>
+                <Text style={[styles.financialGridValue, { color: '#DC2626' }]}>
+                  {formatCurrency(totalDeduction)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.financialNetProfit}>
+              <MaterialCommunityIcons name="wallet-plus" size={28} color="#1F2937" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.financialNetLabel}>Thay đổi ví</Text>
+                <Text style={[
+                  styles.financialNetValue,
+                  driverReport.FinalWalletChange >= 0 ? { color: '#10B981' } : { color: '#DC2626' }
+                ]}>
+                  {driverReport.FinalWalletChange >= 0 ? '+' : ''}{formatCurrency(driverReport.FinalWalletChange)}
+                </Text>
+              </View>
+              {driverReport.FinalWalletChange >= 0 ? (
+                <Ionicons name="checkmark-circle" size={32} color="#10B981" />
+              ) : (
+                <Ionicons name="alert-circle" size={32} color="#DC2626" />
+              )}
+            </View>
+          </View>
+
+          {/* Items Detail */}
+          <View style={styles.liquidationCard}>
+            <View style={styles.liquidationHeader}>
+              <View style={[styles.liquidationIcon, { backgroundColor: '#ECFDF5' }]}>
+                <Text style={styles.liquidationIconText}>🚗</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.liquidationName}>{driverReport.FullName}</Text>
+                <View style={styles.liquidationRoleBadge}>
+                  <Text style={[styles.liquidationRole, { color: '#10B981' }]}>{driverReport.Role}</Text>
+                </View>
+                <Text style={styles.liquidationEmail}>{driverReport.Email}</Text>
+              </View>
+            </View>
+
+            <View style={styles.liquidationDivider} />
+
+            <View style={styles.liquidationItemsContainer}>
+              {driverReport.Items.map((item, index) => (
+                <View key={index} style={styles.liquidationItem}>
+                  <View style={styles.liquidationItemLeft}>
+                    <View style={[
+                      styles.liquidationItemDot,
+                      { backgroundColor: item.IsNegative ? '#DC2626' : '#10B981' }
+                    ]} />
+                    <Text style={styles.liquidationItemDesc}>{item.Description}</Text>
+                  </View>
+                  <View style={[
+                    styles.liquidationItemAmountBox,
+                    item.IsNegative 
+                      ? { backgroundColor: '#FEE2E2', borderColor: '#DC2626' }
+                      : { backgroundColor: '#D1FAE5', borderColor: '#10B981' }
+                  ]}>
+                    <Text style={[
+                      styles.liquidationItemAmount,
+                      item.IsNegative ? styles.negativeAmount : styles.positiveAmount
+                    ]}>
+                      {item.IsNegative ? '-' : '+'}{formatCurrency(item.Amount)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.liquidationDivider} />
+
+            <View style={[
+              styles.liquidationTotal,
+              driverReport.FinalWalletChange >= 0 
+                ? { backgroundColor: '#ECFDF5' }
+                : { backgroundColor: '#FEF2F2' }
+            ]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.liquidationTotalLabel}>Tổng thay đổi ví</Text>
+                <Text style={styles.liquidationTotalNote}>
+                  {driverReport.FinalWalletChange >= 0 ? 'Tăng' : 'Giảm'}
+                </Text>
+              </View>
+              <Text style={[
+                styles.liquidationTotalAmount,
+                driverReport.FinalWalletChange >= 0 ? styles.positiveAmount : styles.negativeAmount
+              ]}>
+                {driverReport.FinalWalletChange >= 0 ? '+' : ''}{formatCurrency(driverReport.FinalWalletChange)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.liquidationFooter}>
+            <Ionicons name="information-circle" size={20} color="#6B7280" />
+            <Text style={styles.liquidationFooterText}>
+              Báo cáo này được tạo tự động khi chuyến đi hoàn thành. Số tiền đã được cập nhật vào ví của bạn.
+            </Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
 };
 
 // --- Types ---
@@ -418,6 +627,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [screenFocused, setScreenFocused] = useState(true);
   const { user } = useAuth();
+  
+  // Liquidation Report State
+  const [liquidationReport, setLiquidationReport] = useState<LiquidationReport | null>(null);
+  const [isReportExpanded, setIsReportExpanded] = useState(true);
 
   // Track screen focus to hide overlays when navigating away
   useFocusEffect(
@@ -1904,6 +2117,20 @@ const DriverTripDetailScreenV2: React.FC = () => {
       }
 
       const data = res.result;
+
+      // Parse liquidation report if trip is COMPLETED
+      if (data.status === "COMPLETED" && (data as any).liquidationReportJson) {
+        try {
+          const parsedReport = JSON.parse((data as any).liquidationReportJson);
+          setLiquidationReport(parsedReport);
+          console.log("📊 [Driver] Liquidation Report:", parsedReport);
+        } catch (error) {
+          console.error("❌ Failed to parse liquidation report:", error);
+          setLiquidationReport(null);
+        }
+      } else {
+        setLiquidationReport(null);
+      }
 
       // Extract handover record IDs from handoverReadDTOs array
       if (
@@ -3814,6 +4041,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
       )}
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Liquidation Report - Show when COMPLETED */}
+        {trip.status === "COMPLETED" && liquidationReport && user && (
+          <DriverLiquidationReportView 
+            report={liquidationReport}
+            driverUserId={user.userId}
+            isExpanded={isReportExpanded}
+            onToggle={() => setIsReportExpanded(!isReportExpanded)}
+          />
+        )}
+
         {/* Warning Banner for VEHICLE_HANDOVERED status - PRIMARY DRIVER ONLY */}
         {isMainDriver &&
           trip.status === "VEHICLE_HANDOVERED" &&
@@ -8351,6 +8588,271 @@ const styles = StyleSheet.create({
   btnPrimaryText: {
     fontWeight: "600",
     color: "#FFF",
+  },
+
+  // ===== LIQUIDATION REPORT STYLES =====
+  liquidationContainer: {
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    marginBottom: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  liquidationTitleContainer: {
+    flexDirection: "column",
+    padding: 20,
+    backgroundColor: "#10B981",
+    gap: 12,
+  },
+  liquidationHeaderRow1: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  liquidationHeaderRow2: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 68,
+  },
+  liquidationTitleIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  liquidationTitle: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#FFF",
+    letterSpacing: 0.5,
+  },
+  liquidationSubtitle: {
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.9)",
+    fontWeight: "600",
+    flex: 1,
+  },
+  completedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  completedBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#10B981",
+  },
+  toggleButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  financialSummaryCard: {
+    backgroundColor: "#F9FAFB",
+    margin: 16,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+  },
+  financialGrid: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+  },
+  financialGridItem: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 2,
+  },
+  financialGridLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "600",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  financialGridValue: {
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  financialNetProfit: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#D1D5DB",
+  },
+  financialNetLabel: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  financialNetValue: {
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  liquidationCard: {
+    backgroundColor: "#FFF",
+    marginHorizontal: 16,
+    marginVertical: 8,
+    padding: 16,
+    borderRadius: 16,
+    borderLeftWidth: 6,
+    borderLeftColor: "#10B981",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  liquidationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  liquidationIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  liquidationIconText: {
+    fontSize: 28,
+  },
+  liquidationName: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  liquidationRoleBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: "#F3F4F6",
+    marginBottom: 4,
+  },
+  liquidationRole: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  liquidationEmail: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontWeight: "500",
+  },
+  liquidationDivider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 16,
+  },
+  liquidationItemsContainer: {
+    gap: 8,
+  },
+  liquidationItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  liquidationItemLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  liquidationItemDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  liquidationItemDesc: {
+    flex: 1,
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
+    lineHeight: 20,
+  },
+  liquidationItemAmountBox: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  liquidationItemAmount: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  positiveAmount: {
+    color: "#10B981",
+  },
+  negativeAmount: {
+    color: "#DC2626",
+  },
+  liquidationTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  liquidationTotalLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  liquidationTotalNote: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "600",
+  },
+  liquidationTotalAmount: {
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  liquidationFooter: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#F9FAFB",
+    padding: 16,
+    margin: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  liquidationFooterText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#6B7280",
+    lineHeight: 18,
+    fontStyle: "italic",
   },
 });
 

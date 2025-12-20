@@ -100,7 +100,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
 
   const getDocTypeLabel = (type: DocumentType) => {
     switch (type) {
-      case DocumentType.VEHICLE_LICENSE: return 'Đăng kiểm xe'
+      case DocumentType.VEHICLE_LICENSE: return 'Giấy tờ xe'
       case DocumentType.CIVIL_INSURANCE: return 'Bảo hiểm dân sự'
       case DocumentType.PHYSICAL_INSURANCE: return 'Bảo hiểm vật chất'
       case DocumentType.DRIVER_LICENSE: return 'Bằng lái xe'

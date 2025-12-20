@@ -83,6 +83,30 @@ type VehicleIssueType =
   // Khác
   | "OTHER"; // Khác
 
+// --- LIQUIDATION REPORT INTERFACES ---
+interface LiquidationItem {
+  Description: string;
+  Amount: number;
+  IsNegative: boolean;
+}
+
+interface PersonReport {
+  UserId: string;
+  FullName: string;
+  Email: string;
+  Role: string;
+  Items: LiquidationItem[];
+  FinalWalletChange: number;
+}
+
+interface LiquidationReport {
+  TripId: string;
+  TripCode: string;
+  OwnerReport: PersonReport;
+  ProviderReport: PersonReport;
+  DriverReports: PersonReport[];
+}
+
 // --- CROSS-PLATFORM ALERT HELPER ---
 const showAlertCrossPlatform = (
   title: string,
@@ -251,6 +275,229 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
+// --- COMPONENT: LIQUIDATION REPORT WITH FINANCIAL SUMMARY ---
+const LiquidationReportView = ({ 
+  report, 
+  isExpanded, 
+  onToggle 
+}: { 
+  report: LiquidationReport;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) => {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(amount);
+  };
+
+  // Calculate financial summary
+  const totalRevenue = report.OwnerReport.Items
+    .filter(item => !item.IsNegative)
+    .reduce((sum, item) => sum + item.Amount, 0);
+  
+  const totalExpense = report.OwnerReport.Items
+    .filter(item => item.IsNegative)
+    .reduce((sum, item) => sum + item.Amount, 0);
+
+  const allParticipants = [
+    report.OwnerReport,
+    report.ProviderReport,
+    ...report.DriverReports
+  ];
+
+  const renderFinancialSummary = () => (
+    <View style={styles.financialSummaryCard}>
+      <View style={styles.financialHeader}>
+        <View style={styles.financialHeaderIcon}>
+          <Ionicons name="stats-chart" size={32} color="#059669" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.financialTitle}>Tổng Quan Tài Chính</Text>
+          <Text style={styles.financialSubtitle}>Thống kê chi tiết chuyến đi</Text>
+        </View>
+      </View>
+
+      <View style={styles.financialGrid}>
+        <View style={[styles.financialGridItem, { backgroundColor: '#ECFDF5', borderColor: '#059669' }]}>
+          <Ionicons name="trending-up" size={24} color="#059669" />
+          <Text style={styles.financialGridLabel}>Tổng Thu</Text>
+          <Text style={[styles.financialGridValue, { color: '#059669' }]}>
+            {formatCurrency(totalRevenue)}
+          </Text>
+        </View>
+
+        <View style={[styles.financialGridItem, { backgroundColor: '#FEF2F2', borderColor: '#DC2626' }]}>
+          <Ionicons name="trending-down" size={24} color="#DC2626" />
+          <Text style={styles.financialGridLabel}>Tổng Chi</Text>
+          <Text style={[styles.financialGridValue, { color: '#DC2626' }]}>
+            {formatCurrency(totalExpense)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.financialNetProfit}>
+        <MaterialCommunityIcons name="bank-check" size={28} color="#1F2937" />
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.financialNetLabel}>Lợi nhuận ròng</Text>
+          <Text style={[
+            styles.financialNetValue,
+            (totalRevenue - totalExpense) >= 0 ? { color: '#059669' } : { color: '#DC2626' }
+          ]}>
+            {formatCurrency(totalRevenue - totalExpense)}
+          </Text>
+        </View>
+        {(totalRevenue - totalExpense) >= 0 ? (
+          <Ionicons name="checkmark-circle" size={32} color="#059669" />
+        ) : (
+          <Ionicons name="alert-circle" size={32} color="#DC2626" />
+        )}
+      </View>
+    </View>
+  );
+
+  const renderPersonReport = (person: PersonReport, icon: string, bgColor: string, borderColor: string) => (
+    <View key={person.UserId} style={[styles.liquidationCard, { borderLeftColor: borderColor }]}>
+      <View style={styles.liquidationHeader}>
+        <View style={[styles.liquidationIcon, { backgroundColor: bgColor }]}>
+          <Text style={styles.liquidationIconText}>{icon}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.liquidationName}>{person.FullName}</Text>
+          <View style={styles.liquidationRoleBadge}>
+            <Text style={[styles.liquidationRole, { color: borderColor }]}>{person.Role}</Text>
+          </View>
+          <Text style={styles.liquidationEmail}>{person.Email}</Text>
+        </View>
+      </View>
+
+      <View style={styles.liquidationDivider} />
+
+      <View style={styles.liquidationItemsContainer}>
+        {person.Items.map((item, index) => (
+          <View key={index} style={styles.liquidationItem}>
+            <View style={styles.liquidationItemLeft}>
+              <View style={[
+                styles.liquidationItemDot,
+                { backgroundColor: item.IsNegative ? '#DC2626' : '#059669' }
+              ]} />
+              <Text style={styles.liquidationItemDesc}>{item.Description}</Text>
+            </View>
+            <View style={[
+              styles.liquidationItemAmountBox,
+              item.IsNegative 
+                ? { backgroundColor: '#FEE2E2', borderColor: '#DC2626' }
+                : { backgroundColor: '#D1FAE5', borderColor: '#059669' }
+            ]}>
+              <Text style={[
+                styles.liquidationItemAmount,
+                item.IsNegative ? styles.negativeAmount : styles.positiveAmount
+              ]}>
+                {item.IsNegative ? '-' : '+'}{formatCurrency(item.Amount)}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.liquidationDivider} />
+
+      <View style={[
+        styles.liquidationTotal,
+        person.FinalWalletChange >= 0 
+          ? { backgroundColor: '#ECFDF5' }
+          : { backgroundColor: '#FEF2F2' }
+      ]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.liquidationTotalLabel}>Thay đổi ví</Text>
+          <Text style={styles.liquidationTotalNote}>
+            {person.FinalWalletChange >= 0 ? 'Tăng' : 'Giảm'}
+          </Text>
+        </View>
+        <Text style={[
+          styles.liquidationTotalAmount,
+          person.FinalWalletChange >= 0 ? styles.positiveAmount : styles.negativeAmount
+        ]}>
+          {person.FinalWalletChange >= 0 ? '+' : ''}{formatCurrency(person.FinalWalletChange)}
+        </Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.liquidationContainer}>
+      {/* Main Header with Toggle Button */}
+      <TouchableOpacity 
+        style={styles.liquidationTitleContainer}
+        onPress={onToggle}
+        activeOpacity={0.8}
+      >
+        {/* Row 1: Icon + Title + Toggle */}
+        <View style={styles.liquidationHeaderRow1}>
+          <View style={styles.liquidationTitleIcon}>
+            <Ionicons name="document-text" size={32} color="#FFF" />
+          </View>
+          <Text style={styles.liquidationTitle}>Báo Cáo Thanh Lý</Text>
+          <TouchableOpacity 
+            style={styles.toggleButton}
+            onPress={onToggle}
+          >
+            <Ionicons 
+              name={isExpanded ? "chevron-up" : "chevron-down"} 
+              size={24} 
+              color="#FFF" 
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Row 2: Subtitle + Badge */}
+        <View style={styles.liquidationHeaderRow2}>
+          <Text style={styles.liquidationSubtitle}>Chuyến đi: {report.TripCode}</Text>
+          <View style={styles.completedBadge}>
+            <Ionicons name="checkmark-circle" size={20} color="#059669" />
+            <Text style={styles.completedBadgeText}>Hoàn thành</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Collapsible Content */}
+      {isExpanded && (
+        <>
+          {/* Financial Summary */}
+      {renderFinancialSummary()}
+
+      {/* Participants Reports */}
+      <View style={styles.participantsSection}>
+        <Text style={styles.participantsSectionTitle}>
+          <Ionicons name="people" size={18} color="#1F2937" /> Chi tiết thanh toán ({allParticipants.length} người)
+        </Text>
+      </View>
+
+      {/* Owner Report */}
+      {renderPersonReport(report.OwnerReport, '👤', '#EFF6FF', '#3B82F6')}
+
+      {/* Provider Report */}
+      {renderPersonReport(report.ProviderReport, '🏢', '#F5F3FF', '#8B5CF6')}
+
+      {/* Driver Reports */}
+      {report.DriverReports.map((driver) => 
+        renderPersonReport(driver, '🚗', '#ECFDF5', '#10B981')
+      )}
+
+      {/* Footer note */}
+      <View style={styles.liquidationFooter}>
+        <Ionicons name="information-circle" size={20} color="#6B7280" />
+        <Text style={styles.liquidationFooterText}>
+          Báo cáo này được tạo tự động khi chuyến đi hoàn thành. Mọi thay đổi ví đã được cập nhật vào hệ thống.
+        </Text>
+      </View>
+        </>
+      )}
+    </View>
+  );
+};
+
 // ================= MAIN SCREEN =================
 const TripDetailScreen: React.FC = () => {
   const router = useRouter();
@@ -269,6 +516,8 @@ const TripDetailScreen: React.FC = () => {
     null
   );
   const [driverAnalysis, setDriverAnalysis] = useState<any | null>(null);
+  const [liquidationReport, setLiquidationReport] = useState<LiquidationReport | null>(null);
+  const [isReportExpanded, setIsReportExpanded] = useState(true);
 
   // Simulation
   const [simulationActive, setSimulationActive] = useState(false);
@@ -413,6 +662,21 @@ const TripDetailScreen: React.FC = () => {
         const data = tripRes.result;
         console.log("🚗 Trip Data:", data);
         console.log("👥 Drivers:", data.drivers);
+        
+        // Parse liquidation report if trip is COMPLETED
+        if (data.status === "COMPLETED" && data.liquidationReportJson) {
+          try {
+            const parsedReport = JSON.parse(data.liquidationReportJson);
+            setLiquidationReport(parsedReport);
+            console.log("📊 Liquidation Report:", parsedReport);
+          } catch (error) {
+            console.error("❌ Failed to parse liquidation report:", error);
+            setLiquidationReport(null);
+          }
+        } else {
+          setLiquidationReport(null);
+        }
+        
         if (data.handoverReadDTOs && Array.isArray(data.handoverReadDTOs)) {
           const handoverRecord = data.handoverReadDTOs.find(
             (r: any) => r && r.type === "HANDOVER"
@@ -1371,6 +1635,15 @@ const TripDetailScreen: React.FC = () => {
         {/* 1. THANH TIẾN TRÌNH (STEPPER) */}
         <TripStepper status={trip.status} />
 
+        {/* IF COMPLETED STATUS, SHOW LIQUIDATION REPORT AT TOP */}
+        {trip.status === "COMPLETED" && liquidationReport && (
+          <LiquidationReportView 
+            report={liquidationReport}
+            isExpanded={isReportExpanded}
+            onToggle={() => setIsReportExpanded(!isReportExpanded)}
+          />
+        )}
+
         {/* 2. BẢN ĐỒ & LỘ TRÌNH */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
@@ -2001,50 +2274,54 @@ const TripDetailScreen: React.FC = () => {
                         </View>
                       </View>
                     ))}
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-                    <TouchableOpacity
-                      style={[styles.outlineBtn, { flex: 1 }]}
-                      onPress={() => setShowDriverModal(true)}
-                      disabled={trip.status === "AWAITING_OWNER_CONTRACT"}
-                    >
-                      <Text style={styles.outlineBtnText}>Gán thêm</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.outlineBtn, { flex: 1 }]}
-                      onPress={() => setShowCreatePostModal(true)}
-                      disabled={trip.status === "AWAITING_OWNER_CONTRACT"}
-                    >
-                      <Text style={styles.outlineBtnText}>Đăng tin</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {["PENDING_DRIVER_ASSIGNMENT", "DONE_ASSIGNING_DRIVER"].includes(trip.status) && (
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                      <TouchableOpacity
+                        style={[styles.outlineBtn, { flex: 1 }]}
+                        onPress={() => setShowDriverModal(true)}
+                      >
+                        <Text style={styles.outlineBtnText}>Gán thêm</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.outlineBtn, { flex: 1 }]}
+                        onPress={() => setShowCreatePostModal(true)}
+                      >
+                        <Text style={styles.outlineBtnText}>Đăng tin</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </>
               ) : (
-                <View style={{ alignItems: "center", width: "100%", gap: 8 }}>
-                  <TouchableOpacity
-                    style={[styles.dashedBtn, { width: "100%" }]}
-                    onPress={() => setShowDriverModal(true)}
-                    disabled={trip.status === "AWAITING_OWNER_CONTRACT"}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: "#3B82F6",
-                        fontWeight: "600",
-                      }}
+                ["PENDING_DRIVER_ASSIGNMENT", "DONE_ASSIGNING_DRIVER"].includes(trip.status) ? (
+                  <View style={{ alignItems: "center", width: "100%", gap: 8 }}>
+                    <TouchableOpacity
+                      style={[styles.dashedBtn, { width: "100%" }]}
+                      onPress={() => setShowDriverModal(true)}
                     >
-                      Gán tài xế
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.dashedBtn, { width: "100%" }]}
-                    onPress={() => setShowCreatePostModal(true)}
-                    disabled={trip.status === "AWAITING_OWNER_CONTRACT"}
-                  >
-                    <Text style={{ fontSize: 12, color: "#6B7280" }}>
-                      Đăng tìm tài xế
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: "#3B82F6",
+                          fontWeight: "600",
+                        }}
+                      >
+                        Gán tài xế
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.dashedBtn, { width: "100%" }]}
+                      onPress={() => setShowCreatePostModal(true)}
+                    >
+                      <Text style={{ fontSize: 12, color: "#6B7280" }}>
+                        Đăng tìm tài xế
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <Text style={{ textAlign: "center", color: "#9CA3AF", fontSize: 12, marginTop: 8 }}>
+                    Chưa có tài xế
+                  </Text>
+                )
               )}
             </View>
           </View>
@@ -2434,7 +2711,7 @@ const TripDetailScreen: React.FC = () => {
               >
                 <Text style={styles.actionBtnTextSec}>Tải PDF</Text>
               </TouchableOpacity>
-              {canSign && providerContractDetail?.contract && (
+              {canSign && providerContractDetail?.contract && !["COMPLETED", "CANCELLED"].includes(trip.status) && (
                 <TouchableOpacity
                   style={styles.actionBtnPrimary}
                   onPress={handleSignContract}
@@ -4840,6 +5117,322 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#FEE2E2",
     marginLeft: 8,
+  },
+
+  // ===== LIQUIDATION REPORT STYLES - ENHANCED =====
+  liquidationContainer: {
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    marginBottom: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  
+  // Header styles
+  liquidationTitleContainer: {
+    flexDirection: "column",
+    padding: 20,
+    backgroundColor: "#059669",
+    gap: 12,
+  },
+  liquidationHeaderRow1: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  liquidationHeaderRow2: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 68, // Align with title (56 icon + 12 gap)
+  },
+  liquidationTitleIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  liquidationTitle: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#FFF",
+    letterSpacing: 0.5,
+  },
+  liquidationSubtitle: {
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.9)",
+    fontWeight: "600",
+    flex: 1,
+  },
+  completedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  completedBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#059669",
+  },
+  toggleButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Financial Summary Card
+  financialSummaryCard: {
+    backgroundColor: "#F9FAFB",
+    margin: 16,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+  },
+  financialHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: "#D1D5DB",
+  },
+  financialHeaderIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#D1FAE5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  financialTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  financialSubtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  financialGrid: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+  },
+  financialGridItem: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 2,
+  },
+  financialGridLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "600",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  financialGridValue: {
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  financialNetProfit: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#D1D5DB",
+  },
+  financialNetLabel: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  financialNetValue: {
+    fontSize: 20,
+    fontWeight: "900",
+  },
+
+  // Participants Section
+  participantsSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#F9FAFB",
+  },
+  participantsSectionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+
+  // Person Report Card
+  liquidationCard: {
+    backgroundColor: "#FFF",
+    marginHorizontal: 16,
+    marginVertical: 8,
+    padding: 16,
+    borderRadius: 16,
+    borderLeftWidth: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  liquidationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  liquidationIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  liquidationIconText: {
+    fontSize: 28,
+  },
+  liquidationName: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  liquidationRoleBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: "#F3F4F6",
+    marginBottom: 4,
+  },
+  liquidationRole: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  liquidationEmail: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontWeight: "500",
+  },
+  liquidationDivider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 16,
+  },
+
+  // Items
+  liquidationItemsContainer: {
+    gap: 8,
+  },
+  liquidationItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  liquidationItemLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  liquidationItemDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  liquidationItemDesc: {
+    flex: 1,
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
+    lineHeight: 20,
+  },
+  liquidationItemAmountBox: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  liquidationItemAmount: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  positiveAmount: {
+    color: "#059669",
+  },
+  negativeAmount: {
+    color: "#DC2626",
+  },
+
+  // Total
+  liquidationTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  liquidationTotalLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 2,
+  },
+  liquidationTotalNote: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "600",
+  },
+  liquidationTotalAmount: {
+    fontSize: 20,
+    fontWeight: "900",
+  },
+
+  // Footer
+  liquidationFooter: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#F9FAFB",
+    padding: 16,
+    margin: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  liquidationFooterText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#6B7280",
+    lineHeight: 18,
+    fontStyle: "italic",
   },
 });
 
