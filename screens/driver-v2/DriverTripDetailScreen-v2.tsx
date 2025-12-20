@@ -816,6 +816,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (!pickupPoint)
         throw new Error("Không thể xác định toạ độ điểm lấy hàng");
 
+      // Reset routeCoords to ensure we only use newly planned route
+      setRouteCoords([]);
+
       try {
         const planned = await vietmapService.planBetweenPoints(
           currentPosition,
@@ -895,36 +898,40 @@ const DriverTripDetailScreenV2: React.FC = () => {
               e?.message || "Không thể bắt đầu phiên làm việc"
             );
             setPickupRouteCoords(null);
+            setRouteCoords([]);
             return;
           }
+
+          // Only start navigation if we have valid route
+          setNavActive(true);
+          setCanConfirmPickup(true);
+          setJourneyPhase("TO_PICKUP");
+          setStartModalOpen(false);
+
+          // ========== START TRACKING: CHOOSE MODE ==========
+          if (trackingMode === "simulation") {
+            // Simulation Mode: Use RouteSimulator
+            await startSimulation();
+          } else {
+            // Real Mode: Use GPS
+            startLocationWatcher();
+          }
+
+          try {
+            Speech.speak("Bắt đầu dẫn đường đến điểm lấy hàng", {
+              language: "vi-VN",
+            });
+          } catch {}
+        } else {
+          throw new Error("Không thể tạo route từ vị trí hiện tại đến điểm lấy hàng");
         }
       } catch (e) {
         console.warn("Plan to pickup (address) failed", e);
+        throw new Error("Không thể lấy route đến điểm lấy hàng");
       }
-
-      setNavActive(true);
-      setCanConfirmPickup(true);
-      setJourneyPhase("TO_PICKUP");
-      setStartModalOpen(false);
-
-      // ========== START TRACKING: CHOOSE MODE ==========
-      if (trackingMode === "simulation") {
-        // Simulation Mode: Use RouteSimulator
-        await startSimulation();
-      } else {
-        // Real Mode: Use GPS
-        startLocationWatcher();
-      }
-
-      try {
-        Speech.speak("Bắt đầu dẫn đường đến điểm lấy hàng", {
-          language: "vi-VN",
-        });
-      } catch {}
-    } catch (error: any) {
       showAlertCrossPlatform(
         "Lỗi",
-        error?.message || "Không thể bắt đầu dẫn đường"
+        "Không thể bắt đầu dẫn đường"
       );
     } finally {
       setStartingNav(false);
@@ -989,6 +996,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
           : undefined);
       if (!deliveryPoint)
         throw new Error("Không thể xác định toạ độ điểm giao hàng");
+
+      // Reset routeCoords to ensure we only use newly planned route
+      setRouteCoords([]);
 
       try {
         const planned = await vietmapService.planBetweenPoints(
@@ -1066,37 +1076,39 @@ const DriverTripDetailScreenV2: React.FC = () => {
               e?.message || "Không thể bắt đầu phiên làm việc"
             );
             setDeliveryRouteCoords(null);
+            setRouteCoords([]);
             return;
           }
+
+          // Only start navigation if we have valid route
+          setNavActive(true);
+          setCanConfirmDelivery(true);
+          setJourneyPhase("TO_DELIVERY");
+          setStartModalOpen(false);
+
+          // ========== START TRACKING: CHOOSE MODE ==========
+          if (trackingMode === "simulation") {
+            // Simulation Mode: Use RouteSimulator
+            await startSimulation();
+          } else {
+            // Real Mode: Use GPS
+            startLocationWatcher();
+          }
+
+          try {
+            Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
+              language: "vi-VN",
+            });
+          } catch {}
+        } else {
+          throw new Error("Không thể tạo route từ vị trí hiện tại đến điểm giao hàng");
         }
       } catch (e) {
         console.warn("Plan to delivery (address) failed", e);
+        throw new Error("Không thể lấy route đến điểm giao hàng");
       }
-
-      setNavActive(true);
-      setCanConfirmDelivery(true);
-      setJourneyPhase("TO_DELIVERY");
-      setStartModalOpen(false);
-
-      // ========== START TRACKING: CHOOSE MODE ==========
-      if (trackingMode === "simulation") {
-        // Simulation Mode: Use RouteSimulator
-        await startSimulation();
-      } else {
-        // Real Mode: Use GPS
-        startLocationWatcher();
-      }
-
-      try {
-        Speech.speak("Bắt đầu dẫn đường đến điểm giao hàng", {
-          language: "vi-VN",
-        });
-      } catch {}
-    } catch (error: any) {
-      showAlertCrossPlatform(
-        "Lỗi",
-        error?.message || "Không thể bắt đầng dẫn đường"
-      );
+      // Fallback alert when navigation planning fails (avoid referencing undefined 'error')
+      showAlertCrossPlatform("Lỗi", "Không thể bắt đầu dẫn đường");
     } finally {
       setStartingNav(false);
     }
@@ -1602,6 +1614,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   // Navigation UI State
   const [navActive, setNavActive] = useState(false);
+  const [navPaused, setNavPaused] = useState(false); // Pause navigation (GPS/simulation)
   const [navMinimized, setNavMinimized] = useState(false);
   const [navHidden, setNavHidden] = useState(false);
   const [startModalOpen, setStartModalOpen] = useState(false);
@@ -1616,6 +1629,35 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [simulatorIndex, setSimulatorIndex] = useState(0);
   const simulatorRef = useRef<SimpleRouteSimulator | null>(null);
   const [signalRConnected, setSignalRConnected] = useState(false);
+  const [signalRError, setSignalRError] = useState<string | null>(null);
+  
+  // Throttling for SignalR location updates
+  const lastSentLocationRef = useRef<{ lat: number; lng: number; timestamp: number } | null>(null);
+  const SEND_INTERVAL_MS = 3000; // Send at most every 3 seconds
+  const MIN_DISTANCE_METERS = 10; // Only send if moved > 10 meters
+  
+  // Prevent duplicate API calls
+  const isFetchingRef = useRef(false);
+  const isSignalRInitializingRef = useRef(false);
+  const signalRInitializedRef = useRef(false);
+  
+  // Manual reconnect function for SignalR
+  const reconnectSignalR = useCallback(async () => {
+    setSignalRError(null);
+    try {
+      // Reset flags to allow re-init
+      signalRInitializedRef.current = false;
+      isSignalRInitializingRef.current = false;
+      
+      // Service will handle connection + auto-rejoin trip group
+      await signalRTrackingService.reconnect();
+      
+      console.log('[Driver SignalR] ✅ Manually reconnected');
+    } catch (err: any) {
+      setSignalRError(err?.message || 'Không thể kết nối lại');
+      console.error('[Driver SignalR] Manual reconnect failed:', err);
+    }
+  }, [tripId]);
 
   // Delivery Record Modal State
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
@@ -1771,28 +1813,46 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   const watchSubRef = useRef<any | null>(null);
   const previousSpeedRef = useRef<number>(0);
+  
+  // Throttle để tránh gọi API quá nhiều
+  const lastFetchTimeRef = useRef<number>(0);
+  const MIN_FETCH_INTERVAL = 3000; // Tối thiểu 3 giây giữa các lần fetch
 
   // --- Effects ---
-  useEffect(() => {
-    if (!tripId) {
-      setError("Trip không hợp lệ");
-      setLoading(false);
-      return;
-    }
+  // Refetch data mỗi khi màn hình được focus (quay lại)
+  useFocusEffect(
+    useCallback(() => {
+      if (!tripId) {
+        setError("Trip không hợp lệ");
+        setLoading(false);
+        return;
+      }
 
-    fetchTripData();
-    loadPickupMarked();
-    // load initial eligibility (day/week totals)
-    loadEligibilityAndSession();
-    // start polling every 60s to refresh eligibility
-    eligibilityTimerRef.current = setInterval(() => {
-      loadEligibilityAndSession();
-    }, 60 * 1000);
-    return () => {
-      if (eligibilityTimerRef.current)
+      // Clear old interval before creating new one
+      if (eligibilityTimerRef.current) {
         clearInterval(eligibilityTimerRef.current);
-    };
-  }, [tripId]);
+        eligibilityTimerRef.current = null;
+      }
+
+      // Force fetch data mới - bypass throttle
+      console.log('[DriverTripDetail] Screen focused - force fetching latest data');
+      fetchTripData(true); // force = true để bypass throttle
+      loadPickupMarked();
+      // load initial eligibility (day/week totals)
+      loadEligibilityAndSession();
+      // start polling every 60s to refresh eligibility
+      eligibilityTimerRef.current = setInterval(() => {
+        loadEligibilityAndSession();
+      }, 60 * 1000);
+      
+      return () => {
+        if (eligibilityTimerRef.current) {
+          clearInterval(eligibilityTimerRef.current);
+          eligibilityTimerRef.current = null;
+        }
+      };
+    }, [tripId])
+  );
 
   // Polling: Auto-refresh session info khi có nhiều tài xế
   useEffect(() => {
@@ -1806,10 +1866,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
     ].includes(trip.status);
 
     if (hasMultipleDrivers && isActiveTrip) {
-      console.log("[DriverTripDetail] Starting session polling (15s interval)");
+      console.log("[DriverTripDetail] Starting session polling (30s interval)");
       const interval = setInterval(() => {
         fetchCurrentSession();
-      }, 15000); // 15 seconds
+      }, 30000); // 30 seconds - reduced API calls
 
       return () => {
         console.log("[DriverTripDetail] Stopping session polling");
@@ -1822,39 +1882,65 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // Initialize SignalR for BOTH SIM and GPS modes so Owner/Provider can track in real-time
   useEffect(() => {
     if (!tripId) return;
+    
+    // Prevent duplicate initialization (but allow after cleanup)
+    if (isSignalRInitializingRef.current) {
+      console.log('[Driver SignalR] Already initializing, skip');
+      return;
+    }
+    
+    // Allow re-init if previously cleaned up
+    if (signalRInitializedRef.current) {
+      console.log('[Driver SignalR] Already initialized');
+      return;
+    }
 
     const initSignalR = async () => {
+      isSignalRInitializingRef.current = true;
+      setSignalRError(null);
+      
       try {
         const baseURL =
           process.env.EXPO_PUBLIC_API_BASE_URL || "http://192.168.100.49:5246/";
+        
+        console.log('[Driver SignalR] Initializing connection...');
+        
         await signalRTrackingService.init({
           baseURL,
           onConnectionChange: (connected) => {
             console.log(
-              `[SignalR:${trackingMode.toUpperCase()}] Connection status:`,
-              connected
+              `[Driver SignalR] Connection status:`,
+              connected ? '🟢 Connected' : '🔴 Disconnected'
             );
             setSignalRConnected(connected);
+            if (!connected) {
+              setSignalRError('Mất kết nối SignalR');
+            } else {
+              setSignalRError(null);
+            }
           },
           onError: (error) => {
-            console.error(
-              `[SignalR:${trackingMode.toUpperCase()}] Error:`,
-              error
-            );
+            // Silent fail for CORS errors (expected when testing on web)
+            const isCorsError = error?.message?.includes('Failed to fetch') || 
+                                error?.message?.includes('CORS') ||
+                                error?.message?.includes('Network Error');
+            
+            if (!isCorsError) {
+              console.error('[Driver SignalR] Error:', error);
+              setSignalRError(error?.message || 'Lỗi kết nối');
+            }
           },
         });
 
         // Join trip group
         await signalRTrackingService.joinTripGroup(tripId);
-        console.log(
-          `[SignalR:${trackingMode.toUpperCase()}] Joined trip group:`,
-          tripId
-        );
-      } catch (error) {
-        console.error(
-          `[SignalR:${trackingMode.toUpperCase()}] Init failed:`,
-          error
-        );
+        signalRInitializedRef.current = true;
+        console.log('[Driver SignalR] ✅ Initialized and joined trip:', tripId);
+      } catch (error: any) {
+        console.error('[Driver SignalR] Init failed:', error);
+        setSignalRError(error?.message || 'Không thể khởi tạo SignalR');
+      } finally {
+        isSignalRInitializingRef.current = false;
       }
     };
 
@@ -1862,15 +1948,14 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
     // Cleanup on unmount
     return () => {
-      if (tripId) {
+      if (tripId && signalRInitializedRef.current) {
         signalRTrackingService.leaveTripGroup(tripId);
         signalRTrackingService.disconnect();
-        console.log(
-          `[SignalR:${trackingMode.toUpperCase()}] Cleanup - left trip group`
-        );
+        signalRInitializedRef.current = false;
+        console.log('[Driver SignalR] Cleanup - left trip group');
       }
     };
-  }, [tripId, trackingMode]);
+  }, [tripId]);
 
   const loadEligibilityAndSession = async () => {
     try {
@@ -2105,8 +2190,30 @@ const DriverTripDetailScreenV2: React.FC = () => {
     }
   };
 
-  const fetchTripData = async () => {
+  const fetchTripData = async (force: boolean = false) => {
+    // Prevent duplicate concurrent requests
+    if (isFetchingRef.current && !force) {
+      console.log('[DriverTripDetail] Already fetching, skip duplicate request');
+      return;
+    }
+    
+    // Throttle: Kiểm tra thời gian lần fetch cuối (trừ khi force = true)
+    if (!force) {
+      const now = Date.now();
+      const timeSinceLastFetch = now - lastFetchTimeRef.current;
+      
+      if (timeSinceLastFetch < MIN_FETCH_INTERVAL) {
+        console.log(`[DriverTripDetail] Throttled fetchTripData (${timeSinceLastFetch}ms since last fetch)`);
+        return;
+      }
+    }
+    
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = Date.now();
+    
     try {
+      setLoading(true); // Reset loading state để UI refresh
+      console.log('[DriverTripDetail] Fetching trip data...');
       const res = (await tripService.getById(tripId!)) as TripDetailAPIResponse;
       if (!res?.isSuccess || res?.statusCode !== 200) {
         // Handle rate limiting
@@ -2166,24 +2273,65 @@ const DriverTripDetailScreenV2: React.FC = () => {
     } catch (e: any) {
       console.error("[DriverTripDetail] fetchTripData error:", e);
 
-      // Provide user-friendly error messages
+      // Provide user-friendly error messages with retry option
       let errorMsg = "Lỗi không xác định";
+      let showRetry = false;
 
-      if (e?.code === "ERR_NETWORK" || e?.message?.includes("Network Error")) {
-        errorMsg =
-          "Không thể kết nối đến server. Vui lòng kiểm tra:\n• Kết nối mạng\n• VPN (nếu có)\n• Cấu hình CORS của backend";
+      if (e?.code === 'ECONNABORTED' || e?.message?.includes('timeout')) {
+        errorMsg = "Kết nối quá chậm. Vui lòng thử lại.";
+        showRetry = true;
+        console.warn('[Driver] ⏱️ Request timeout - server may be slow');
+      } else if (e?.code === "ERR_NETWORK" || e?.message?.includes("Network Error") || e?.message?.includes("Failed to fetch")) {
+        errorMsg = "Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.";
+        showRetry = true;
+        console.warn('[Driver] 📡 Network error - no internet connection');
       } else if (e?.response?.status === 429 || e?.message?.includes("429")) {
         errorMsg = "Quá nhiều yêu cầu. Vui lòng đợi ít phút rồi thử lại.";
+        showRetry = true;
+      } else if (e?.response?.status === 404) {
+        errorMsg = "Không tìm thấy chuyến đi này.";
+        console.warn('[Driver] 🔍 Trip not found (404)');
+      } else if (e?.response?.status >= 500) {
+        errorMsg = "Máy chủ đang gặp sự cố. Vui lòng thử lại sau.";
+        showRetry = true;
+        console.warn('[Driver] 🔧 Server error (5xx)');
       } else if (e?.message?.includes("CORS")) {
-        errorMsg =
-          "Lỗi CORS: Backend chưa cho phép truy cập từ nguồn này.\nVui lòng liên hệ admin để cấu hình CORS.";
+        errorMsg = "Lỗi CORS: Backend chưa cho phép truy cập từ nguồn này.";
+        console.warn('[Driver] 🚫 CORS error');
       } else {
         errorMsg = e?.message || "Lỗi không xác định";
       }
 
       setError(errorMsg);
+      
+      // Show retry option for recoverable errors
+      if (showRetry) {
+        if (Platform.OS === 'web') {
+          const retry = window.confirm(`${errorMsg}\n\nBạn có muốn thử lại không?`);
+          if (retry) {
+            isFetchingRef.current = false;
+            setTimeout(() => fetchTripData(true), 1000);
+          }
+        } else {
+          Alert.alert(
+            'Lỗi',
+            errorMsg,
+            [
+              { text: 'Hủy', style: 'cancel' },
+              { 
+                text: 'Thử lại', 
+                onPress: () => {
+                  isFetchingRef.current = false;
+                  setTimeout(() => fetchTripData(true), 1000);
+                }
+              }
+            ]
+          );
+        }
+      }
     } finally {
       setLoading(false);
+      isFetchingRef.current = false; // Always reset flag
     }
   };
 
@@ -2191,7 +2339,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
     if (refreshing || !tripId) return;
     setRefreshing(true);
     try {
-      await fetchTripData();
+      await fetchTripData(true); // Force fetch để lấy data mới nhất
     } finally {
       setRefreshing(false);
     }
@@ -2199,8 +2347,27 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   // ========== LOCATION TRACKING HELPER ==========
   /**
+   * Calculate distance between two coordinates (Haversine formula)
+   */
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371e3; // Earth radius in meters
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in meters
+  };
+
+  /**
    * Unified location sender - Works for both Simulation and Real modes
    * Sends location updates to SignalR so Owner/Provider can track in real-time
+   * WITH THROTTLING to prevent too many requests
    */
   const sendLocationToServer = async (
     lat: number,
@@ -2210,13 +2377,40 @@ const DriverTripDetailScreenV2: React.FC = () => {
   ) => {
     if (!tripId) return;
 
-    // Update UI immediately
+    // Update UI immediately (ALWAYS)
     setCurrentPos([lng, lat]);
     setCurrentHeading(bearing);
     setCurrentSpeed(speed);
 
-    // Send to SignalR if connected (works for both SIM and GPS modes)
-    if (signalRConnected) {
+    // THROTTLING: Check if should send to SignalR
+    const now = Date.now();
+    const lastSent = lastSentLocationRef.current;
+    
+    let shouldSend = false;
+    
+    if (!lastSent) {
+      // First time - always send
+      shouldSend = true;
+    } else {
+      // Check time threshold
+      const timeSinceLastSend = now - lastSent.timestamp;
+      if (timeSinceLastSend < SEND_INTERVAL_MS) {
+        // Too soon - skip
+        return;
+      }
+      
+      // Check distance threshold
+      const distance = calculateDistance(lastSent.lat, lastSent.lng, lat, lng);
+      if (distance < MIN_DISTANCE_METERS) {
+        // Not moved enough - skip
+        return;
+      }
+      
+      shouldSend = true;
+    }
+
+    // Send to SignalR if connected and passed throttling
+    if (shouldSend && signalRConnected) {
       try {
         await signalRTrackingService.sendLocationUpdate(
           tripId,
@@ -2225,8 +2419,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
           bearing,
           speed
         );
+        
+        // Update last sent
+        lastSentLocationRef.current = { lat, lng, timestamp: now };
+        
         console.log(
-          `[Tracking:${trackingMode.toUpperCase()}] Sent: ${lat.toFixed(
+          `[Tracking:${trackingMode.toUpperCase()}] ✅ Sent: ${lat.toFixed(
             6
           )}, ${lng.toFixed(6)}, ${speed.toFixed(1)} km/h`
         );
@@ -2236,35 +2434,53 @@ const DriverTripDetailScreenV2: React.FC = () => {
           error
         );
       }
-    } else {
-      console.warn(
-        `[Tracking:${trackingMode.toUpperCase()}] SignalR not connected, location not sent`
-      );
     }
   };
 
   // ========== SIMULATION MODE FUNCTIONS ==========
+  /**
+   * Start simulation on current route (step 3 of proper flow)
+   * ONLY call this after route is confirmed ready
+   * Checks: route exists, route valid, not already running
+   */
   const startSimulation = async () => {
+    // STEP 1: Validate route exists and is valid
     if (!routeCoords || routeCoords.length === 0) {
-      showAlertCrossPlatform("Lỗi", "Không có tuyến đường để giả lập");
+      console.warn("[Simulation] ❌ No route coords available");
+      showAlertCrossPlatform("Chưa sẵn sàng", "Chưa có tuyến đường để giả lập. Vui lòng nhấn 'Đến lấy hàng' trước.");
       return;
     }
 
+    if (routeCoords.length < 2) {
+      console.warn("[Simulation] ❌ Route too short:", routeCoords.length, "points");
+      showAlertCrossPlatform("Lỗi", "Tuyến đường không hợp lệ (cần ít nhất 2 điểm)");
+      return;
+    }
+
+    // STEP 2: Check if already running
     if (isSimulationRunning) {
-      console.warn("[Simulation] Already running");
+      console.warn("[Simulation] ⚠️ Already running");
       return;
     }
 
-    console.log("[Simulation] Route has", routeCoords.length, "points");
-    console.log("[Simulation] First 3 points:", routeCoords.slice(0, 3));
-    console.log("[Simulation] Starting from index:", simulatorIndex);
+    // STEP 3: Verify SignalR is connected (warn but don't block)
+    if (!signalRConnected) {
+      console.warn("[Simulation] ⚠️ SignalR not connected, location updates may not be sent");
+      // Don't block - continue anyway
+    }
+
+    console.log("[Simulation] 🚀 Starting simulation");
+    console.log("[Simulation] 📍 Route has", routeCoords.length, "points");
+    console.log("[Simulation] 📍 First point:", routeCoords[0]);
+    console.log("[Simulation] 📍 Last point:", routeCoords[routeCoords.length - 1]);
+    console.log("[Simulation] 📍 Starting from index:", simulatorIndex);
 
     try {
       // Initialize simulator
       simulatorRef.current = new SimpleRouteSimulator({
         route: routeCoords,
         speedKmH: 300, // 300 km/h - Very fast for testing
-        updateIntervalMs: 500, // 0.5 second - Update very frequently
+        updateIntervalMs: 1000, // 1 second - UI updates (throttled by sendLocationToServer)
         onUpdate: (location: SimulatorLocation) => {
           sendLocationToServer(
             location.latitude,
@@ -2274,22 +2490,34 @@ const DriverTripDetailScreenV2: React.FC = () => {
           );
         },
         onComplete: () => {
-          console.log("[Simulation] Completed");
+          console.log("[Simulation] ✅ Route completed - arrived at destination");
           setIsSimulationRunning(false);
-          showAlertCrossPlatform("Hoàn thành", "Đã đến đích giả lập");
+          
+          try {
+            Speech.speak("Đã đến đích", { language: "vi-VN" });
+          } catch {}
+          
+          // Handle based on journey phase
+          handleDestinationReached();
         },
       });
 
       // Start from saved index or 0
       simulatorRef.current.start(simulatorIndex);
       setIsSimulationRunning(true);
-      console.log("[Simulation] Started from index", simulatorIndex);
+      console.log("[Simulation] ✅ Started successfully from index", simulatorIndex);
     } catch (error: any) {
-      console.error("[Simulation] Start failed:", error);
-      showAlertCrossPlatform(
-        "Lỗi",
-        error?.message || "Không thể bắt đầu giả lập"
-      );
+      console.error("[Simulation] ❌ Start failed:", error);
+      const errorMsg = error?.message || "Không thể bắt đầu giả lập";
+      
+      // Silent fail for CORS errors
+      const isCorsError = errorMsg.includes('Failed to fetch') || 
+                          errorMsg.includes('CORS') ||
+                          errorMsg.includes('Network');
+      
+      if (!isCorsError) {
+        showAlertCrossPlatform("Lỗi", errorMsg);
+      }
     }
   };
 
@@ -2308,6 +2536,73 @@ const DriverTripDetailScreenV2: React.FC = () => {
       setIsSimulationRunning(false);
       setSimulatorIndex(0);
       console.log("[Simulation] Stopped");
+    }
+  };
+
+  /**
+   * Handle when destination is reached (simulation complete or manual arrival)
+   * - Call appropriate changeStatus API based on journey phase
+   * - Stop simulation
+   * - Exit navigation UI
+   */
+  const handleDestinationReached = async () => {
+    console.log("[Driver] 🎯 Destination reached - Journey phase:", journeyPhase);
+    
+    // Stop simulation first
+    stopSimulation();
+    
+    try {
+      if (journeyPhase === "TO_PICKUP") {
+        // Arrived at pickup point → Change to ARRIVED_AT_PICKUP
+        if (!trip?.tripId) {
+          console.error("[Driver] ❌ No trip ID available");
+          return;
+        }
+        
+        console.log("[Driver] 📍 Arrived at pickup point - Changing status...");
+        const res: any = await tripService.changeStatus({
+          TripId: trip.tripId,
+          NewStatus: "ARRIVED_AT_PICKUP",
+        });
+        
+        if (res?.isSuccess) {
+          showAlertCrossPlatform("Thành công", "Đã đến điểm lấy hàng");
+          // Exit navigation UI
+          setNavActive(false);
+          setJourneyPhase("COMPLETED");
+          // Refresh trip data
+          await fetchTripData(true);
+        } else {
+          showAlertCrossPlatform("Lỗi", res?.message || "Không thể cập nhật trạng thái");
+        }
+        
+      } else if (journeyPhase === "TO_DELIVERY") {
+        // Arrived at delivery point → Change to ARRIVED_AT_DROPOFF
+        if (!trip?.tripId) {
+          console.error("[Driver] ❌ No trip ID available");
+          return;
+        }
+        
+        console.log("[Driver] 📦 Arrived at delivery point - Changing status...");
+        const res: any = await tripService.changeStatus({
+          TripId: trip.tripId,
+          NewStatus: "ARRIVED_AT_DROPOFF",
+        });
+        
+        if (res?.isSuccess) {
+          showAlertCrossPlatform("Thành công", "Đã đến điểm giao hàng");
+          // Exit navigation UI
+          setNavActive(false);
+          setJourneyPhase("COMPLETED");
+          // Refresh trip data
+          await fetchTripData(true);
+        } else {
+          showAlertCrossPlatform("Lỗi", res?.message || "Không thể cập nhật trạng thái");
+        }
+      }
+    } catch (error: any) {
+      console.error("[Driver] ❌ Failed to handle destination reached:", error);
+      showAlertCrossPlatform("Lỗi", error?.message || "Không thể cập nhật trạng thái");
     }
   };
 
@@ -2492,6 +2787,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
     setVisibleRoute("overview");
   };
 
+  /**
+   * Show pickup route (step 1 of proper flow)
+   * 1. Get current location
+   * 2. Get route from current location to pickup point
+   * 3. Set visible route to pickup
+   */
   const handleShowPickup = async () => {
     // If pickup route already planned, just show it
     if (pickupRouteCoords && pickupRouteCoords.length > 1) {
@@ -2501,8 +2802,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted")
-        throw new Error("Cần quyền vị trí để tính tuyến đến điểm lấy hàng.");
+      if (status !== "granted") {
+        // Silent fail - không hiện thông báo lỗi
+        console.warn("[DriverTripDetail] Location permission denied");
+        return;
+      }
+      
       const now = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
@@ -2513,17 +2818,19 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
       const pickupPoint =
         routeCoords && routeCoords.length ? (routeCoords[0] as Position) : null;
-      if (!pickupPoint)
-        return showAlertCrossPlatform(
-          "Lỗi",
-          "Không thể xác định toạ độ điểm lấy hàng"
-        );
+      if (!pickupPoint) {
+        console.warn("[DriverTripDetail] No pickup point found");
+        return;
+      }
 
+      console.log('[DriverTripDetail] 📍 Step 1: Getting route to pickup from', currentPosition, 'to', pickupPoint);
+      
       const planned = await vietmapService.planBetweenPoints(
         currentPosition,
         pickupPoint,
         "car"
       );
+      
       if (planned?.coordinates?.length) {
         const coerced = planned.coordinates.map((c: any) => [
           Number(c[0]),
@@ -2532,13 +2839,65 @@ const DriverTripDetailScreenV2: React.FC = () => {
         setPickupRouteCoords(coerced);
         if (planned.instructions) setRouteInstructions(planned.instructions);
         setVisibleRoute("toPickup");
+        console.log('[DriverTripDetail] ✅ Step 1 Complete: Route planned with', coerced.length, 'points');
+      } else {
+        console.warn("[DriverTripDetail] No route coordinates returned");
       }
     } catch (e: any) {
       console.warn("[DriverTripDetail] handleShowPickup failed", e);
-      showAlertCrossPlatform(
-        "Lỗi",
-        e?.message || "Không thể tính tuyến đến điểm lấy hàng"
-      );
+      // Silent fail for CORS/Network errors
+      const isCorsError = e?.message?.includes('Failed to fetch') || 
+                          e?.message?.includes('CORS') ||
+                          e?.message?.includes('Network');
+      if (!isCorsError) {
+        showAlertCrossPlatform(
+          "Lỗi",
+          "Không thể tính tuyến đến điểm lấy hàng. Vui lòng thử lại."
+        );
+      }
+    }
+  };
+
+  /**
+   * Start pickup navigation with proper flow (step 2)
+   * Ensures: location → route → simulate sequence
+   * Only starts simulation after route is confirmed ready
+   */
+  const startPickupNavigation = async () => {
+    try {
+      console.log('[DriverTripDetail] 📍 Starting pickup navigation flow...');
+      
+      // Step 1: Get route if not already fetched
+      if (!pickupRouteCoords || pickupRouteCoords.length < 2) {
+        console.log('[DriverTripDetail] 📍 Step 1: Fetching pickup route...');
+        await handleShowPickup();
+        
+        // Wait a bit for state to update
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      // Step 2: Verify route is ready
+      if (!pickupRouteCoords || pickupRouteCoords.length < 2) {
+        console.warn('[DriverTripDetail] ❌ Route not ready, cannot start navigation');
+        showAlertCrossPlatform(
+          "Chưa sẵn sàng",
+          "Chưa có tuyến đường. Vui lòng nhấn 'Đến lấy hàng' trước."
+        );
+        return false;
+      }
+      
+      console.log('[DriverTripDetail] ✅ Step 2: Route ready with', pickupRouteCoords.length, 'points');
+      
+      // Step 3: Set route for simulation/navigation
+      setRouteCoords(pickupRouteCoords);
+      setVisibleRoute("toPickup");
+      setJourneyPhase("TO_PICKUP");
+      
+      console.log('[DriverTripDetail] ✅ Step 3: Ready to start simulation');
+      return true;
+    } catch (e: any) {
+      console.error('[DriverTripDetail] startPickupNavigation failed:', e);
+      return false;
     }
   };
 
@@ -2693,6 +3052,21 @@ const DriverTripDetailScreenV2: React.FC = () => {
       return;
     }
     try {
+      // Pause navigation first (GPS/simulation)
+      if (trackingMode === "simulation") {
+        pauseSimulation();
+      } else {
+        // Pause GPS tracking
+        if (watchSubRef.current) {
+          try {
+            const s: any = watchSubRef.current;
+            if (typeof s.remove === "function") s.remove();
+          } catch (e) {}
+          watchSubRef.current = null;
+        }
+      }
+      setNavPaused(true);
+
       const resp: any = await driverWorkSessionService.end({
         DriverWorkSessionId: driverSessionId,
       });
@@ -2722,6 +3096,13 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // End session and exit navigation UI
   // End session and exit navigation UI
   const handleEndAndExit = async () => {
+    console.log("[Driver] 🛑 Ending session and exiting navigation...");
+    
+    // Stop simulation first
+    if (trackingMode === "simulation" && isSimulationRunning) {
+      stopSimulation();
+    }
+    
     if (!driverSessionId) {
       // Nothing to end server-side, just stop navigation
       stopNavigation();
@@ -2746,6 +3127,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
       setContinuousSeconds(0);
       setStoppedSeconds(0);
       loadEligibilityAndSession();
+      
+      console.log("[Driver] ✅ Session ended successfully");
     } catch (e: any) {
       console.warn("[DriverTripDetail] end session failed", e);
       showAlertCrossPlatform("Lỗi", e?.message || "Kết thúc phiên thất bại");
@@ -2818,6 +3201,17 @@ const DriverTripDetailScreenV2: React.FC = () => {
       showToast("Đã tiếp tục phiên làm việc");
       // refresh eligibility/totals
       loadEligibilityAndSession();
+      
+      // Resume navigation from current position
+      setNavPaused(false);
+      if (trackingMode === "simulation") {
+        // Resume simulation from current index
+        await startSimulation();
+      } else {
+        // Resume GPS tracking
+        startLocationWatcher();
+      }
+      
       // DON'T call stopNavigation() - we want to keep navigation UI active when resuming
     } catch (e: any) {
       console.warn("[DriverTripDetail] resume session failed", e);
@@ -3973,11 +4367,31 @@ const DriverTripDetailScreenV2: React.FC = () => {
           </TouchableOpacity>
 
           {/* SignalR Connection Status Badge */}
-          {signalRConnected && (
-            <View style={styles.signalRBadge}>
-              <View style={styles.signalRDot} />
-              <Text style={styles.signalRText}>Live</Text>
-            </View>
+          <View style={[
+            styles.signalRBadge,
+            !signalRConnected && styles.signalRBadgeDisconnected
+          ]}>
+            <View style={[
+              styles.signalRDot,
+              !signalRConnected && styles.signalRDotDisconnected
+            ]} />
+            <Text style={[
+              styles.signalRText,
+              !signalRConnected && styles.signalRTextDisconnected
+            ]}>
+              {signalRConnected ? 'Live' : 'Offline'}
+            </Text>
+          </View>
+          
+          {/* Reconnect button when disconnected */}
+          {!signalRConnected && (
+            <TouchableOpacity 
+              onPress={reconnectSignalR} 
+              style={styles.reconnectBtn}
+            >
+              <Ionicons name="refresh" size={16} color="#EF4444" />
+              <Text style={styles.reconnectText}>Kết nối lại</Text>
+            </TouchableOpacity>
           )}
 
           <View style={{ flex: 1 }} />
@@ -4993,6 +5407,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   continuousSeconds / 3600 >= 4
                 }
               >
+                <MaterialCommunityIcons name="play" size={20} color="#FFF" style={{ marginRight: 6 }} />
                 <Text style={styles.resumeBtnText}>Bắt đầu đi tiếp</Text>
               </TouchableOpacity>
             ) : (
@@ -5000,6 +5415,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 style={[styles.pauseBtn, { marginRight: 6 }]}
                 onPress={handlePauseSession}
               >
+                <MaterialCommunityIcons name="pause" size={20} color="#F59E0B" style={{ marginRight: 6 }} />
                 <Text style={styles.pauseBtnText}>Nghỉ</Text>
               </TouchableOpacity>
             )}
@@ -5015,12 +5431,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
         <View style={styles.miniBar}>
           <View style={{ flex: 1 }}>
             <Text style={styles.miniTitle}>
-              {journeyPhase === "TO_PICKUP"
+              {navPaused ? "⏸️ Đang tạm dừng" : (journeyPhase === "TO_PICKUP"
                 ? "Đang đến lấy hàng"
-                : "Đang đi giao hàng"}
+                : "Đang đi giao hàng")}
             </Text>
             <Text style={styles.miniSub}>
-              {formatMeters(remaining)} • {eta}
+              {navPaused ? "Nhấn 'Bắt đầu đi tiếp' để tiếp tục" : `${formatMeters(remaining)} • ${eta}`}
             </Text>
           </View>
           <TouchableOpacity
@@ -7016,16 +7432,44 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 4,
   },
+  signalRBadgeDisconnected: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#9CA3AF',
+    borderWidth: 1,
+  },
   signalRDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: "#fff",
   },
+  signalRDotDisconnected: {
+    backgroundColor: '#9CA3AF',
+  },
   signalRText: {
     color: "#fff",
     fontSize: 11,
     fontWeight: "700",
+  },
+  signalRTextDisconnected: {
+    color: '#6B7280',
+  },
+  reconnectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    gap: 4,
+    marginLeft: 8,
+  },
+  reconnectText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#DC2626',
   },
 
   // Cards
@@ -7291,23 +7735,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pauseBtn: {
-    paddingHorizontal: 12,
+    flexDirection: "row",
+    paddingHorizontal: 14,
     height: 44,
     borderRadius: 22,
     backgroundColor: "#F59E0B",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 70,
+    minWidth: 90,
   },
   pauseBtnText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
   resumeBtn: {
-    paddingHorizontal: 12,
+    flexDirection: "row",
+    paddingHorizontal: 14,
     height: 44,
     borderRadius: 22,
     backgroundColor: "#10B981",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 100,
+    minWidth: 140,
   },
   resumeBtnText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
   minBtn: {

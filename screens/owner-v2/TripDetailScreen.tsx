@@ -47,6 +47,7 @@ import { useSignalRLocation } from "@/hooks/useSignalRLocation";
 
 // --- UTILS ---
 import { decodePolyline, toGeoJSONLineFeature } from "@/utils/polyline";
+import vietmapService from "@/services/vietmapService";
 
 // --- CUSTOM COMPONENTS ---
 import VietMapUniversal from "@/components/map/VietMapUniversal";
@@ -512,6 +513,8 @@ const TripDetailScreen: React.FC = () => {
   const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(
     null
   );
+  const [originalRouteCoords, setOriginalRouteCoords] = useState<[number, number][] | null>(null); // Lưu route gốc
+  const [dynamicRouteActive, setDynamicRouteActive] = useState(false); // Đang dùng dynamic route
   const [routeFeature, setRouteFeature] = useState<Feature<LineString> | null>(
     null
   );
@@ -555,6 +558,9 @@ const TripDetailScreen: React.FC = () => {
   const [loadingHandoverRecord, setLoadingHandoverRecord] = useState(false);
 
   // Edit Checklist - using new HandoverChecklistEditor component
+  
+  // Map expansion
+  const [mapExpanded, setMapExpanded] = useState(false);
   const [showHandoverEditor, setShowHandoverEditor] = useState(false);
 
   // Issue reporting states
@@ -589,7 +595,11 @@ const TripDetailScreen: React.FC = () => {
   const [surchargeDescription, setSurchargeDescription] = useState("");
 
   // SignalR real-time tracking
-  const [driverLocation, setDriverLocation] = useState<{latitude: number; longitude: number; bearing?: number} | null>(null);
+  const [driverLocation, setDriverLocation] = useState<{latitude: number; longitude: number; bearing?: number; speed?: number; timestamp?: string} | null>(null);
+  const [initialRoutePlanned, setInitialRoutePlanned] = useState(false); // Track nếu đã plan route lần đầu
+  const [isPlanning, setIsPlanning] = useState(false); // Loading state while planning route
+  const [routePlanned, setRoutePlanned] = useState(false); // Route successfully planned
+  const [signalRError, setSignalRError] = useState<string | null>(null);
   const signalREnabled = trip?.status === 'MOVING_TO_PICKUP' || trip?.status === 'READY_FOR_VEHICLE_RETURN'|| trip?.status === 'MOVING_TO_DROPOFF';
   
   console.log('[Owner TripDetail] SignalR Debug:', {
@@ -598,20 +608,220 @@ const TripDetailScreen: React.FC = () => {
     signalREnabled,
   });
   
-  const { location, connected, error } = useSignalRLocation({
+  const { location, connected, error, reconnect } = useSignalRLocation({
     tripId,
     enabled: signalREnabled,
   });
   
   console.log('[Owner TripDetail] SignalR State:', { connected, hasLocation: !!location, error });
+  
+  // Track SignalR errors
+  useEffect(() => {
+    if (error) {
+      // Silent fail for CORS errors
+      const isCorsError = error?.includes('Failed to fetch') || 
+                          error?.includes('CORS') ||
+                          error?.includes('Network');
+      if (!isCorsError) {
+        setSignalRError(error);
+      }
+    } else {
+      setSignalRError(null);
+    }
+  }, [error]);
+  
+  // Manual reconnect function with error reset
+  const reconnectSignalR = useCallback(async () => {
+    setSignalRError(null);
+    try {
+      // Service will handle connection + auto-rejoin trip group
+      await reconnect();
+      console.log('[Owner SignalR] ✅ Manually reconnected');
+    } catch (err: any) {
+      console.error('[Owner SignalR] Manual reconnect failed:', err);
+    }
+  }, [reconnect]);
 
-  // Update driver location when received
+  // Reset route planning flags khi trip status thay đổi
+  useEffect(() => {
+    console.log('[Owner] Trip status changed to:', trip?.status, '- Resetting route planning states');
+    setInitialRoutePlanned(false);
+    setRoutePlanned(false);
+    setIsPlanning(false);
+  }, [trip?.status]);
+
+  /**
+   * Handle driver location updates from SignalR
+   * Step 1: Receive first location from driver
+   * Step 2: Plan route from driver → destination (based on trip status)
+   * Step 3: Update driver marker position in real-time
+   */
   useEffect(() => {
     if (location) {
-      console.log('[Owner] Driver location received:', location);
-      setDriverLocation({ latitude: location.latitude, longitude: location.longitude, bearing: location.bearing });
+      console.log('[Owner] 📡 Driver location received:', {
+        lat: location.latitude.toFixed(6),
+        lng: location.longitude.toFixed(6),
+        bearing: location.bearing,
+        speed: location.speed,
+      });
+      
+      // ALWAYS update driver marker position (real-time tracking)
+      setDriverLocation({ 
+        latitude: location.latitude, 
+        longitude: location.longitude, 
+        bearing: location.bearing,
+        speed: location.speed,
+        timestamp: location.timestamp ? (typeof location.timestamp === 'string' ? location.timestamp : location.timestamp.toISOString()) : undefined,
+      });
+      
+      // STEP 1: Plan route ONCE on first location
+      if (!initialRoutePlanned && !isPlanning) {
+        console.log('[Owner] 📍 Step 1: First location received - Planning dynamic route...');
+        planDynamicRoute(location.latitude, location.longitude);
+        setInitialRoutePlanned(true);
+      } else if (routePlanned) {
+        console.log('[Owner] ✅ Route already planned, updating driver position only');
+      }
     }
-  }, [location]);
+  }, [location, initialRoutePlanned, isPlanning, routePlanned]);
+
+  /**
+   * When map modal opens, ensure route is planned if we have driver location
+   * This handles case where user opens fullscreen map before route is auto-planned
+   */
+  useEffect(() => {
+    if (mapExpanded && driverLocation && !initialRoutePlanned && !isPlanning && !routePlanned) {
+      console.log('[Owner] 🗺️ Map modal opened - Planning route with existing driver location...');
+      planDynamicRoute(driverLocation.latitude, driverLocation.longitude);
+      setInitialRoutePlanned(true);
+    }
+  }, [mapExpanded, driverLocation, initialRoutePlanned, isPlanning, routePlanned]);
+
+  /**
+   * Plan dynamic route from driver current position to destination
+   * STEP 2 of proper flow:
+   * - Determine destination based on trip status
+   * - Validate destination point
+   * - Call VietMap API to get route
+   * - Update map with new route
+   * - Silent fail for CORS/Network errors
+   */
+  const planDynamicRoute = async (driverLat: number, driverLng: number) => {
+    if (!trip) {
+      console.warn('[Owner] ⚠️ No trip data available');
+      return;
+    }
+
+    // Prevent duplicate planning
+    if (isPlanning) {
+      console.log('[Owner] ⚠️ Already planning route, skip');
+      return;
+    }
+
+    setIsPlanning(true);
+    console.log('[Owner] 📍 Step 2: Planning dynamic route from driver to destination...');
+
+    try {
+      let destinationPoint: [number, number] | null = null;
+      let destinationType = '';
+      
+      // STEP 2A: Determine destination based on trip status
+      if (trip.status === 'MOVING_TO_PICKUP') {
+        // Đang đi lấy hàng → đích là điểm BẮT ĐẦU (pickup point)
+        if (routeCoords && routeCoords.length > 0) {
+          destinationPoint = routeCoords[0];
+          destinationType = 'pickup point';
+        }
+      } else if (trip.status === 'MOVING_TO_DROPOFF') {
+        // Đang đi giao hàng → đích là điểm KẾT THÚC (delivery point)
+        if (routeCoords && routeCoords.length > 0) {
+          destinationPoint = routeCoords[routeCoords.length - 1];
+          destinationType = 'delivery point';
+        }
+      } else if (trip.status === 'READY_FOR_VEHICLE_RETURN') {
+        // Đang đi trả xe → đích là điểm KẾT THÚC (return point)
+        if (routeCoords && routeCoords.length > 0) {
+          destinationPoint = routeCoords[routeCoords.length - 1];
+          destinationType = 'return point';
+        }
+      }
+
+      // STEP 2B: Validate destination
+      if (!destinationPoint) {
+        console.warn('[Owner] ❌ No destination point available for status:', trip.status);
+        setIsPlanning(false);
+        return;
+      }
+
+      console.log('[Owner] ✅ Step 2A: Destination determined');
+      console.log('[Owner]   - Trip status:', trip.status);
+      console.log('[Owner]   - Destination type:', destinationType);
+      console.log('[Owner]   - Destination coords:', destinationPoint);
+
+      // Lưu original route nếu chưa lưu (for reference)
+      if (!originalRouteCoords && routeCoords) {
+        setOriginalRouteCoords(routeCoords);
+      }
+
+      // STEP 2C: Plan route from driver → destination
+      const driverPosition: [number, number] = [driverLng, driverLat];
+      console.log('[Owner] 🗺️ Step 2B: Calling VietMap API...');
+      console.log('[Owner]   - From driver:', driverPosition);
+      console.log('[Owner]   - To:', destinationPoint);
+      
+      const planned = await vietmapService.planBetweenPoints(
+        driverPosition,
+        destinationPoint,
+        'car'
+      );
+
+      // STEP 2D: Validate and apply route
+      if (planned.coordinates && planned.coordinates.length > 0) {
+        const dynamicCoords = planned.coordinates.map((c: any) => [
+          Number(c[0]),
+          Number(c[1]),
+        ]) as [number, number][];
+        
+        console.log('[Owner] ✅ Step 2C: Route planned successfully!');
+        console.log('[Owner]   - Route points:', dynamicCoords.length);
+        console.log('[Owner]   - Distance:', planned.distance || 'N/A', 'km');
+        
+        // Update map with new route
+        setRouteCoords(dynamicCoords);
+        setDynamicRouteActive(true);
+        setRoutePlanned(true);
+        
+        // Update route feature for map display
+        setRouteFeature(
+          toGeoJSONLineFeature(dynamicCoords) as Feature<LineString>
+        );
+        
+        console.log('[Owner] ✅ Step 2D: Map updated with dynamic route');
+      } else {
+        console.warn('[Owner] ⚠️ No route coordinates returned from VietMap');
+      }
+    } catch (error: any) {
+      console.warn('[Owner] ❌ Failed to plan dynamic route:', error);
+      
+      // Silent fail for CORS/Network errors
+      const isCorsError = error?.message?.includes('Failed to fetch') || 
+                          error?.message?.includes('CORS') ||
+                          error?.message?.includes('Network');
+      
+      if (!isCorsError) {
+        // Only show non-CORS errors
+        console.error('[Owner] Critical error planning route:', error?.message);
+      } else {
+        // Just log once for CORS issue
+        if (typeof (window as any).__owner_cors_warned === 'undefined') {
+          console.warn('[Owner] ⚠️ CORS Error - Backend needs to enable CORS for', window.location.origin);
+          (window as any).__owner_cors_warned = true;
+        }
+      }
+    } finally {
+      setIsPlanning(false);
+    }
+  };
   const [submittingSurcharge, setSubmittingSurcharge] = useState(false);
 
   // OTP
@@ -633,6 +843,11 @@ const TripDetailScreen: React.FC = () => {
   const [confirmingTripCompletion, setConfirmingTripCompletion] =
     useState(false);
   const [removingDriverId, setRemovingDriverId] = useState<string | null>(null);
+  
+  // Prevent duplicate API calls
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
+  const MIN_FETCH_INTERVAL = 2000; // 2 seconds
 
   useFocusEffect(
     useCallback(() => {
@@ -651,7 +866,23 @@ const TripDetailScreen: React.FC = () => {
   };
 
   const fetchTrip = async (id: string) => {
+    // Prevent duplicate concurrent requests
+    if (isFetchingRef.current) {
+      console.log('[Owner] Already fetching, skip duplicate request');
+      return;
+    }
+    
+    // Throttle: prevent too frequent calls
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < MIN_FETCH_INTERVAL) {
+      console.log('[Owner] Throttled fetchTrip');
+      return;
+    }
+    
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = now;
     setLoading(true);
+    
     try {
       const [tripRes, analysisRes] = await Promise.all([
         tripService.getById(id),
@@ -691,24 +922,87 @@ const TripDetailScreen: React.FC = () => {
         }
         setTrip(data);
 
+        // Load route data if available
         if (data.tripRoute?.routeData) {
-          const decoded = decodePolyline(data.tripRoute.routeData);
-          setRouteCoords(decoded.coordinates as [number, number][]);
-          setRouteFeature(
-            toGeoJSONLineFeature(
-              decoded.coordinates as [number, number][]
-            ) as Feature<LineString>
-          );
+          try {
+            console.log('[Owner] 🗺️ Loading route from tripRoute.routeData...');
+            const decoded = decodePolyline(data.tripRoute.routeData);
+            if (decoded.coordinates && decoded.coordinates.length > 0) {
+              const coords = decoded.coordinates as [number, number][];
+              setRouteCoords(coords);
+              setRouteFeature(
+                toGeoJSONLineFeature(coords) as Feature<LineString>
+              );
+              console.log('[Owner] ✅ Route loaded successfully:', coords.length, 'points');
+            } else {
+              console.warn('[Owner] ⚠️ Route decoded but no coordinates found');
+            }
+          } catch (error) {
+            console.error('[Owner] ❌ Failed to decode route:', error);
+          }
+        } else {
+          console.warn('[Owner] ⚠️ No routeData available in trip.tripRoute');
+          console.log('[Owner] Trip Route object:', data.tripRoute);
         }
       }
 
       if (analysisRes?.isSuccess && analysisRes?.result) {
         setDriverAnalysis(analysisRes.result);
       }
-    } catch (error) {
-      showAlertCrossPlatform("Lỗi", "Không thể tải dữ liệu chuyến đi");
+    } catch (error: any) {
+      console.error('[Owner] fetchTrip failed:', error);
+      
+      // Better error messages based on error type
+      let errorMessage = 'Không thể tải dữ liệu chuyến đi';
+      let showRetry = false;
+      
+      if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+        errorMessage = 'Kết nối quá chậm. Vui lòng thử lại.';
+        showRetry = true;
+        console.warn('[Owner] ⏱️ Request timeout - server may be slow');
+      } else if (error?.message?.includes('Network Error') || error?.message?.includes('Failed to fetch')) {
+        errorMessage = 'Mất kết nối mạng. Vui lòng kiểm tra và thử lại.';
+        showRetry = true;
+        console.warn('[Owner] 📡 Network error - no internet connection');
+      } else if (error?.response?.status === 404) {
+        errorMessage = 'Không tìm thấy chuyến đi này.';
+        console.warn('[Owner] 🔍 Trip not found (404)');
+      } else if (error?.response?.status >= 500) {
+        errorMessage = 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.';
+        showRetry = true;
+        console.warn('[Owner] 🔧 Server error (5xx)');
+      }
+      
+      if (Platform.OS === 'web') {
+        const retry = showRetry && window.confirm(`${errorMessage}\n\nBạn có muốn thử lại không?`);
+        if (retry) {
+          // Reset flags and retry after 1 second
+          isFetchingRef.current = false;
+          setTimeout(() => fetchTrip(id), 1000);
+        }
+      } else {
+        if (showRetry) {
+          Alert.alert(
+            'Lỗi',
+            errorMessage,
+            [
+              { text: 'Hủy', style: 'cancel' },
+              { 
+                text: 'Thử lại', 
+                onPress: () => {
+                  isFetchingRef.current = false;
+                  setTimeout(() => fetchTrip(id), 1000);
+                }
+              }
+            ]
+          );
+        } else {
+          Alert.alert('Lỗi', errorMessage);
+        }
+      }
     } finally {
       setLoading(false);
+      isFetchingRef.current = false; // Reset flag
     }
   };
 
@@ -1565,6 +1859,17 @@ const TripDetailScreen: React.FC = () => {
             </Text>
           </View>
           
+          {/* Reconnect button when disconnected */}
+          {!connected && signalREnabled && (
+            <TouchableOpacity 
+              onPress={reconnect} 
+              style={styles.reconnectBtn}
+            >
+              <Ionicons name="refresh" size={16} color="#EF4444" />
+              <Text style={styles.reconnectText}>Kết nối lại</Text>
+            </TouchableOpacity>
+          )}
+          
           {/* <TouchableOpacity onPress={toggleSimulation} style={styles.simulationBtn}>
             <Text style={{ fontSize: 18, marginRight: 4 }}>{simulationActive ? "⏸️" : "▶️"}</Text>
             <Text style={styles.simulationText}>{simulationActive ? "Tạm dừng" : "Giả lập"}</Text>
@@ -1663,30 +1968,51 @@ const TripDetailScreen: React.FC = () => {
             </View>
             <StatusBadge status={trip.status} />
           </View>
-          <View style={styles.mapContainer}>
-            <VietMapUniversal
-              coordinates={routeCoords || []}
-              showUserLocation={false}
-              style={{ height: 450 }}
-              driverLocation={driverLocation}
-            />
-            {simulationActive && routeFeature && (
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <AnimatedRouteProgress
-                  route={routeFeature}
-                  isSimulating={simulationActive}
-                  speed={80}
-                  onPositionUpdate={handleSimulationUpdate}
-                />
-              </View>
-            )}
-            {/* <View style={styles.floatingProgress}>
-              <RouteProgressBar
-                currentDistance={currentDistance}
-                totalDistance={trip.tripRoute?.distanceKm || 100}
-                durationMinutes={trip.tripRoute?.durationMinutes || 60}
+          <View style={{ position: 'relative' }}>
+            <View style={styles.mapContainer}>
+              <VietMapUniversal
+                coordinates={routeCoords || []}
+                showUserLocation={false}
+                style={{ height: 450 }}
+                driverLocation={driverLocation}
               />
-            </View> */}
+              
+              {/* Loading overlay while planning route */}
+              {isPlanning && (
+                <View style={styles.mapLoadingOverlay}>
+                  <View style={styles.mapLoadingBox}>
+                    <ActivityIndicator size="large" color="#2563EB" />
+                    <Text style={styles.mapLoadingText}>📍 Đang tính tuyến đường...</Text>
+                  </View>
+                </View>
+              )}
+              
+              {simulationActive && routeFeature && (
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <AnimatedRouteProgress
+                    route={routeFeature}
+                    isSimulating={simulationActive}
+                    speed={80}
+                    onPositionUpdate={handleSimulationUpdate}
+                  />
+                </View>
+              )}
+              {/* <View style={styles.floatingProgress}>
+                <RouteProgressBar
+                  currentDistance={currentDistance}
+                  totalDistance={trip.tripRoute?.distanceKm || 100}
+                  durationMinutes={trip.tripRoute?.durationMinutes || 60}
+                />
+              </View> */}
+            </View>
+            
+            {/* Expand button - outside mapContainer to avoid overflow hidden */}
+            <TouchableOpacity 
+              style={styles.expandMapButton}
+              onPress={() => setMapExpanded(true)}
+            >
+              <MaterialCommunityIcons name="arrow-expand-all" size={18} color="#fff" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -3728,6 +4054,91 @@ const TripDetailScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+      
+      {/* Fullscreen Map Modal */}
+      <Modal
+        visible={mapExpanded}
+        animationType="slide"
+        onRequestClose={() => setMapExpanded(false)}
+      >
+        <View style={styles.mapModal}>
+          <View style={styles.mapModalContent}>
+            <VietMapUniversal
+              coordinates={routeCoords || []}
+              showUserLocation={false}
+              style={{ flex: 1 }}
+              driverLocation={driverLocation}
+            />
+            {simulationActive && routeFeature && (
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <AnimatedRouteProgress
+                  route={routeFeature}
+                  isSimulating={simulationActive}
+                  speed={80}
+                  onPositionUpdate={handleSimulationUpdate}
+                />
+              </View>
+            )}
+            
+            {/* Telemetry Overlay */}
+            {driverLocation && (
+              <View style={styles.telemetryOverlay}>
+                <Text style={styles.telemetryTitle}>📍 Thông tin tài xế</Text>
+                <View style={styles.telemetryRow}>
+                  <Text style={styles.telemetryLabel}>Vĩ độ:</Text>
+                  <Text style={styles.telemetryValue}>
+                    {driverLocation.latitude.toFixed(6)}
+                  </Text>
+                </View>
+                <View style={styles.telemetryRow}>
+                  <Text style={styles.telemetryLabel}>Kinh độ:</Text>
+                  <Text style={styles.telemetryValue}>
+                    {driverLocation.longitude.toFixed(6)}
+                  </Text>
+                </View>
+                {driverLocation.bearing !== undefined && (
+                  <View style={styles.telemetryRow}>
+                    <Text style={styles.telemetryLabel}>Hướng:</Text>
+                    <Text style={styles.telemetryValue}>
+                      {driverLocation.bearing.toFixed(0)}°
+                    </Text>
+                  </View>
+                )}
+                {driverLocation.speed !== undefined && (
+                  <View style={styles.telemetryRow}>
+                    <Text style={styles.telemetryLabel}>Tốc độ:</Text>
+                    <Text style={styles.telemetryValue}>
+                      {(driverLocation.speed * 3.6).toFixed(1)} km/h
+                    </Text>
+                  </View>
+                )}
+                {driverLocation.timestamp && (
+                  <View style={styles.telemetryRow}>
+                    <Text style={styles.telemetryLabel}>Cập nhật:</Text>
+                    <Text style={styles.telemetryValue}>
+                      {new Date(driverLocation.timestamp).toLocaleTimeString('vi-VN')}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.telemetryRow}>
+                  <Text style={styles.telemetryLabel}>Trạng thái:</Text>
+                  <Text style={[styles.telemetryValue, { color: '#10B981' }]}>
+                    {dynamicRouteActive ? '🟢 Đang di chuyển' : '⚪ Chờ'}
+                  </Text>
+                </View>
+              </View>
+            )}
+            
+            {/* Close button */}
+            <TouchableOpacity
+              style={styles.closeMapButton}
+              onPress={() => setMapExpanded(false)}
+            >
+              <Ionicons name="close" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -3816,6 +4227,49 @@ const styles = StyleSheet.create({
   signalRTextDisconnected: {
     color: '#6B7280',
   },
+  reconnectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    gap: 4,
+    marginLeft: 8,
+  },
+  reconnectText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  mapLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  mapLoadingBox: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  mapLoadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
 
   // Stepper
   stepperContainer: {
@@ -3880,7 +4334,7 @@ const styles = StyleSheet.create({
   mapContainer: {
     height: 200,
     borderRadius: 12,
-    overflow: "hidden",
+    overflow: "hidden", // Keep hidden to maintain rounded corners
     marginBottom: 12,
   },
   floatingProgress: { position: "absolute", bottom: 10, left: 10, right: 10 },
@@ -5433,6 +5887,69 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     lineHeight: 18,
     fontStyle: "italic",
+  },
+  
+  // Map expansion
+  expandMapButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 6,
+    padding: 8,
+    zIndex: 999,
+    elevation: 10, // Android shadow/elevation
+    shadowColor: '#000', // iOS shadow
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  mapModal: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  mapModalContent: {
+    flex: 1,
+  },
+  closeMapButton: {
+    position: 'absolute',
+    top: StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 50,
+    right: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 8,
+    padding: 12,
+    zIndex: 999,
+  },
+  telemetryOverlay: {
+    position: 'absolute',
+    top: StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 50,
+    left: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    borderRadius: 12,
+    padding: 16,
+    minWidth: 280,
+    zIndex: 999,
+  },
+  telemetryTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  telemetryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  telemetryLabel: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontWeight: '600',
+  },
+  telemetryValue: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '700',
   },
 });
 

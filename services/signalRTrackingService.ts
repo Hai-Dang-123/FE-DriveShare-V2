@@ -32,7 +32,9 @@ class SignalRTrackingService {
   private onError?: (error: any) => void;
   private isConnecting: boolean = false;
   private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
+  private maxReconnectAttempts: number = 999; // Vô hạn retry
+  private manualReconnectTimer?: ReturnType<typeof setInterval>;
+  private currentTripId?: string; // Track current trip for manual reconnect
 
   /**
    * Initialize SignalR Connection
@@ -43,8 +45,18 @@ class SignalRTrackingService {
       return;
     }
 
+    // Prevent duplicate initialization
     if (this.connection) {
-      console.warn('[SignalR] Already initialized');
+      // If already connected, just update callbacks
+      if (this.connection.state === SignalR.HubConnectionState.Connected) {
+        console.log('[SignalR] Already connected, updating callbacks only');
+        this.onReceiveLocation = config.onReceiveLocation;
+        this.onConnectionChange = config.onConnectionChange;
+        this.onError = config.onError;
+        return;
+      }
+      // If not connected but connection exists, log warning
+      console.warn('[SignalR] Connection exists but not connected, state:', this.connection.state);
       return;
     }
 
@@ -67,23 +79,28 @@ class SignalRTrackingService {
         })
         .withAutomaticReconnect({
           nextRetryDelayInMilliseconds: (retryContext) => {
-            // Exponential backoff: 2s, 4s, 8s, 16s, 32s
-            if (retryContext.previousRetryCount >= this.maxReconnectAttempts) {
-              console.error('[SignalR] Max reconnect attempts reached');
-              return null; // Stop reconnecting
+            // Exponential backoff: 2s, 4s, 8s, 15s, 30s (max)
+            if (retryContext.previousRetryCount < 3) {
+              return 2000 * Math.pow(2, retryContext.previousRetryCount); // 2s, 4s, 8s
+            } else if (retryContext.previousRetryCount < 6) {
+              return 15000; // 15s for attempts 3-5
+            } else {
+              return 30000; // 30s for attempts 6+
             }
-            return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 32000);
           },
         })
         .configureLogging(SignalR.LogLevel.Information)
         .build();
 
-      // Event handlers
+      // Event handlers (using arrow functions to preserve 'this' context)
       this.connection.onclose((error) => {
         console.warn('[SignalR] Connection closed:', error?.message);
         if (this.onConnectionChange) {
           this.onConnectionChange(false);
         }
+        
+        // Start manual reconnect timer as backup
+        this.startManualReconnect();
       });
 
       this.connection.onreconnecting((error) => {
@@ -94,6 +111,21 @@ class SignalRTrackingService {
       this.connection.onreconnected((connectionId) => {
         console.log('[SignalR] Reconnected. ConnectionId:', connectionId);
         this.reconnectAttempts = 0;
+        this.stopManualReconnect();
+        
+        // Tự động rejoin trip group sau khi reconnect
+        if (this.currentTripId) {
+          // Use setTimeout to avoid blocking the reconnected event
+          setTimeout(async () => {
+            try {
+              await this.joinTripGroup(this.currentTripId!);
+              console.log('[SignalR] Auto-rejoined trip:', this.currentTripId);
+            } catch (err) {
+              console.error('[SignalR] Failed to rejoin trip:', err);
+            }
+          }, 100);
+        }
+        
         if (this.onConnectionChange) {
           this.onConnectionChange(true);
         }
@@ -133,6 +165,7 @@ class SignalRTrackingService {
 
     try {
       console.log('[SignalR] Joining trip group:', tripId);
+      this.currentTripId = tripId; // Track current trip
       const result = await this.connection.invoke('JoinTripGroup', tripId);
       console.log('[SignalR] Joined trip group:', tripId, 'Result:', result);
       return result;
@@ -154,6 +187,9 @@ class SignalRTrackingService {
     try {
       console.log('[SignalR] Leaving trip group:', tripId);
       await this.connection.invoke('LeaveTripGroup', tripId);
+      if (this.currentTripId === tripId) {
+        this.currentTripId = undefined; // Clear tracked trip
+      }
       console.log('[SignalR] Left trip group:', tripId);
     } catch (error: any) {
       console.error('[SignalR] Failed to leave trip group:', error);
@@ -179,9 +215,22 @@ class SignalRTrackingService {
       await this.connection.invoke('SendLocationUpdate', tripId, lat, lng, bearing, speed);
       console.log(`[SignalR] Sent location: ${lat}, ${lng}, bearing: ${bearing}, speed: ${speed}`);
     } catch (error: any) {
-      console.error('[SignalR] Failed to send location:', error);
-      if (this.onError) {
-        this.onError(error);
+      // Silent fail for CORS errors (expected when testing on web)
+      const isCorsError = error?.message?.includes('Failed to fetch') || 
+                          error?.message?.includes('CORS') ||
+                          error?.message?.includes('Network Error');
+      
+      if (!isCorsError) {
+        console.error('[SignalR] Failed to send location:', error);
+        if (this.onError) {
+          this.onError(error);
+        }
+      } else {
+        // Just log once for CORS issue (backend needs to enable CORS)
+        if (typeof (window as any).__signalr_cors_warned === 'undefined') {
+          console.warn('[SignalR] ⚠️ CORS Error - Backend needs to enable CORS for', window.location.origin);
+          (window as any).__signalr_cors_warned = true;
+        }
       }
     }
   }
@@ -209,6 +258,8 @@ class SignalRTrackingService {
 
     try {
       console.log('[SignalR] Disconnecting...');
+      this.stopManualReconnect();
+      this.currentTripId = undefined;
       await this.connection.stop();
       this.connection = null;
       console.log('[SignalR] Disconnected');
@@ -238,21 +289,67 @@ class SignalRTrackingService {
     this.isConnecting = true;
 
     try {
-      if (this.connection) {
-        await this.connection.start();
-        console.log('[SignalR] Reconnected successfully');
-        
-        if (this.onConnectionChange) {
-          this.onConnectionChange(true);
+      if (!this.connection) {
+        throw new Error('[SignalR] No connection to reconnect');
+      }
+      
+      await this.connection.start();
+      console.log('[SignalR] Reconnected successfully');
+      
+      // Rejoin trip if available
+      if (this.currentTripId) {
+        try {
+          await this.joinTripGroup(this.currentTripId);
+          console.log('[SignalR] Auto-rejoined trip:', this.currentTripId);
+        } catch (joinErr) {
+          console.error('[SignalR] Failed to rejoin trip:', joinErr);
+          // Don't throw - connection is established, just rejoin failed
         }
+      }
+      
+      if (this.onConnectionChange) {
+        this.onConnectionChange(true);
       }
     } catch (error: any) {
       console.error('[SignalR] Reconnect failed:', error);
       if (this.onError) {
         this.onError(error);
       }
+      throw error; // Re-throw so caller knows reconnect failed
     } finally {
       this.isConnecting = false;
+    }
+  }
+
+  /**
+   * Start manual reconnect timer (backup when automatic fails)
+   */
+  private startManualReconnect = (): void => {
+    this.stopManualReconnect();
+    
+    console.log('[SignalR] Starting manual reconnect timer (30s interval)');
+    this.manualReconnectTimer = setInterval(async () => {
+      if (!this.isConnected()) {
+        console.log('[SignalR] Manual reconnect attempt...');
+        try {
+          await this.reconnect();
+        } catch (err) {
+          console.error('[SignalR] Manual reconnect failed:', err);
+        }
+      } else {
+        this.stopManualReconnect();
+      }
+    }, 30000); // Try every 30s
+  }
+
+  /**
+   * Stop manual reconnect timer
+   */
+  private stopManualReconnect = (): void => {
+    if (this.manualReconnectTimer) {
+      clearInterval(this.manualReconnectTimer);
+      this.manualReconnectTimer = undefined;
+      console.log('[SignalR] Stopped manual reconnect timer');
     }
   }
 }

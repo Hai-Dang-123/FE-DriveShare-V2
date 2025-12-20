@@ -4,7 +4,7 @@
  * Used by Owner & Provider screens
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { signalRTrackingService, LocationUpdate } from '@/services/signalRTrackingService';
 
 export interface DriverLocation {
@@ -25,6 +25,7 @@ export interface UseSignalRLocationResult {
   location: DriverLocation | null;
   connected: boolean;
   error: string | null;
+  reconnect: () => Promise<void>; // Manual reconnect function
 }
 
 export function useSignalRLocation({ tripId, enabled = true }: UseSignalRLocationProps): UseSignalRLocationResult {
@@ -95,5 +96,15 @@ export function useSignalRLocation({ tripId, enabled = true }: UseSignalRLocatio
     };
   }, [tripId, enabled]);
 
-  return { location, connected, error };
+  // Manual reconnect function
+  const reconnect = useCallback(async () => {
+    setError(null);
+    try {
+      await signalRTrackingService.reconnect();
+    } catch (err: any) {
+      setError(err?.message || 'Không thể kết nối lại');
+    }
+  }, []);
+
+  return { location, connected, error, reconnect };
 }
