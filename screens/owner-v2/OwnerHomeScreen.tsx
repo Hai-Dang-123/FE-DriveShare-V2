@@ -85,13 +85,10 @@ const OwnerHomeScreen: React.FC = () => {
   const StatCard = ({ icon, value, label, color }: { icon: React.ReactNode, value: string, label: string, color: string }) => (
     <View style={styles.statCard}>
       <View style={[styles.statIconContainer, { backgroundColor: color }]}>
-        {/* Nếu không có icon thực tế, ô vuông màu này sẽ giữ chỗ */}
         {icon}
       </View>
-      <View style={styles.statTextWrapper}>
-        <Text style={styles.statValue}>{value}</Text>
-        <Text style={styles.statLabel}>{label}</Text>
-      </View>
+      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+      <Text style={styles.statLabel} numberOfLines={2}>{label}</Text>
     </View>
   )
 
@@ -111,29 +108,29 @@ const OwnerHomeScreen: React.FC = () => {
             <Text style={styles.sectionTitle}>Thống kê Hoạt động</Text>
             <View style={styles.statsGrid}>
               <StatCard 
-                icon={<MaterialCommunityIcons name="truck-delivery" size={28} color="#3B82F6" />} // Xe: Icon xanh
+                icon={<MaterialCommunityIcons name="truck-delivery" size={24} color="#3B82F6" />}
                 value={String(totalVehicles)} 
                 label="Xe đang hoạt động" 
-                color="#EFF6FF" // Nền xanh nhạt
+                color="#EFF6FF"
               />
               <StatCard 
-                icon={<MaterialCommunityIcons name="account-group" size={28} color="#3B82F6" />} // Tài xế
+                icon={<MaterialCommunityIcons name="account-group" size={24} color="#3B82F6" />}
                 value={String(totalDrivers)} 
                 label="Tài xế sẵn sàng" 
                 color="#EFF6FF"
               />
               <StatCard 
-                icon={<MaterialCommunityIcons name="map-marker-path" size={28} color="#3B82F6" />} // Chuyến đi
+                icon={<MaterialCommunityIcons name="map-marker-path" size={24} color="#3B82F6" />}
                 value={String(totalTrips)} 
                 label="Chuyến đi hoàn thành" 
                 color="#EFF6FF"
               />
-              <StatCard 
-                icon={<MaterialCommunityIcons name="star" size={28} color="#3B82F6" />} // Đánh giá
+              {/* <StatCard 
+                icon={<MaterialCommunityIcons name="star" size={28} color="#3B82F6" />} 
                 value={String(rating)} 
                 label="Đánh giá trung bình" 
                 color="#EFF6FF"
-              />
+              /> */}
             </View>
           </View>
 
@@ -173,14 +170,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   statCard: {
-    width: '48%', // Chia đôi
+    width: '48%',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
+    padding: 14,
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 14,
-    // Shadow
+    justifyContent: 'center',
+    minHeight: 140,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -188,24 +185,29 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   statIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 14,
+    width: 52,
+    height: 52,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 10,
   },
   statTextWrapper: {
     flex: 1,
   },
   statValue: {
-    fontSize: 20,
-    fontWeight: '900',
+    fontSize: 18,
+    fontWeight: '800',
     color: '#1E293B',
+    marginTop: 4,
+    textAlign: 'center',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
-    marginTop: 4,
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 14,
   },
 })
 

@@ -72,7 +72,7 @@ export default function DriverProfileScreen() {
           )}
         </View>
         <Text style={styles.name}>{profile.fullName}</Text>
-        <Text style={styles.role}>{profile.role}</Text>
+        <Text style={styles.role}>TÀI XẾ</Text>
       </View>
 
       <View style={styles.content}>

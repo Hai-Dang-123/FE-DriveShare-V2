@@ -1012,7 +1012,12 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
                         const amountNeeded = Number(form.offeredPrice) || 0
                         const currentBalance = Number(wallet?.balance ?? wallet?.Balance ?? 0) || 0
                         const deficit = Math.max(0, amountNeeded - currentBalance)
-                        router.push(`/wallet-operations?amount=${deficit}`)
+                        // Đóng modal trước khi navigate
+                        onClose()
+                        // Delay để đảm bảo modal đã đóng hoàn toàn
+                        setTimeout(() => {
+                          router.push(`/(wallet)/wallet-operations?amount=${deficit}`)
+                        }, 300)
                       }}
                     >
                       <MaterialCommunityIcons name="wallet-plus" size={20} color="#fff" />

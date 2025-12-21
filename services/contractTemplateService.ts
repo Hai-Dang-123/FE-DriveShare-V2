@@ -22,6 +22,10 @@ const contractTemplateService = {
 
   async getLatestProviderContract() {
     return this.getLatestByType('PROVIDER_CONTRACT')
+  },
+
+  async getLatestDriverContract() {
+    return this.getLatestByType('DRIVER_CONTRACT')
   }
 }
 

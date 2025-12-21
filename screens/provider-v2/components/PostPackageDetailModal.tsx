@@ -313,14 +313,14 @@ const PostPackageDetailModal: React.FC<Props> = ({ visible, postId, onClose }) =
                             </TouchableOpacity>
                         );
                     }
-                    if (st === 'PENDING' || st === 'OPEN') {
-                         return (
-                            <TouchableOpacity style={[styles.btn, styles.btnWarning]} onPress={() => router.back()}>
-                                <MaterialCommunityIcons name="pencil-outline" size={20} color="white" />
-                                <Text style={styles.btnText}>Cập nhật đơn hàng</Text>
-                            </TouchableOpacity>
-                        );
-                    }
+                    // if (st === 'PENDING' || st === 'OPEN') {
+                    //      return (
+                    //         <TouchableOpacity style={[styles.btn, styles.btnWarning]} onPress={() => router.back()}>
+                    //             <MaterialCommunityIcons name="pencil-outline" size={20} color="white" />
+                    //             <Text style={styles.btnText}>Cập nhật đơn hàng</Text>
+                    //         </TouchableOpacity>
+                    //     );
+                    // }
                     return (
                          <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={onClose}>
                             <Text style={[styles.btnText, { color: COLORS.textSub }]}>Đóng</Text>

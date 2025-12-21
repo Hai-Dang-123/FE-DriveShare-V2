@@ -74,7 +74,7 @@ export default function ProviderProfileScreen() {
           )}
         </View>
         <Text style={styles.name}>{profile.fullName}</Text>
-        <Text style={styles.role}>{profile.role}</Text>
+        <Text style={styles.role}>NHÀ CUNG CẤP</Text>
       </View>
 
       <View style={styles.content}>

@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView, TouchableOpacity } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import postTripService from '@/services/postTripService';
 import tripService from '@/services/tripService';
 import StatusBadge from './components/StatusBadge';
 import TripDetailModal from './components/TripDetailModal';
+import InlinePostTripSignModal from './components/InlinePostTripSignModal';
+import InlinePostTripPaymentModal from './components/InlinePostTripPaymentModal';
 
 // Normalizer riêng cho màn Detail
 const normalizeDetail = (raw: any) => {
@@ -39,32 +42,61 @@ const normalizeDetail = (raw: any) => {
 const formatCurrency = (v: any) => new Intl.NumberFormat('vi-VN').format(Number(v || 0));
 
 const PostTripDetailScreen: React.FC = () => {
+  const router = useRouter();
   const { postTripId } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // State cho Modal
+  // State cho Trip Modal
   const [showTripModal, setShowTripModal] = useState(false);
   const [tripLoading, setTripLoading] = useState(false);
   const [tripData, setTripData] = useState<any>(null);
   const [tripError, setTripError] = useState<string | null>(null);
+  
+  // State cho Sign & Payment Modals
+  const [showSignModal, setShowSignModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const res: any = await postTripService.getById(String(postTripId));
+      setData(normalizeDetail(res?.result || res?.data || res));
+      setError(null);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        const res: any = await postTripService.getById(String(postTripId));
-        if (mounted) setData(normalizeDetail(res?.result || res?.data || res));
-      } catch (e: any) {
-        if (mounted) setError(e.message);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    load();
-    return () => { mounted = false; };
+    loadData();
   }, [postTripId]);
+
+  const handleSignDone = () => {
+    setShowSignModal(false);
+    // Tự động mở payment modal sau khi sign xong
+    setTimeout(() => {
+      setShowPaymentModal(true);
+    }, 300);
+  };
+
+  const handlePaymentDone = () => {
+    setShowPaymentModal(false);
+    // Refresh data sau khi thanh toán xong
+    loadData();
+  };
+
+  const handleActionButton = () => {
+    const status = data?.status?.toUpperCase();
+    if (status === 'AWAITING_SIGNATURE') {
+      setShowSignModal(true);
+    } else if (status === 'AWAITING_PAYMENT') {
+      setShowPaymentModal(true);
+    }
+  };
 
   const fetchTripDetail = async () => {
     if (!data?.tripInfo?.tripId) return;
@@ -83,13 +115,24 @@ const PostTripDetailScreen: React.FC = () => {
     }
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#4F46E5" /></View>;
-  if (error || !data) return <View style={styles.center}><Text>Lỗi tải trang</Text></View>;
+  if (loading) return <View style={styles.container}><View style={styles.center}><ActivityIndicator size="large" color="#4F46E5" /></View></View>;
+  if (error || !data) return <View style={styles.container}><View style={styles.center}><Text>Lỗi tải trang</Text></View></View>;
 
-  const totalBudget = data.details.reduce((acc: number, cur: any) => acc + cur.total, 0);
+  const totalBudget = data?.details.reduce((acc: number, cur: any) => acc + cur.total, 0) || 0;
+  const status = data?.status?.toUpperCase();
+  const showActionButton = status === 'AWAITING_SIGNATURE' || status === 'AWAITING_PAYMENT';
 
   return (
     <View style={styles.container}>
+      {/* Header with Back Button */}
+      <View style={styles.topHeader}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={24} color="#111827" />
+        </TouchableOpacity>
+        <Text style={styles.topHeaderTitle}>Chi tiết bài đăng</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
       <ScrollView contentContainerStyle={styles.content}>
         
         {/* Header Block */}
@@ -156,9 +199,41 @@ const PostTripDetailScreen: React.FC = () => {
           </View>
         ))}
 
+        {/* Action Button */}
+        {showActionButton && (
+          <View style={styles.actionContainer}>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleActionButton}>
+              <Ionicons 
+                name={status === 'AWAITING_SIGNATURE' ? 'create-outline' : 'card-outline'} 
+                size={20} 
+                color="#fff" 
+              />
+              <Text style={styles.actionBtnText}>
+                {status === 'AWAITING_SIGNATURE' ? 'Ký hợp đồng' : 'Thanh toán ngay'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Action Button */}
+        {showActionButton && (
+          <View style={styles.actionContainer}>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleActionButton}>
+              <Ionicons 
+                name={status === 'AWAITING_SIGNATURE' ? 'create-outline' : 'card-outline'} 
+                size={20} 
+                color="#fff" 
+              />
+              <Text style={styles.actionBtnText}>
+                {status === 'AWAITING_SIGNATURE' ? 'Ký hợp đồng' : 'Thanh toán ngay'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
       </ScrollView>
 
-      {/* Modal */}
+      {/* Modals */}
       <TripDetailModal 
         visible={showTripModal} 
         onClose={() => setShowTripModal(false)}
@@ -166,14 +241,57 @@ const PostTripDetailScreen: React.FC = () => {
         error={tripError}
         data={tripData}
       />
+      
+      <InlinePostTripSignModal
+        visible={showSignModal}
+        postId={String(postTripId)}
+        onClose={() => setShowSignModal(false)}
+        onDone={handleSignDone}
+      />
+      
+      <InlinePostTripPaymentModal
+        visible={showPaymentModal}
+        postId={String(postTripId)}
+        onClose={() => setShowPaymentModal(false)}
+        onDone={handlePaymentDone}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
+  topHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB'
+  },
+  backBtn: { padding: 4 },
+  topHeaderTitle: { fontSize: 18, fontWeight: '700', color: '#111827', flex: 1, textAlign: 'center' },
   content: { padding: 16, paddingBottom: 40 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  actionContainer: { marginTop: 20, marginBottom: 20 },
+  actionBtn: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4F46E5',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4
+  },
+  actionBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   
   // Header Card
   headerCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },

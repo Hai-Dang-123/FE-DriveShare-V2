@@ -13,6 +13,19 @@ interface ItemCardProps {
   getStatusColor?: (status: string) => string
 }
 
+// Hàm việt hóa status
+const getStatusText = (status: string): string => {
+  const statusMap: Record<string, string> = {
+    'PENDING': 'Chờ xử lý',
+    'IN_USE': 'Đang dùng',
+    'IN_PROGRESS': 'Đang vận chuyển',
+    'COMPLETED': 'Hoàn thành',
+    'DELETED': 'Đã xóa',
+    'PACKAGED': 'Đã đóng gói',
+  }
+  return statusMap[status] || status
+}
+
 const ItemCard: React.FC<ItemCardProps> = ({ item, onEdit, onDelete, onPack, deleting, getStatusColor }) => {
   const images = (item as any).images ?? (item as any).ItemImages ?? []
   const imageUrl = images.length > 0 ? (images[0].itemImageURL ?? images[0].uri ?? images[0]) : 'https://via.placeholder.com/400'
@@ -36,7 +49,7 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onEdit, onDelete, onPack, del
 
         <View style={styles.ribbonContainer} pointerEvents="none">
           <View style={[styles.ribbon, { backgroundColor: statusColor }]}>
-            <Text style={styles.ribbonText}>{(status || '').replace('_', ' ')}</Text>
+            <Text style={styles.ribbonText}>{getStatusText(status)}</Text>
           </View>
         </View>
       </View>
@@ -83,9 +96,9 @@ const ItemCard: React.FC<ItemCardProps> = ({ item, onEdit, onDelete, onPack, del
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={onPack} style={[styles.packButton, status === ItemStatus.IN_USE && styles.packButtonDisabled]} disabled={status === ItemStatus.IN_USE}>
+          <TouchableOpacity onPress={onPack} style={[styles.packButton, status !== ItemStatus.PENDING && styles.packButtonDisabled]} disabled={status !== ItemStatus.PENDING}>
             <ArchiveBoxArrowDownIcon style={styles.packIcon as any} />
-            <Text style={styles.packButtonText}>{status === ItemStatus.IN_USE ? 'Đã đóng gói' : 'Đóng gói'}</Text>
+            <Text style={styles.packButtonText}>{status !== ItemStatus.PENDING ? 'Đã đóng gói' : 'Đóng gói'}</Text>
           </TouchableOpacity>
         </View>
       </View>

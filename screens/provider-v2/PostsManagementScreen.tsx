@@ -84,6 +84,23 @@ const PostsManagementScreen: React.FC<Props> = ({ onBack }) => {
     IN_PROGRESS: '#3B82F6', DONE: '#6B7280',
   }
   const getPostStatusColor = (status: string) => POST_STATUS_COLORS[status] || '#9CA3AF'
+  
+  // Việt hóa status của posts
+  const getPostStatusLabel = (status: string): string => {
+    const labels: Record<string, string> = {
+      'ALL': 'Tất cả',
+      'OPEN': 'Đang mở',
+      'PENDING': 'Chờ xử lý',
+      'AWAITING_OWNER_CONTRACT': 'Chờ hợp đồng',
+      'AWAITING_SIGNATURE': 'Chờ ký',
+      'AWAITING_PAYMENT': 'Chờ thanh toán',
+      'IN_PROGRESS': 'Đang vận chuyển',
+      'DONE': 'Hoàn thành',
+      'COMPLETED': 'Hoàn thành',
+      'CANCELLED': 'Đã hủy',
+    }
+    return labels[status] || status
+  }
 
   const TRIP_STATUS_COLORS: Record<string, string> = {
     ALL: COLORS.primary, CREATED: '#3B82F6', AWAITING_PROVIDER_CONTRACT: '#F59E0B',
@@ -91,6 +108,20 @@ const PostsManagementScreen: React.FC<Props> = ({ onBack }) => {
     COMPLETED: '#6B7280', CANCELLED: '#DC2626',
   }
   const getTripStatusColor = (status: string) => TRIP_STATUS_COLORS[status] || '#9CA3AF'
+  
+  // Việt hóa status của trips
+  const getTripStatusLabel = (status: string): string => {
+    const labels: Record<string, string> = {
+      'ALL': 'Tất cả',
+      'CREATED': 'Mới tạo',
+      'AWAITING_PROVIDER_CONTRACT': 'Chờ hợp đồng',
+      'AWAITING_PROVIDER_PAYMENT': 'Chờ thanh toán',
+      'IN_PROGRESS': 'Đang vận chuyển',
+      'COMPLETED': 'Hoàn thành',
+      'CANCELLED': 'Đã hủy',
+    }
+    return labels[status] || status
+  }
 
   // ... (Giữ nguyên logic handlePostAction, Search, Sort, Delete, Edit của bạn ở đây)
   // Logic cũ của bạn không thay đổi, chỉ thay đổi phần render UI bên dưới
@@ -238,7 +269,7 @@ const PostsManagementScreen: React.FC<Props> = ({ onBack }) => {
             <Text style={styles.tripCode}>{t.tripCode}</Text>
         </View>
         <Text style={[styles.statusText, { color: getTripStatusColor(t.status) }]}>
-            {t.status === 'CREATED' ? 'Mới' : t.status}
+            {getTripStatusLabel(t.status)}
         </Text>
       </View>
       

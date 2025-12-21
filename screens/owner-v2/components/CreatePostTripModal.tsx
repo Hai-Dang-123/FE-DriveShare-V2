@@ -1,224 +1,4 @@
-// import React, { useState } from 'react'
-// import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, Modal, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native'
-// import postTripService, { PostTripCreateDTO, PostTripViewDTO, PostTripDetailCreateDTO, DriverType } from '@/services/postTripService'
-// import { CheckIcon } from '@/screens/provider-v2/icons/ActionIcons'
 
-// interface CreatePostTripModalProps {
-//   visible: boolean
-//   onClose: () => void
-//   tripId: string
-//   onCreated: (post: PostTripViewDTO) => void
-// }
-
-// const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onClose, tripId, onCreated }) => {
-//   const [title, setTitle] = useState('Tìm thêm tài xế cho chuyến')
-//   const [description, setDescription] = useState('Cần bổ sung tài xế, ưu tiên kinh nghiệm và đúng giờ.')
-//   const [payloadKg, setPayloadKg] = useState('')
-//   // Removed top-level post trip type per new backend change
-//   interface DetailFormState {
-//     detailType: DriverType
-//     requiredCount: string
-//     pricePerPerson: string
-//     pickupLocation: string
-//     dropoffLocation: string
-//     mustPickAtGarage: boolean
-//     mustDropAtGarage: boolean
-//   }
-//   const [details, setDetails] = useState<DetailFormState[]>([{
-//     detailType: 'PRIMARY',
-//     requiredCount: '1',
-//     pricePerPerson: '0',
-//     pickupLocation: '',
-//     dropoffLocation: '',
-//     mustPickAtGarage: false,
-//     mustDropAtGarage: false
-//   }])
-//   const [submitting, setSubmitting] = useState(false)
-
-//   const submit = async () => {
-//     if (!title.trim()) return Alert.alert('Thiếu tiêu đề', 'Vui lòng nhập tiêu đề.')
-//     if (!details.length) return Alert.alert('Thiếu chi tiết', 'Cần ít nhất 1 dòng chi tiết.')
-//     // Validate each detail line
-//     const builtDetails: PostTripDetailCreateDTO[] = []
-//     for (let i = 0; i < details.length; i++) {
-//       const d = details[i]
-//       const reqCount = parseInt(d.requiredCount || '0', 10)
-//       if (isNaN(reqCount) || reqCount <= 0) return Alert.alert('Dòng ' + (i+1) + ' lỗi', 'Số lượng phải > 0.')
-//       const price = parseFloat(d.pricePerPerson || '0')
-//       if (price < 0) return Alert.alert('Dòng ' + (i+1) + ' lỗi', 'Giá phải >= 0.')
-//       builtDetails.push({
-//         Type: d.detailType,
-//         RequiredCount: reqCount,
-//         PricePerPerson: price,
-//         PickupLocation: d.pickupLocation.trim(),
-//         DropoffLocation: d.dropoffLocation.trim(),
-//         MustPickAtGarage: d.mustPickAtGarage,
-//         MustDropAtGarage: d.mustDropAtGarage
-//       })
-//     }
-//     const payload = payloadKg ? parseFloat(payloadKg) : undefined
-//     if (payloadKg && (isNaN(payload!) || payload! < 0)) return Alert.alert('Khối lượng không hợp lệ', 'Payload phải >= 0.')
-//     setSubmitting(true)
-//     try {
-//       const dto: PostTripCreateDTO = {
-//         Title: title.trim(),
-//         Description: description.trim(),
-//         TripId: tripId,
-//         RequiredPayloadInKg: payload,
-//         PostTripDetails: builtDetails
-//       }
-//       const res: any = await postTripService.create(dto)
-//       const ok = res?.isSuccess ?? (res?.statusCode === 200 || res?.statusCode === 201)
-//       if (!ok) throw new Error(res?.message || 'Tạo bài đăng thất bại')
-//       const post: PostTripViewDTO = res.result || res.data || res.post || {
-//         postTripId: 'temp', tripId, title: dto.Title, description: dto.Description, status: 'OPEN'
-//       }
-//       onCreated(post)
-//       onClose()
-//       Alert.alert('Thành công', 'Đã đăng bài tìm tài xế.')
-//     } catch (e: any) {
-//       Alert.alert('Lỗi', e?.message || 'Không thể tạo bài đăng')
-//     } finally {
-//       setSubmitting(false)
-//     }
-//   }
-
-//   return (
-//     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-// <View style={styles.backdrop}>
-// <View style={styles.card}>
-// <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-// <View style={styles.headerRow}>
-// <Text style={styles.title}>Đăng bài tìm tài xế</Text>
-// <TouchableOpacity onPress={onClose}><Text style={styles.close}>×</Text></TouchableOpacity>
-// </View>
-// <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-// <View style={{ gap: 14 }}>
-// <View>
-// <Text style={styles.label}>Tiêu đề</Text>
-// <TextInput value={title} onChangeText={setTitle} style={styles.input} placeholder="Tiêu đề" />
-// </View>
-// <View>
-// <Text style={styles.label}>Mô tả</Text>
-// <TextInput value={description} onChangeText={setDescription} style={[styles.input, { height: 90, textAlignVertical: 'top' }]} multiline placeholder="Mô tả ngắn" />
-// </View>
-// <View style={styles.rowWrap}>
-// <View style={{ flex: 1 }}>
-// <Text style={styles.label}>Payload cần (kg)</Text>
-// <TextInput value={payloadKg} onChangeText={setPayloadKg} keyboardType="numeric" style={styles.input} placeholder="Ví dụ: 500" />
-// </View>
-// </View>
-// <View style={styles.separator} />
-// <Text style={styles.sectionSub}>Chi tiết yêu cầu (nhiều dòng)</Text>
-//                 {details.map((d, idx) => (
-//                   <View key={idx} style={styles.detailBlock}>
-// <View style={styles.detailHeader}>
-// <Text style={styles.detailTitle}>Dòng {idx+1}</Text>
-//                       {details.length > 1 && (
-//                         <TouchableOpacity onPress={() => setDetails(prev => prev.filter((_, i) => i !== idx))}>
-// <Text style={styles.remove}>Xóa</Text>
-// </TouchableOpacity>
-//                       )}
-//                     </View>
-// <View style={styles.rowWrap}>
-// <View style={{ flex: 1 }}>
-// <Text style={styles.label}>Loại tài xế</Text>
-// <View style={styles.toggleRow}>
-// <TouchableOpacity onPress={() => setDetails(prev => prev.map((p,i)=> i===idx?{...p, detailType:'PRIMARY'}:p))} style={[styles.toggleBtn, d.detailType==='PRIMARY'&&styles.toggleActive]}><Text style={[styles.toggleText,d.detailType==='PRIMARY'&&styles.toggleTextActive]}>Chính</Text></TouchableOpacity>
-// <TouchableOpacity onPress={() => setDetails(prev => prev.map((p,i)=> i===idx?{...p, detailType:'SECONDARY'}:p))} style={[styles.toggleBtn, d.detailType==='SECONDARY'&&styles.toggleActive]}><Text style={[styles.toggleText,d.detailType==='SECONDARY'&&styles.toggleTextActive]}>Phụ</Text></TouchableOpacity>
-// </View>
-// </View>
-// <View style={{ flex: 1 }}>
-// <Text style={styles.label}>Số lượng cần</Text>
-// <TextInput value={d.requiredCount} onChangeText={v => setDetails(prev => prev.map((p,i)=> i===idx?{...p, requiredCount:v.replace(/[^0-9]/g,'')}:p))} keyboardType="number-pad" style={styles.input} placeholder="1" />
-// </View>
-// </View>
-// <View style={styles.rowWrap}>
-// <View style={{ flex: 1 }}>
-// <Text style={styles.label}>Giá mỗi tài xế (VND)</Text>
-// <TextInput value={d.pricePerPerson} onChangeText={v => setDetails(prev => prev.map((p,i)=> i===idx?{...p, pricePerPerson:v.replace(/[^0-9.]/g,'')}:p))} keyboardType="numeric" style={styles.input} placeholder="0" />
-// </View>
-// </View>
-// <View>
-// <Text style={styles.label}>Điểm đón</Text>
-// <TextInput value={d.pickupLocation} onChangeText={v => setDetails(prev => prev.map((p,i)=> i===idx?{...p, pickupLocation:v}:p))} style={styles.input} placeholder="Địa điểm đón" />
-// </View>
-// <View>
-// <Text style={styles.label}>Điểm trả</Text>
-// <TextInput value={d.dropoffLocation} onChangeText={v => setDetails(prev => prev.map((p,i)=> i===idx?{...p, dropoffLocation:v}:p))} style={styles.input} placeholder="Địa điểm trả" />
-// </View>
-// <View style={styles.flagsRow}>
-// <TouchableOpacity onPress={()=>setDetails(prev => prev.map((p,i)=> i===idx?{...p, mustPickAtGarage: !p.mustPickAtGarage}:p))} style={[styles.flagBtn, d.mustPickAtGarage && styles.flagActive]}>
-// <Text style={[styles.flagText, d.mustPickAtGarage && styles.flagTextActive]}>Đón tại gara</Text>
-// </TouchableOpacity>
-// <TouchableOpacity onPress={()=>setDetails(prev => prev.map((p,i)=> i===idx?{...p, mustDropAtGarage: !p.mustDropAtGarage}:p))} style={[styles.flagBtn, d.mustDropAtGarage && styles.flagActive]}>
-// <Text style={[styles.flagText, d.mustDropAtGarage && styles.flagTextActive]}>Trả tại gara</Text>
-// </TouchableOpacity>
-// </View>
-// </View>
-//                 ))}
-//                 <TouchableOpacity style={styles.addLineBtn} onPress={() => setDetails(prev => [...prev, { detailType:'PRIMARY', requiredCount:'1', pricePerPerson:'0', pickupLocation:'', dropoffLocation:'', mustPickAtGarage:false, mustDropAtGarage:false }])}>
-// <Text style={styles.addLineText}>+ Thêm dòng</Text>
-// </TouchableOpacity>
-// <Text style={styles.totalDrivers}>Tổng số tài xế cần: {details.reduce((sum,d)=> sum + (parseInt(d.requiredCount||'0',10)||0),0)}</Text>
-// </View>
-// </ScrollView>
-// </KeyboardAvoidingView>
-// <View style={styles.footerBar}>
-// <TouchableOpacity style={[styles.btnSmall, styles.secondaryOutline]} onPress={onClose} disabled={submitting}>
-// <Text style={styles.secondaryOutlineText}>Đóng</Text>
-// </TouchableOpacity>
-// <TouchableOpacity style={[styles.btnPrimaryWide]} onPress={submit} disabled={submitting}> 
-//               {submitting ? <ActivityIndicator color="#fff" /> : <CheckIcon style={styles.primaryIcon} />}
-//               <Text style={styles.btnPrimaryWideText}>{submitting ? 'Đang đăng...' : 'Đăng bài'}</Text>
-// </TouchableOpacity>
-// </View>
-// </View>
-// </View>
-// </Modal>
-//   )
-// }
-
-// const styles = StyleSheet.create({
-//   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', padding: 16 },
-//   card: { width: '100%', maxWidth: 560, maxHeight: '90%', backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', paddingTop: 12, paddingHorizontal: 16, paddingBottom: 0, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 },
-//   scroll: { flex: 1 },
-//   scrollContent: { paddingBottom: 8 },
-//   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-//   title: { fontWeight: '800', fontSize: 16, color: '#111827' },
-//   close: { fontSize: 22, lineHeight: 22, color: '#6B7280' },
-//   label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 4 },
-//   input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: '#111827', fontSize: 14 },
-//   primaryIcon: { width: 18, height: 18, color: '#FFFFFF', marginRight: 8 },
-//   footerBar: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12, borderTopWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#FFFFFF', borderBottomLeftRadius: 16, borderBottomRightRadius: 16 },
-//   btnSmall: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10 },
-//   secondaryOutline: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CBD5E1' },
-//   secondaryOutlineText: { color: '#475569', fontWeight: '600', fontSize: 13 },
-//   btnPrimaryWide: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', backgroundColor: '#4F46E5', paddingVertical: 12, borderRadius: 10 },
-//   btnPrimaryWideText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
-//   rowWrap: { flexDirection: 'row', gap: 12 },
-//   toggleRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-//   toggleBtn: { flex: 1, backgroundColor: '#F3F4F6', paddingVertical: 10, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB' },
-//   toggleActive: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
-//   toggleText: { fontWeight: '600', color: '#374151' },
-//   toggleTextActive: { color: '#FFFFFF' },
-//   separator: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 12 },
-//   sectionSub: { fontSize: 12, fontWeight: '700', color: '#6B7280', marginBottom: 8 },
-//   flagsRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
-//   flagBtn: { flex: 1, backgroundColor: '#F3F4F6', paddingVertical: 10, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB' },
-//   flagActive: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
-//   flagText: { fontSize: 12, fontWeight: '600', color: '#374151' },
-//   flagTextActive: { color: '#FFFFFF' }
-//   ,detailBlock: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 12, marginBottom: 12, backgroundColor: '#F9FAFB' }
-//   ,detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }
-//   ,detailTitle: { fontSize: 12, fontWeight: '700', color: '#111827' }
-//   ,remove: { fontSize: 12, fontWeight: '600', color: '#DC2626' }
-//   ,addLineBtn: { marginTop: 4, alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#EEF2FF', borderRadius: 8, borderWidth: 1, borderColor: '#E0E7FF' }
-//   ,addLineText: { fontSize: 12, fontWeight: '600', color: '#4338CA' }
-//   ,totalDrivers: { marginTop: 8, fontSize: 12, fontWeight: '700', color: '#374151' }
-// })
-
-// export default CreatePostTripModal
 
 import React, { useState } from 'react'
 import {
@@ -232,7 +12,9 @@ import {
   Alert,
   ScrollView,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native'
 import postTripService, { PostTripCreateDTO, PostTripViewDTO, PostTripDetailCreateDTO, DriverType } from '@/services/postTripService'
 import contractTemplateService from '@/services/contractTemplateService'
@@ -240,6 +22,49 @@ import walletService from '@/services/walletService'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import AddressAutocomplete from '@/components/AddressAutocomplete'
 import { useRouter } from 'expo-router'
+
+// --- COMPONENT: STEP INDICATOR ---
+const StepIndicator: React.FC<{ step: number }> = ({ step }) => {
+  const steps = ['Thông tin', 'Hợp đồng', 'Thanh toán', 'Hoàn tất']
+  return (
+    <View style={stepStyles.container}>
+      <View style={stepStyles.wrapper}>
+        <View style={stepStyles.lineBase} />
+        <View style={[stepStyles.lineActive, { width: `${((step - 1) / 3) * 100}%` }]} />
+        
+        {steps.map((label, idx) => {
+          const s = idx + 1
+          const isActive = s <= step
+          return (
+            <View key={s} style={stepStyles.item}>
+              <View style={[stepStyles.circle, isActive && stepStyles.circleActive]}>
+                {s < step ? (
+                  <Ionicons name="checkmark" size={12} color="#fff" />
+                ) : (
+                  <Text style={[stepStyles.num, isActive && { color: '#fff' }]}>{s}</Text>
+                )}
+              </View>
+              <Text style={[stepStyles.text, isActive && stepStyles.textActive]}>{label}</Text>
+            </View>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
+const stepStyles = StyleSheet.create({
+  container: { paddingVertical: 12, borderBottomWidth: 1, borderColor: '#eee', backgroundColor: '#fff' },
+  wrapper: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 24, position: 'relative' },
+  lineBase: { position: 'absolute', top: 10, left: 40, right: 40, height: 2, backgroundColor: '#E5E7EB', zIndex: -1 },
+  lineActive: { position: 'absolute', top: 10, left: 40, height: 2, backgroundColor: '#4F46E5', zIndex: -1 },
+  item: { alignItems: 'center', backgroundColor: '#fff', width: 60 },
+  circle: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  circleActive: { backgroundColor: '#4F46E5' },
+  num: { fontSize: 10, fontWeight: '700', color: '#6B7280' },
+  text: { fontSize: 10, color: '#6B7280' },
+  textActive: { color: '#4F46E5', fontWeight: '700' },
+})
 
 interface CreatePostTripModalProps {
   visible: boolean
@@ -340,7 +165,8 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                 Description: description.trim(),
                 TripId: tripId,
                 RequiredPayloadInKg: payloadValue,
-                PostTripDetails: builtDetails
+                PostTripDetails: builtDetails,
+                Status: 'AWAITING_SIGNATURE'
             }
 
             // create post trip on server with awaiting signature status (backend will return id)
@@ -353,7 +179,7 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
 
             // fetch latest provider contract template (includes terms)
             try {
-                const tplResp: any = await contractTemplateService.getLatestProviderContract()
+                const tplResp: any = await contractTemplateService.getLatestDriverContract()
                 const tpl = tplResp?.result ?? tplResp
                 setContractTemplate(tpl ?? null)
             } catch (e) {
@@ -444,6 +270,13 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
             const ok = presp?.isSuccess ?? (presp?.statusCode === 200 || presp?.statusCode === 201)
             if (!ok) throw new Error(presp?.message || 'Thanh toán thất bại')
 
+            // Update status to OPEN after successful payment
+            try {
+                await postTripService.updateStatus(createdPostId, 'OPEN')
+            } catch (e) {
+                console.warn('postTrip.updateStatus to OPEN failed', e)
+            }
+
             setStep(4)
             // notify parent with a lightweight PostTripViewDTO stub
             const postStub: PostTripViewDTO = {
@@ -451,7 +284,7 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                 tripId,
                 title,
                 description,
-                status: 'AWAITING_DRIVER'
+                status: 'OPEN'
             } as any
             onCreated(postStub)
         } catch (e: any) {
@@ -466,20 +299,29 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
     }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerHandle} />
-            <View style={styles.headerRow}>
-                <Text style={styles.headerTitle}>Đăng Tin Tìm Tài Xế</Text>
-                <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                    <Ionicons name="close" size={22} color="#4B5563" />
-                </TouchableOpacity>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={{ flex: 1, backgroundColor: '#F3F4F6' }}>
+            
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity 
+                onPress={step > 1 ? () => setStep(step - 1) : onClose} 
+                style={styles.closeBtn}
+              >
+                <Ionicons name={step > 1 ? "arrow-back" : "close"} size={24} color="#111827" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>
+                {step === 1 ? 'Tạo Bài Đăng' : step === 2 ? 'Ký Hợp Đồng' : step === 3 ? 'Thanh Toán' : 'Hoàn Tất'}
+              </Text>
+              <View style={{ width: 24 }} />
             </View>
-          </View>
+
+            {/* Step Indicator */}
+            <StepIndicator step={step} />
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
             {step === 1 && (
@@ -904,15 +746,21 @@ const CreatePostTripModal: React.FC<CreatePostTripModalProps> = ({ visible, onCl
                                     <Text style={styles.summaryLabel}>Trạng thái</Text>
                                     <Text style={styles.summaryValue}>Hoàn tất</Text>
                                 </View>
-                                <TouchableOpacity style={styles.btnPrimary} onPress={() => { onClose(); setStep(1); }}>
+                                <TouchableOpacity style={styles.btnPrimary} onPress={() => { 
+                                    setStep(1); 
+                                    setAcceptedTerms(false);
+                                    setCreatedPostId(null);
+                                    onClose(); 
+                                }}>
                                     <Text style={styles.btnPrimaryText}>Đóng</Text>
                                 </TouchableOpacity>
                             </>
                         )}
                     </View>
 
-        </View>
-      </KeyboardAvoidingView>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   )
 }

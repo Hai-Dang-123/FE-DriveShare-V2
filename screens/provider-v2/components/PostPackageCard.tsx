@@ -29,6 +29,23 @@ const getStatusColor = (status: string) => {
   }
 }
 
+// Việt hóa status
+const getStatusLabel = (status: string): string => {
+  const labels: Record<string, string> = {
+    'OPEN': 'Đang mở',
+    'PENDING': 'Chờ xử lý',
+    'AWAITING_SIGNATURE': 'Chờ ký',
+    'AWAITING_PAYMENT': 'Chờ thanh toán',
+    'IN_PROGRESS': 'Đang vận chuyển',
+    'IN_TRANSIT': 'Đang vận chuyển',
+    'DONE': 'Hoàn thành',
+    'COMPLETED': 'Hoàn thành',
+    'CANCELLED': 'Đã hủy',
+    'CLOSED': 'Đã đóng',
+  }
+  return labels[status] || status
+}
+
 const formatDate = (dateString: string) => {
   if (!dateString) return 'N/A'
   return new Date(dateString).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
@@ -62,7 +79,7 @@ const PostPackageCard: React.FC<PostCardProps & ActionProps> = ({ post, onEdit, 
           <Text style={styles.subTitle}>{post.packageDetails.title}</Text>
         </View>
         <View style={[styles.badge, { backgroundColor: style.bg }]}>
-          <Text style={[styles.badgeText, { color: style.text }]}>{post.status}</Text>
+          <Text style={[styles.badgeText, { color: style.text }]}>{getStatusLabel(post.status)}</Text>
         </View>
       </View>
 

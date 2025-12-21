@@ -1,10 +1,12 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import postTripService from '@/services/postTripService';
-import PostCard, { normalizePost } from './components/PostCard'; // Giả sử import đúng đường dẫn
+import PostTripCard from './components/PostTripCard';
+import InlinePostTripSignModal from './components/InlinePostTripSignModal';
+import InlinePostTripPaymentModal from './components/InlinePostTripPaymentModal';
 
 const PostTripsManagementScreen: React.FC = () => {
   const router = useRouter();
@@ -13,6 +15,11 @@ const PostTripsManagementScreen: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [pageNumber, setPageNumber] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  
+  // Modal states for sign & payment
+  const [signModalVisible, setSignModalVisible] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   const fetchPage = async (page: number, append = false) => {
     try {
@@ -24,9 +31,8 @@ const PostTripsManagementScreen: React.FC = () => {
       const total = payload?.totalCount ?? (Array.isArray(data) ? data.length : 0);
       
       const arr = Array.isArray(data) ? data : [];
-      const mapped = arr.map(normalizePost); // Dùng hàm normalize tách ra
 
-      setItems(prev => append ? [...prev, ...mapped] : mapped);
+      setItems(prev => append ? [...prev, ...arr] : arr);
       setHasMore((page * 10) < total);
     } catch (err) {
       console.error(err);
@@ -40,6 +46,52 @@ const PostTripsManagementScreen: React.FC = () => {
 
   const onRefresh = () => { setRefreshing(true); setPageNumber(1); fetchPage(1); };
   const loadMore = () => { if (!loading && hasMore) { const next = pageNumber + 1; setPageNumber(next); fetchPage(next, true); } };
+
+  const handleSign = (postId: string) => {
+    setSelectedPostId(postId);
+    setSignModalVisible(true);
+  };
+
+  const handlePay = (postId: string) => {
+    setSelectedPostId(postId);
+    setPaymentModalVisible(true);
+  };
+
+  const handleSignDone = () => {
+    setSignModalVisible(false);
+    setSelectedPostId(null);
+    onRefresh();
+  };
+
+  const handlePaymentDone = () => {
+    setPaymentModalVisible(false);
+    setSelectedPostId(null);
+    onRefresh();
+  };
+
+  const handleEdit = (post: any) => {
+    Alert.alert('Chỉnh sửa', 'Tính năng đang phát triển');
+  };
+
+  const handleDelete = (post: any) => {
+    Alert.alert('Xác nhận xóa', `Bạn có chắc muốn xóa bài đăng "${post.title || post.Title}"?`, [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Xóa',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            // Note: implement delete endpoint if available
+            Alert.alert('Thông báo', 'Tính năng xóa đang phát triển');
+            // await postTripService.delete(post.postTripId || post.id);
+            // onRefresh();
+          } catch (e: any) {
+            Alert.alert('Lỗi', e?.message || 'Không thể xóa bài đăng');
+          }
+        }
+      }
+    ]);
+  };
 
   return (
     <View style={styles.screen}>
@@ -59,11 +111,16 @@ const PostTripsManagementScreen: React.FC = () => {
       ) : (
         <FlatList
           data={items}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.postTripId || item.id}
           renderItem={({ item }) => (
-            <PostCard 
-              item={item} 
-              onPress={() => router.push({ pathname: '/(owner)/trip-post/[postTripId]', params: { postTripId: item.id } })} 
+            <PostTripCard 
+              post={item}
+              onView={(id) => router.push({ pathname: '/(owner)/trip-post/[postTripId]', params: { postTripId: id } })}
+              onSign={handleSign}
+              onPay={handlePay}
+              onEdit={() => handleEdit(item)}
+              onDelete={() => handleDelete(item)}
+              showActions={true}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -74,6 +131,22 @@ const PostTripsManagementScreen: React.FC = () => {
           ListEmptyComponent={<View style={styles.center}><Text style={styles.emptyText}>Chưa có bài đăng nào</Text></View>}
         />
       )}
+
+      {/* Sign Modal */}
+      <InlinePostTripSignModal
+        visible={signModalVisible}
+        postId={selectedPostId || undefined}
+        onClose={() => setSignModalVisible(false)}
+        onDone={handleSignDone}
+      />
+
+      {/* Payment Modal */}
+      <InlinePostTripPaymentModal
+        visible={paymentModalVisible}
+        postId={selectedPostId || undefined}
+        onClose={() => setPaymentModalVisible(false)}
+        onDone={handlePaymentDone}
+      />
     </View>
   );
 };

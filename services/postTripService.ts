@@ -25,6 +25,7 @@ export interface PostTripCreateDTO {
   TripId: string
   RequiredPayloadInKg?: number | null
   PostTripDetails: PostTripDetailCreateDTO[]
+  Status: string
 }
 
 export interface PostTripViewDTO {

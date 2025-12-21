@@ -397,10 +397,20 @@ const DriverTeamScreen: React.FC = () => {
 
   // Main Screen with Teams List + Add Owner Feature
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Current Teams Section */}
-      {teams.length > 0 && (
-        <View style={styles.teamsSection}>
+    <View style={styles.container}>
+      {/* Header with Back Button */}
+      <View style={styles.screenHeader}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <MaterialCommunityIcons name="arrow-left" size={24} color="#0F172A" />
+        </TouchableOpacity>
+        <Text style={styles.screenTitle}>Đội Xe Của Tôi</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainer}>
+        {/* Current Teams Section */}
+        {teams.length > 0 && (
+          <View style={styles.teamsSection}>
           <View style={styles.sectionHeader}>
             <MaterialCommunityIcons name="account-group" size={24} color="#3B82F6" />
             <Text style={styles.sectionTitle}>Đội xe của tôi ({teams.length})</Text>
@@ -678,6 +688,7 @@ const DriverTeamScreen: React.FC = () => {
         </Pressable>
       </Modal>
     </ScrollView>
+    </View>
   )
 }
 
@@ -686,8 +697,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  scrollContainer: {
+    flex: 1,
+  },
   contentContainer: {
     paddingBottom: 100,
+  },
+  screenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  backButton: {
+    padding: 4,
+  },
+  screenTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
   },
   // Teams Section
   teamsSection: {

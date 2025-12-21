@@ -152,12 +152,12 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
                           label="Bài đăng"
                           color="#EFF6FF"
                         />
-                        <StatCard
+                        {/* <StatCard
                           icon={<MaterialCommunityIcons name="star" size={28} color="#3B82F6" />}
                           value={String(averageRating)}
                           label="Đánh giá trung bình"
                           color="#EFF6FF"
-                        />
+                        /> */}
                       </View>
                     </View>
           <ManagementTabs />

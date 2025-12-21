@@ -1820,7 +1820,7 @@ const TripDetailScreen: React.FC = () => {
       <View style={styles.header}>
         {/* Row 1: Back button + Title + Trip Code + Refresh */}
         <View style={styles.headerTopRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => router.push('/(owner)/trips')} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color="#1F2937" />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: "center" }}>
