@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -94,7 +95,7 @@ const PostTripsManagementScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -147,7 +148,7 @@ const PostTripsManagementScreen: React.FC = () => {
         onClose={() => setPaymentModalVisible(false)}
         onDone={handlePaymentDone}
       />
-    </View>
+    </SafeAreaView>
   );
 };
 

@@ -3,6 +3,7 @@ import {
     View, Text, StyleSheet, FlatList, TouchableOpacity, 
     ActivityIndicator, RefreshControl, StatusBar, TextInput
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons'
@@ -219,7 +220,7 @@ const OpenPostTripsScreen: React.FC = () => {
   }
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="#F3F4F6" />
       
       <View style={styles.header}>
@@ -305,7 +306,7 @@ const OpenPostTripsScreen: React.FC = () => {
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   )
 }
 

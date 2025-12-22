@@ -8,12 +8,12 @@ import React, {
 import {
   View,
   Text,
-  SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
   Platform,
   Image,
   Linking,
@@ -22,6 +22,9 @@ import {
   StatusBar,
   Dimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import type { Feature, LineString } from "geojson";
@@ -88,7 +91,9 @@ type VehicleIssueType =
 interface LiquidationItem {
   Description: string;
   Amount: number;
-  IsNegative: boolean;
+  IsDeduction?: boolean;
+  // Backward compat (old schema)
+  IsNegative?: boolean;
 }
 
 interface PersonReport {
@@ -97,12 +102,15 @@ interface PersonReport {
   Email: string;
   Role: string;
   Items: LiquidationItem[];
-  FinalWalletChange: number;
+  FinalAmount?: number;
+  // Backward compat (old schema)
+  FinalWalletChange?: number;
 }
 
 interface LiquidationReport {
   TripId: string;
   TripCode: string;
+  CompletedDate?: string;
   OwnerReport: PersonReport;
   ProviderReport: PersonReport;
   DriverReports: PersonReport[];
@@ -293,14 +301,26 @@ const LiquidationReportView = ({
     }).format(amount);
   };
 
+  const isDeduction = (item: LiquidationItem) => {
+    if (typeof item.IsDeduction === 'boolean') return item.IsDeduction;
+    if (typeof item.IsNegative === 'boolean') return item.IsNegative;
+    return (item.Amount ?? 0) < 0;
+  };
+
+  const getFinalAmount = (person: PersonReport) => {
+    if (typeof person.FinalAmount === 'number') return person.FinalAmount;
+    if (typeof person.FinalWalletChange === 'number') return person.FinalWalletChange;
+    return 0;
+  };
+
   // Calculate financial summary
   const totalRevenue = report.OwnerReport.Items
-    .filter(item => !item.IsNegative)
-    .reduce((sum, item) => sum + item.Amount, 0);
+    .filter(item => !isDeduction(item))
+    .reduce((sum, item) => sum + Math.abs(item.Amount ?? 0), 0);
   
   const totalExpense = report.OwnerReport.Items
-    .filter(item => item.IsNegative)
-    .reduce((sum, item) => sum + item.Amount, 0);
+    .filter(item => isDeduction(item))
+    .reduce((sum, item) => sum + Math.abs(item.Amount ?? 0), 0);
 
   const allParticipants = [
     report.OwnerReport,
@@ -381,21 +401,21 @@ const LiquidationReportView = ({
             <View style={styles.liquidationItemLeft}>
               <View style={[
                 styles.liquidationItemDot,
-                { backgroundColor: item.IsNegative ? '#DC2626' : '#059669' }
+                { backgroundColor: isDeduction(item) ? '#DC2626' : '#059669' }
               ]} />
               <Text style={styles.liquidationItemDesc}>{item.Description}</Text>
             </View>
             <View style={[
               styles.liquidationItemAmountBox,
-              item.IsNegative 
+              isDeduction(item) 
                 ? { backgroundColor: '#FEE2E2', borderColor: '#DC2626' }
                 : { backgroundColor: '#D1FAE5', borderColor: '#059669' }
             ]}>
               <Text style={[
                 styles.liquidationItemAmount,
-                item.IsNegative ? styles.negativeAmount : styles.positiveAmount
+                isDeduction(item) ? styles.negativeAmount : styles.positiveAmount
               ]}>
-                {item.IsNegative ? '-' : '+'}{formatCurrency(item.Amount)}
+                {isDeduction(item) ? '-' : '+'}{formatCurrency(Math.abs(item.Amount ?? 0))}
               </Text>
             </View>
           </View>
@@ -406,21 +426,21 @@ const LiquidationReportView = ({
 
       <View style={[
         styles.liquidationTotal,
-        person.FinalWalletChange >= 0 
+        getFinalAmount(person) >= 0 
           ? { backgroundColor: '#ECFDF5' }
           : { backgroundColor: '#FEF2F2' }
       ]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.liquidationTotalLabel}>Thay đổi ví</Text>
           <Text style={styles.liquidationTotalNote}>
-            {person.FinalWalletChange >= 0 ? 'Tăng' : 'Giảm'}
+            {getFinalAmount(person) >= 0 ? 'Tăng' : 'Giảm'}
           </Text>
         </View>
         <Text style={[
           styles.liquidationTotalAmount,
-          person.FinalWalletChange >= 0 ? styles.positiveAmount : styles.negativeAmount
+          getFinalAmount(person) >= 0 ? styles.positiveAmount : styles.negativeAmount
         ]}>
-          {person.FinalWalletChange >= 0 ? '+' : ''}{formatCurrency(person.FinalWalletChange)}
+          {getFinalAmount(person) >= 0 ? '+' : ''}{formatCurrency(getFinalAmount(person))}
         </Text>
       </View>
     </View>
@@ -568,25 +588,14 @@ const TripDetailScreen: React.FC = () => {
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [issueType, setIssueType] = useState<VehicleIssueType>("SCRATCH");
   const [issueDescription, setIssueDescription] = useState("");
-  const [issueImage, setIssueImage] = useState<File | string | null>(null);
+  const [issueImage, setIssueImage] = useState<{ uri?: string; imageURL?: string; fileName?: string; type?: string } | null>(null);
   const [submittingIssue, setSubmittingIssue] = useState(false);
 
-  // Cache blob URL to prevent recreation on every render (causes network request loop when typing)
+  // Lấy imageURL để hiển thị
   const issueImageUrl = useMemo(() => {
     if (!issueImage) return '';
-    if (typeof issueImage === 'string') return issueImage;
-    if (issueImage instanceof File) return URL.createObjectURL(issueImage);
-    return '';
+    return issueImage.imageURL || issueImage.uri || '';
   }, [issueImage]);
-
-  // Cleanup blob URL to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      if (issueImageUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(issueImageUrl);
-      }
-    };
-  }, [issueImageUrl]);
 
   // Surcharge/Compensation states for handover issues
   const [showSurchargeModal, setShowSurchargeModal] = useState(false);
@@ -600,7 +609,13 @@ const TripDetailScreen: React.FC = () => {
   const [isPlanning, setIsPlanning] = useState(false); // Loading state while planning route
   const [routePlanned, setRoutePlanned] = useState(false); // Route successfully planned
   const [signalRError, setSignalRError] = useState<string | null>(null);
-  const signalREnabled = trip?.status === 'MOVING_TO_PICKUP' || trip?.status === 'READY_FOR_VEHICLE_RETURN'|| trip?.status === 'MOVING_TO_DROPOFF';
+  
+  // Memoize signalREnabled để tránh re-render liên tục
+  const signalREnabled = useMemo(() => {
+    return trip?.status === 'MOVING_TO_PICKUP' || 
+           trip?.status === 'READY_FOR_VEHICLE_RETURN' || 
+           trip?.status === 'MOVING_TO_DROPOFF';
+  }, [trip?.status]);
   
   console.log('[Owner TripDetail] SignalR Debug:', {
     tripId,
@@ -642,13 +657,13 @@ const TripDetailScreen: React.FC = () => {
     }
   }, [reconnect]);
 
-  // Reset route planning flags khi trip status thay đổi
+  // Reset route planning flags khi trip status thay đổi (nhưng không reset SignalR)
   useEffect(() => {
     console.log('[Owner] Trip status changed to:', trip?.status, '- Resetting route planning states');
     setInitialRoutePlanned(false);
     setRoutePlanned(false);
     setIsPlanning(false);
-  }, [trip?.status]);
+  }, [trip?.tripId, trip?.status]); // Thêm tripId để tránh reset khi cùng 1 trip
 
   /**
    * Handle driver location updates from SignalR
@@ -1669,12 +1684,59 @@ const TripDetailScreen: React.FC = () => {
       formData.append("IssueType", issueType);
       formData.append("Description", issueDescription.trim());
 
-      if (issueImage instanceof File) {
-        formData.append("Image", issueImage);
-      } else if (typeof issueImage === "string") {
-        const response = await fetch(issueImage);
-        const blob = await response.blob();
-        formData.append("Image", blob, "issue.jpg");
+      if (issueImage) {
+        // Prefer uploading a real file URI on native (more reliable than blobs).
+        if (Platform.OS !== "web") {
+          let uploadUri = issueImage.uri || issueImage.imageURL;
+          if (!uploadUri) throw new Error("Không tìm thấy ảnh minh chứng");
+
+          // If we somehow only have a data: URL, write it to a temp file first.
+          const cacheDir = (FileSystem as any).cacheDirectory as string | undefined;
+          if (uploadUri.startsWith("data:") && cacheDir) {
+            const base64Marker = ";base64,";
+            const idx = uploadUri.indexOf(base64Marker);
+            if (idx > -1) {
+              const base64Data = uploadUri.slice(idx + base64Marker.length);
+              const tempUri = `${cacheDir}issue_${Date.now()}.jpg`;
+              await FileSystem.writeAsStringAsync(tempUri, base64Data, {
+                encoding: (FileSystem as any).EncodingType?.Base64 ?? "base64",
+              });
+              uploadUri = tempUri;
+            }
+          }
+
+          // Android: copy content:// to cache to avoid multipart readers failing.
+          if (
+            uploadUri.startsWith("content://") &&
+            Platform.OS === "android" &&
+            cacheDir
+          ) {
+            try {
+              const tempUri = `${cacheDir}issue_${Date.now()}.jpg`;
+              await FileSystem.copyAsync({ from: uploadUri, to: tempUri });
+              uploadUri = tempUri;
+            } catch (e) {
+              // If copy fails, fall back to trying content:// directly.
+              console.warn("[Owner] copyAsync failed, using content:// directly", e);
+            }
+          }
+
+          const fileName = issueImage.fileName || `issue_${Date.now()}.jpg`;
+          const mimeType =
+            issueImage.type && issueImage.type.includes("/")
+              ? issueImage.type
+              : "image/jpeg";
+
+          formData.append(
+            "Image",
+            { uri: uploadUri, name: fileName, type: mimeType } as any
+          );
+        } else if (issueImage.imageURL) {
+          // Web: File/Blob is acceptable.
+          const response = await fetch(issueImage.imageURL);
+          const blob = await response.blob();
+          formData.append("Image", blob, issueImage.fileName || "issue.jpg");
+        }
       }
 
       const res = await tripService.reportHandoverIssue(formData);
@@ -3083,7 +3145,11 @@ const TripDetailScreen: React.FC = () => {
         animationType="fade"
         onRequestClose={() => setShowOtpModal(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+        >
           <View style={[styles.modalCard, { width: "90%" }]}>
             <Text style={styles.otpModalTitle}>Nhập mã OTP</Text>
             <View style={styles.otpRow}>
@@ -3120,7 +3186,7 @@ const TripDetailScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 5. Modal Driver Contract PDF */}
@@ -3622,7 +3688,11 @@ const TripDetailScreen: React.FC = () => {
         animationType="fade"
         onRequestClose={() => setShowHandoverOtpModal(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+        >
           <View style={[styles.modalCard, { width: "90%" }]}>
             <Text style={styles.otpModalTitle}>OTP Biên Bản</Text>
             <View style={styles.otpRow}>
@@ -3647,7 +3717,7 @@ const TripDetailScreen: React.FC = () => {
               <Text style={styles.actionBtnTextPri}>Ký xác nhận</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 9. Modal Handover Checklist Editor */}
@@ -3858,15 +3928,29 @@ const TripDetailScreen: React.FC = () => {
               <TouchableOpacity
                 style={styles.issueImagePicker}
                 onPress={async () => {
-                  if (Platform.OS === "web") {
-                    const input = document.createElement("input");
-                    input.type = "file";
-                    input.accept = "image/*";
-                    input.onchange = (e: any) => {
-                      const file = e.target.files[0];
-                      if (file) setIssueImage(file);
-                    };
-                    input.click();
+                  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                  if (status !== 'granted') {
+                    Alert.alert('Cần quyền', 'Vui lòng cấp quyền truy cập thư viện ảnh.');
+                    return;
+                  }
+                  
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsEditing: false,
+                    quality: 0.5,
+                    base64: true,
+                  });
+
+                  if (!result.canceled && result.assets[0]) {
+                    const asset = result.assets[0];
+                    const dataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : undefined;
+                    
+                    setIssueImage({
+                      uri: asset.uri,
+                      imageURL: dataUrl || asset.uri,
+                      fileName: asset.fileName || `issue_${Date.now()}.jpg`,
+                      type: (asset as any).mimeType || 'image/jpeg',
+                    });
                   }
                 }}
               >
@@ -4985,7 +5069,7 @@ const styles = StyleSheet.create({
     padding: 20,
     width: "100%",
     maxWidth: 500,
-    maxHeight: "85%",
+    height: "85%",
   },
   issueModalHeader: {
     flexDirection: "row",
@@ -5160,7 +5244,7 @@ const styles = StyleSheet.create({
     padding: 0,
     width: "100%",
     maxWidth: 600,
-    maxHeight: "90%",
+    height: "90%",
     overflow: "hidden",
   },
   issuesPanelHeader: {
@@ -5472,7 +5556,7 @@ const styles = StyleSheet.create({
     padding: 20,
     width: "100%",
     maxWidth: 500,
-    maxHeight: "80%",
+    height: "80%",
   },
   surchargeModalHeader: {
     flexDirection: "row",

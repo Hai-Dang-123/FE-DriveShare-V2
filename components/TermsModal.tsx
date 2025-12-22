@@ -1,5 +1,6 @@
 import React from 'react'
 import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 interface TermsModalProps {
   visible: boolean
@@ -15,15 +16,20 @@ const TermsModal: React.FC<TermsModalProps> = ({ visible, onClose }) => {
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Điều Khoản & Chính Sách</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={true}>
+        <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+          <View style={styles.modalContainer}>
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>Điều Khoản & Chính Sách</Text>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+    
+            <ScrollView
+              style={styles.content}
+              contentContainerStyle={styles.contentContainer}
+              showsVerticalScrollIndicator={true}
+            >
             <Text style={styles.sectionTitle}>1. GIỚI THIỆU</Text>
             <Text style={styles.paragraph}>
               Chào mừng bạn đến với nền tảng DriveShare - nền tảng kết nối chủ xe, tài xế và nhà cung cấp dịch vụ vận tải. 
@@ -113,14 +119,15 @@ const TermsModal: React.FC<TermsModalProps> = ({ visible, onClose }) => {
             <Text style={styles.lastUpdated}>
               Cập nhật lần cuối: 01/12/2025
             </Text>
-          </ScrollView>
+            </ScrollView>
 
-          <View style={styles.footer}>
-            <TouchableOpacity onPress={onClose} style={styles.acceptButton}>
-              <Text style={styles.acceptButtonText}>Đã hiểu</Text>
-            </TouchableOpacity>
+            <View style={styles.footer}>
+              <TouchableOpacity onPress={onClose} style={styles.acceptButton}>
+                <Text style={styles.acceptButtonText}>Đã hiểu</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        </SafeAreaView>
       </View>
     </Modal>
   )
@@ -134,12 +141,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   } as ViewStyle,
+  safeArea: {
+    width: '100%',
+    maxWidth: 500,
+    height: '90%',
+  } as ViewStyle,
   modalContainer: {
     backgroundColor: '#fff',
     borderRadius: 20,
-    maxHeight: '85%',
+    flex: 1,
     width: '100%',
-    maxWidth: 500,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -174,6 +185,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   } as TextStyle,
   content: {
+    flex: 1,
+  } as ViewStyle,
+  contentContainer: {
     paddingHorizontal: 20,
     paddingVertical: 16,
   } as ViewStyle,

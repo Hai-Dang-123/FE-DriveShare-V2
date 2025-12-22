@@ -1,6 +1,8 @@
 import React from "react";
 import { Tabs, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "../../constants/Colors";
 import type { BottomTabNavigationOptions } from "@react-navigation/bottom-tabs";
 import type { RouteProp } from "@react-navigation/native";
@@ -15,6 +17,7 @@ const hideTabBarForRoutes = [
 
 export default function ProviderLayout() {
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
   const display = hideTabBarForRoutes.some((r) => pathname.startsWith(r))
     ? "none"
     : "flex";
@@ -46,7 +49,12 @@ export default function ProviderLayout() {
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.grey,
         headerShown: false,
-        tabBarStyle: { height: 60, paddingBottom: 5, paddingTop: 5, display },
+        tabBarStyle: { 
+          height: 60 + (insets.bottom || 0), 
+          paddingBottom: 5 + (insets.bottom || 0), 
+          paddingTop: 5, 
+          display 
+        },
         tabBarLabelStyle: { fontSize: 12, fontWeight: "600" },
       })}
     >

@@ -10,6 +10,7 @@ import {
   Platform 
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -17,7 +18,7 @@ const WelcomeScreen: React.FC = () => {
   const router = useRouter();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={styles.container}>
       {/* Cấu hình StatusBar: 
           - transparent để ảnh nền tràn lên
           - dark-content để icon màu đen dễ nhìn trên nền sáng 
@@ -85,7 +86,7 @@ const WelcomeScreen: React.FC = () => {
 
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 

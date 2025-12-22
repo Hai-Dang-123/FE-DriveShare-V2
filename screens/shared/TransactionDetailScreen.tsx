@@ -11,6 +11,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import transactionService, { TransactionDTO } from '@/services/transactionService';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const TransactionDetailScreen = () => {
   const router = useRouter();
@@ -134,7 +135,7 @@ const TransactionDetailScreen = () => {
   const isIncome = transaction.amount > 0; // Positive = income, negative = expense
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBackButton}>
@@ -232,7 +233,7 @@ const TransactionDetailScreen = () => {
           </Text>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 

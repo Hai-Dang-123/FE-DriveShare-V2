@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,23 @@ import {
   Image,
   StyleSheet,
   Alert,
-  Platform,
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
 interface IssueImagePickerProps {
-  images: (string | File)[];
-  onImagesChange: (images: (string | File)[]) => void;
+  images: Array<{
+    uri: string;
+    imageURL: string;
+    fileName: string;
+    type: string;
+  }>;
+  onImagesChange: (images: Array<{
+    uri: string;
+    imageURL: string;
+    fileName: string;
+    type: string;
+  }>) => void;
   maxImages?: number;
 }
 
@@ -22,27 +31,6 @@ const IssueImagePicker: React.FC<IssueImagePickerProps> = ({
   onImagesChange,
   maxImages = 5,
 }) => {
-  // Cache blob URLs to prevent recreation on every render (causes network request loop)
-  const imageUrls = useMemo(() => {
-    return images.map((item) => {
-      if (typeof item === 'string') {
-        return item; // URI string (mobile)
-      } else {
-        return URL.createObjectURL(item); // Blob URL (web)
-      }
-    });
-  }, [images]);
-
-  // Cleanup blob URLs to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      imageUrls.forEach((url) => {
-        if (url.startsWith('blob:')) {
-          URL.revokeObjectURL(url);
-        }
-      });
-    };
-  }, [imageUrls]);
   const pickImage = async () => {
     if (images.length >= maxImages) {
       Alert.alert('Giới hạn', `Chỉ có thể tải tối đa ${maxImages} ảnh`);
@@ -60,27 +48,26 @@ const IssueImagePicker: React.FC<IssueImagePickerProps> = ({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
-      quality: 0.8,
+      quality: 0.5,
       selectionLimit: maxImages - images.length,
+      base64: true,
     });
 
     if (!result.canceled && result.assets) {
-      // Handle Web vs Mobile
-      if (Platform.OS === 'web') {
-        // Convert URIs to File objects on Web
-        const filePromises = result.assets.map(async (asset) => {
-          const response = await fetch(asset.uri);
-          const blob = await response.blob();
-          const fileName = asset.uri.split('/').pop() || `issue_${Date.now()}.jpg`;
-          return new File([blob], fileName, { type: 'image/jpeg' });
-        });
-        const newFiles = await Promise.all(filePromises);
-        onImagesChange([...images, ...newFiles]);
-      } else {
-        // Keep URI strings on Mobile
-        const newImages = result.assets.map((asset) => asset.uri);
-        onImagesChange([...images, ...newImages]);
-      }
+      const newImages = result.assets.map((asset) => {
+        const fileName = asset.fileName || `issue_${Date.now()}.jpg`;
+        const dataUrl = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : asset.uri;
+
+        return {
+          uri: dataUrl,
+          imageURL: dataUrl,
+          fileName,
+          type: asset.mimeType || 'image/jpeg',
+        };
+      });
+      onImagesChange([...images, ...newImages]);
     }
   };
 
@@ -94,9 +81,9 @@ const IssueImagePicker: React.FC<IssueImagePickerProps> = ({
       {/* Image Grid */}
       {images.length > 0 && (
         <View style={styles.imageGrid}>
-          {imageUrls.map((uri, index) => (
+          {images.map((image, index) => (
             <View key={index} style={styles.imageWrapper}>
-              <Image source={{ uri }} style={styles.imagePreview} />
+              <Image source={{ uri: image.uri }} style={styles.imagePreview} />
               <TouchableOpacity
                 style={styles.removeBtn}
                 onPress={() => removeImage(index)}

@@ -7,13 +7,13 @@ import {
   StyleSheet, 
   ActivityIndicator, 
   Alert, 
-  SafeAreaView, 
   KeyboardAvoidingView, 
   Platform, 
   ScrollView,
   StatusBar,
   Dimensions
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -100,7 +100,7 @@ const RegisterScreen: React.FC = () => {
   const [companyName, setCompanyName] = useState('');
   const [taxCode, setTaxCode] = useState('');
   const [businessAddress, setBusinessAddress] = useState('');
-  const [avatar, setAvatar] = useState<{ uri?: string; base64?: string; fileName?: string; type?: string; } | null>(null)
+  const [avatar, setAvatar] = useState<{ uri?: string; imageURL?: string; base64?: string; fileName?: string; type?: string; } | null>(null)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [dobDate, setDobDate] = useState<Date | null>(null)
   const [agreed, setAgreed] = useState(false);
@@ -132,18 +132,27 @@ const RegisterScreen: React.FC = () => {
       let response: any;
       
       const buildAndSend = async (endpointPayload: any) => {
+        // Debug: Log payload trước khi gửi
+        console.log('📦 Register Payload:', JSON.stringify(endpointPayload, null, 2))
+        
+        // IMPORTANT: Backend uses [FromForm], so ALWAYS build FormData (like itemService)
+        const form = new FormData()
+        
+        // Append all fields as strings, skip null/undefined/empty
+        Object.keys(endpointPayload).forEach((k) => {
+          const v = endpointPayload[k]
+          if (v !== undefined && v !== null && v !== '') {
+            form.append(k, String(v))
+          }
+        })
+        
+        // Attach avatar file if exists (using itemService upload pattern)
         if (avatar && avatar.uri) {
-          const form = new FormData()
-          Object.keys(endpointPayload).forEach((k) => {
-            const v = endpointPayload[k]
-            if (v !== undefined && v !== null) form.append(k, v)
-          })
-          
           const uri = avatar.uri;
           const fileName = avatar.fileName || 'avatar.jpg';
           const fileType = avatar.type || 'image/jpeg';
           
-          // Cross-platform image upload handling
+          // Cross-platform image upload handling (same as itemService)
           if (Platform.OS === 'web') {
             // Web: Convert URI to File object
             try {
@@ -158,24 +167,29 @@ const RegisterScreen: React.FC = () => {
               form.append('AvatarFile', { uri, name: fileName, type: fileType });
             }
           } else {
-            // Mobile: Use URI with proper file:// prefix
-            const mobileUri = Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('http')
-              ? `file://${uri}`
-              : uri;
+            // Mobile: Ensure proper file:// URI for Android/iOS
+            let mobileUri = uri;
+            if (Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('content://') && !uri.startsWith('http')) {
+              mobileUri = `file://${uri}`;
+            }
+            
+            const fileObj: any = {
+              uri: mobileUri,
+              name: fileName,
+              type: fileType,
+            };
+            
+            console.log('>>> [RegisterScreen] Appending avatar file (mobile):', JSON.stringify(fileObj));
             // @ts-ignore
-            form.append('AvatarFile', { uri: mobileUri, name: fileName, type: fileType });
+            form.append('AvatarFile', fileObj);
           }
-
-          if (role === Role.DRIVER) return await authService.registerDriver(form)
-          if (role === Role.OWNER) return await authService.registerOwner(form)
-          if (role === Role.PROVIDER) return await authService.registerProvider(form)
-          return await authService.register(form)
         }
-        
-        if (role === Role.DRIVER) return await authService.registerDriver(endpointPayload)
-        if (role === Role.OWNER) return await authService.registerOwner(endpointPayload)
-        if (role === Role.PROVIDER) return await authService.registerProvider(endpointPayload)
-        return await authService.register(endpointPayload)
+
+        // Always send FormData to match backend [FromForm]
+        if (role === Role.DRIVER) return await authService.registerDriver(form)
+        if (role === Role.OWNER) return await authService.registerOwner(form)
+        if (role === Role.PROVIDER) return await authService.registerProvider(form)
+        return await authService.register(form)
       }
 
       if (role === Role.DRIVER) {
@@ -206,7 +220,7 @@ const RegisterScreen: React.FC = () => {
     <View style={{ flex: 1, backgroundColor: COLORS.bgColor }}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bgColor} />
       
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
           <ScrollView 
             contentContainerStyle={styles.scrollContainer} 
@@ -250,7 +264,7 @@ const RegisterScreen: React.FC = () => {
 
                 {/* Avatar Uploader */}
                 <View style={styles.avatarSection}>
-                    <ImageUploader currentImage={avatar?.uri ?? null} onImageChange={(img) => setAvatar(img)} />
+                  <ImageUploader currentImage={avatar?.imageURL ?? avatar?.uri ?? null} onImageChange={(img) => setAvatar(img)} />
                     <Text style={styles.avatarHint}>Ảnh đại diện</Text>
                 </View>
 
@@ -287,7 +301,7 @@ const RegisterScreen: React.FC = () => {
                         setFocused={setFocusedInput}
                     />
 
-                    <View style={[styles.inputContainer, { paddingVertical: 2, paddingRight: 4 }]}>
+                    <View style={[styles.inputContainer, { paddingVertical: 2, paddingRight: 4, zIndex: 10 }]}>
                         <Feather name="map-pin" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
                         <View style={{ flex: 1 }}>
                             <AddressAutocomplete
@@ -335,7 +349,7 @@ const RegisterScreen: React.FC = () => {
                             currentFocused={focusedInput}
                             setFocused={setFocusedInput}
                         />
-                        <View style={[styles.inputContainer, { paddingVertical: 2, paddingRight: 4 }]}>
+                        <View style={[styles.inputContainer, { paddingVertical: 2, paddingRight: 4, zIndex: 9 }]}>
                             <Feather name="map" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
                             <View style={{ flex: 1 }}>
                                 <AddressAutocomplete

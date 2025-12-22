@@ -1,6 +1,7 @@
 declare module 'expo-router/entry';
 declare module 'expo-location';
 declare module 'expo-speech';
+declare module 'react-native-geolocation-service';
 declare module '@react-native-community/slider';
 declare module '@turf/bbox';
 declare module '@turf/along';

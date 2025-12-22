@@ -1,19 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native'
-import VietmapGL, {
-  Camera,
-  MapView,
-  ShapeSource,
-  LineLayer
-} from '@vietmap/vietmap-gl-react-native'
-
-// Import additional components with safe access
-const UserLocation = VietmapGL?.UserLocation || null
-const UserTrackingMode = VietmapGL?.UserTrackingMode || {}
-const UserLocationRenderMode = VietmapGL?.UserLocationRenderMode || {}
-const LocationManager = VietmapGL?.LocationManager || {}
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform } from 'react-native'
 import type { Feature, LineString, Position } from 'geojson'
 import { vietmapStyleUrl } from '@/config/vietmap'
+
+let VietmapGL: any, MapView: any, Camera: any, ShapeSource: any, LineLayer: any
+let UserLocation: any = null
+let UserTrackingMode: any = {}
+let UserLocationRenderMode: any = {}
+let LocationManager: any = {}
+
+if (Platform.OS !== 'web') {
+  VietmapGL = require('@vietmap/vietmap-gl-react-native').default
+  const VietMapModule = require('@vietmap/vietmap-gl-react-native')
+  MapView = VietMapModule.MapView
+  Camera = VietMapModule.Camera
+  ShapeSource = VietMapModule.ShapeSource
+  LineLayer = VietMapModule.LineLayer
+  UserLocation = VietmapGL?.UserLocation || null
+  UserTrackingMode = VietmapGL?.UserTrackingMode || {}
+  UserLocationRenderMode = VietmapGL?.UserLocationRenderMode || {}
+  LocationManager = VietmapGL?.LocationManager || {}
+}
 
 interface GPSNavigationProps {
   route?: Feature<LineString>

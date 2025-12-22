@@ -36,6 +36,8 @@ interface CapturedImages {
 
 const { width } = Dimensions.get('window');
 
+const ENABLE_AI_SCAN = false
+
 const VerifyCccdScreen = () => {
   const router = useRouter()
   const [step, setStep] = useState<'instruction' | 'capture' | 'review' | 'processing'>('instruction')
@@ -51,7 +53,9 @@ const VerifyCccdScreen = () => {
 
   useEffect(() => {
     requestPermissions()
-    loadVnptConfig()
+    if (ENABLE_AI_SCAN) {
+      loadVnptConfig()
+    }
   }, [])
 
   const loadVnptConfig = async () => {
@@ -91,17 +95,20 @@ const VerifyCccdScreen = () => {
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
-        allowsEditing: false, // No editing to prevent gallery access
+        allowsEditing: false,
         quality: 0.9,
         cameraType: type === 'selfie' ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
+        base64: true, // ← Thêm base64 để lấy data
       })
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0]
+        const dataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri
+        
         setImages((prev) => ({
           ...prev,
           [type]: {
-            uri: asset.uri,
+            uri: dataUrl, // Lưu dataUrl thay vì local uri
             name: `${type}_${Date.now()}.jpg`,
             type: 'image/jpeg',
           },
@@ -145,18 +152,10 @@ const VerifyCccdScreen = () => {
     setUploading(true)
 
     try {
-      let front: any, back: any, selfie: any
-
-      if (Platform.OS === 'web') {
-        const frontBlob = await fetch(images.front.uri).then((r) => r.blob())
-        const backBlob = await fetch(images.back.uri).then((r) => r.blob())
-        const selfieBlob = await fetch(images.selfie.uri).then((r) => r.blob())
-        front = new File([frontBlob], images.front.name, { type: images.front.type })
-        back = new File([backBlob], images.back.name, { type: images.back.type })
-        selfie = new File([selfieBlob], images.selfie.name, { type: images.selfie.type })
-      } else {
-        front = images.front; back = images.back; selfie = images.selfie
-      }
+      // Sử dụng trực tiếp images vì đã có base64 dataUrl
+      const front = images.front
+      const back = images.back
+      const selfie = images.selfie
 
       const response = await ekycService.verifyCccd(front, back, selfie)
       
@@ -166,12 +165,7 @@ const VerifyCccdScreen = () => {
 
       if (response.isSuccess) {
         showAlert('Thành công! 🎉', `Chào mừng ${response.result?.fullName}!`, () => {
-          // Navigate to my-documents and reload
-          if (Platform.OS === 'web') {
-            router.replace('/owner/my-documents')
-          } else {
-            router.back()
-          }
+          router.replace('/owner/my-documents')
         })
       } else {
         setStep('capture') // Go back to capture for retry
@@ -191,7 +185,7 @@ const VerifyCccdScreen = () => {
             errorReason,
             [
               { text: 'Chụp lại', onPress: () => setStep('capture') },
-              { text: 'Hủy', onPress: () => router.back(), style: 'cancel' }
+              { text: 'Hủy', onPress: () => router.replace('/owner/my-documents'), style: 'cancel' }
             ]
           )
         }
@@ -222,7 +216,7 @@ const VerifyCccdScreen = () => {
             errorReason,
             [
               { text: 'Thử lại', onPress: () => setStep('capture') },
-              { text: 'Hủy', onPress: () => router.back(), style: 'cancel' }
+              { text: 'Hủy', onPress: () => router.replace('/owner/my-documents'), style: 'cancel' }
             ]
           )
         }
@@ -237,7 +231,7 @@ const VerifyCccdScreen = () => {
         } else {
           Alert.alert('Lỗi', 'Không thể kết nối đến máy chủ', [
             { text: 'Thử lại', onPress: () => setStep('capture') },
-            { text: 'Hủy', onPress: () => router.back(), style: 'cancel' }
+            { text: 'Hủy', onPress: () => router.replace('/owner/my-documents'), style: 'cancel' }
           ])
         }
       }
@@ -255,12 +249,6 @@ const VerifyCccdScreen = () => {
       <Text style={styles.subtitleText}>
         Để bảo mật tài khoản, vui lòng sử dụng camera để chụp giấy tờ tùy thân.
       </Text>
-      {useVnptSdk && sdkConfig && (
-        <View style={styles.recommendBox}>
-          <MaterialCommunityIcons name="robot" size={20} color="#10B981" />
-          <Text style={styles.recommendText}>Khuyến nghị sử dụng AI để tăng độ chính xác</Text>
-        </View>
-      )}
 
       <View style={styles.stepsContainer}>
         {[
@@ -280,58 +268,22 @@ const VerifyCccdScreen = () => {
         ))}
       </View>
 
-      {useVnptSdk && sdkConfig ? (
-        <View style={{ gap: 12, width: '100%' }}>
-          <TouchableOpacity onPress={startVnptSdkFlow} activeOpacity={0.8}>
-            <LinearGradient
-              colors={['#0EA5E9', '#2563EB']}
-              start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-              style={styles.primaryButton}
-            >
-              <MaterialCommunityIcons name="robot" size={20} color="#FFF" />
-              <Text style={styles.primaryButtonText}>Quét với AI (Khuyến nghị)</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Chụp thủ công</Text>
-            <MaterialCommunityIcons name="arrow-right" size={20} color="#64748B" />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8}>
-          <LinearGradient
-            colors={['#0EA5E9', '#2563EB']}
-            start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-            style={styles.primaryButton}
-          >
-            <Text style={styles.primaryButtonText}>Bắt đầu ngay</Text>
-            <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8}>
+        <LinearGradient
+          colors={['#0EA5E9', '#2563EB']}
+          start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+          style={styles.primaryButton}
+        >
+          <Text style={styles.primaryButtonText}>Bắt đầu ngay</Text>
+          <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />
+        </LinearGradient>
+      </TouchableOpacity>
     </View>
   )
 
   const renderCapture = () => (
     <View style={styles.captureWrapper}>
-      {useVnptSdk && sdkConfig && (
-        <TouchableOpacity onPress={startVnptSdkFlow} activeOpacity={0.9} style={{marginBottom: 24}}>
-          <LinearGradient
-            colors={['#0F172A', '#334155']}
-            start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-            style={styles.aiButton}
-          >
-            <MaterialCommunityIcons name="line-scan" size={24} color="#38BDF8" />
-            <View>
-              <Text style={styles.aiButtonTitle}>Quét tự động bằng AI</Text>
-              <Text style={styles.aiButtonSubtitle}>Nhanh hơn, chính xác hơn</Text>
-            </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color="#94A3B8" style={{marginLeft: 'auto'}}/>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
-
-      <Text style={styles.sectionHeader}>{useVnptSdk && sdkConfig ? 'Hoặc chụp thủ công' : 'Chụp ảnh giấy tờ'}</Text>
+      <Text style={styles.sectionHeader}>Chụp ảnh giấy tờ</Text>
 
             <View style={styles.gridContainer}>
                 {[

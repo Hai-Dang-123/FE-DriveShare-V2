@@ -205,7 +205,14 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
             </View>
           </View>
 
-          <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+          <ScrollView 
+            style={styles.scrollContent} 
+            showsVerticalScrollIndicator={false} 
+            contentContainerStyle={{ paddingBottom: 20 }}
+            nestedScrollEnabled={true}
+            bounces={true}
+            keyboardShouldPersistTaps="handled"
+          >
             
             {/* AI Recommendation */}
             {driverAnalysis?.suggestion && (
@@ -352,26 +359,23 @@ const DriverAssignModal: React.FC<DriverAssignModalProps> = ({ visible, onClose,
                                     <View style={[styles.dot, {backgroundColor: '#EF4444'}]} />
                                 </View>
                                 <View style={{flex: 1, gap: 12}}>
-                                    <View style={{ zIndex: 100 }}>
+                                    <View style={{ zIndex: 100, elevation: 100 }}>
                                         <Text style={styles.inputLabel}>{isPrimary ? 'Điểm nhận xe' : 'Điểm đón'}</Text>
-                                        <View style={styles.addressInputWrapper}>
+                                        <View style={[styles.addressInputWrapper, { zIndex: 100, elevation: 100 }]}>
                                             <AddressAutocomplete
                                                 value={startAddress}
                                                 onSelect={(s: any) => setStartAddress(s.display || s.name)}
-                                                // style overrides if needed
                                                 placeholder={isPrimary ? "VD: Bãi xe A, 123 Nguyễn Huệ..." : "VD: Kho hàng B..."}
-                                                
                                             />
                                         </View>
                                     </View>
-                                    <View style={{ zIndex: 10 }}>
+                                    <View style={{ zIndex: 50, elevation: 50, marginTop: 160 }}>
                                         <Text style={styles.inputLabel}>{isPrimary ? 'Điểm trả xe (Kết thúc)' : 'Điểm trả khách'}</Text>
-                                        <View style={styles.addressInputWrapper}>
+                                        <View style={[styles.addressInputWrapper, { zIndex: 50, elevation: 50 }]}>
                                             <AddressAutocomplete
                                                 value={endAddress}
                                                 onSelect={(s: any) => setEndAddress(s.display || s.name)}
                                                 placeholder={isPrimary ? "VD: Bãi xe trả (Bắt buộc)..." : "VD: Điểm giao hàng..."}
-                                                
                                             />
                                         </View>
                                     </View>
@@ -495,12 +499,12 @@ const styles = StyleSheet.create({
   inputIcon: { marginRight: 8 },
   textInput: { flex: 1, fontSize: 15, color: '#111827', fontWeight: '500' },
   
-  addressBlock: { backgroundColor: '#FFF', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  addressBlock: { backgroundColor: '#FFF', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', overflow: 'visible' },
   timelineRow: { flexDirection: 'row' },
   timelineDecor: { alignItems: 'center', width: 24, paddingTop: 24, paddingRight: 8 },
   dot: { width: 10, height: 10, borderRadius: 5 },
   line: { flex: 1, width: 2, backgroundColor: '#E5E7EB', marginVertical: 4 },
-  addressInputWrapper: { height: 44, justifyContent: 'center' }, // Wrapper for Autocomplete to align
+  addressInputWrapper: { minHeight: 44, justifyContent: 'center', overflow: 'visible' }, // Wrapper for Autocomplete to align
 
   noteBox: { flexDirection: 'row', padding: 12, borderRadius: 10, gap: 10, alignItems: 'flex-start' },
   notePrimary: { backgroundColor: '#EEF2FF' },

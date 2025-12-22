@@ -3,7 +3,6 @@ import { useFocusEffect } from '@react-navigation/native'
 import { 
   View, 
   Text, 
-  SafeAreaView, 
   TouchableOpacity, 
   ActivityIndicator, 
   StyleSheet, 
@@ -14,6 +13,7 @@ import {
   ScrollView, 
   Platform 
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons'
 import { FreightPost, ProviderTripSummary } from '../../models/types'
 import PostPackageList from './components/PostPackageList'
@@ -362,7 +362,7 @@ const PostsManagementScreen: React.FC<Props> = ({ onBack }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* HEADER */}

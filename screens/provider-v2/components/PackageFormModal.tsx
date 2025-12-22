@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Modal,
   View,
@@ -12,7 +12,6 @@ import {
   Image,
   ActivityIndicator,
   Switch,
-  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -93,27 +92,6 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // Cache blob URLs to prevent recreation on every render (causes network request loop when typing)
-  const packageImageUrls = useMemo(() => {
-    return formData.images.map((img: any) => {
-      if (img instanceof File || img instanceof Blob) {
-        return URL.createObjectURL(img);
-      }
-      return img.uri || img.packageImageURL || img;
-    });
-  }, [formData.images]);
-
-  // Cleanup blob URLs to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      packageImageUrls.forEach((url: string) => {
-        if (url.startsWith('blob:')) {
-          URL.revokeObjectURL(url);
-        }
-      });
-    };
-  }, [packageImageUrls]);
-
   useEffect(() => {
     if (visible && item) {
       setFormData({
@@ -141,50 +119,82 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
     setFormData((p: any) => ({ ...p, [key]: val }));
 
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted")
-      return Alert.alert("Cần quyền", "Vui lòng cấp quyền ảnh.");
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      if (Platform.OS === 'web') {
-        // Web: Convert URI to File object
-        try {
-          const response = await fetch(result.assets[0].uri);
-          const blob = await response.blob();
-          const fileName = result.assets[0].uri.split('/').pop() || `package_${Date.now()}.jpg`;
-          const file = new File([blob], fileName, { type: 'image/jpeg' });
-          setFormData((p: any) => ({ ...p, images: [...p.images, file] }));
-        } catch (error) {
-          console.error('Error converting image to File:', error);
-          Alert.alert("Lỗi", "Không thể xử lý ảnh");
-        }
-      } else {
-        // Mobile: Keep URI string
-        const newImg = {
-          uri: result.assets[0].uri,
-          status: ImageStatus.ACTIVE,
-        };
-        setFormData((p: any) => ({ ...p, images: [...p.images, newImg] }));
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Cần quyền", "Vui lòng cấp quyền truy cập thư viện ảnh.");
+        return;
       }
+      
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.5, // Giữ 0.5 như itemService
+        base64: false, // Dùng URI như itemService
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        
+        // Chỉ cần URI cho mobile - Đảm bảo MIME type đúng định dạng
+        let mimeType = asset.type || "image/jpeg";
+        // Fix: Nếu type không có "/", thêm "image/" vào trước
+        if (mimeType && !mimeType.includes('/')) {
+          mimeType = `image/${mimeType}`;
+        }
+        
+        const newImg = {
+          uri: asset.uri,
+          fileName: asset.fileName || `package_${Date.now()}.jpg`,
+          type: mimeType,
+        };
+        
+        console.log("📸 Picked image:", { uri: asset.uri.substring(0, 50), fileName: newImg.fileName });
+        
+        setFormData((p: any) => ({ ...p, images: [newImg] }));
+      }
+    } catch (error) {
+      console.error("Error picking image:", error);
+      Alert.alert("Lỗi", "Có lỗi khi chọn ảnh. Vui lòng thử lại.");
     }
   };
 
-  const removeImage = (index: number) => {
-    setFormData((p: any) => ({
-      ...p,
-      images: p.images.filter((_: any, i: number) => i !== index),
-    }));
+  const removeImage = () => {
+    setFormData((p: any) => ({ ...p, images: [] }));
   };
 
   const handleSubmit = () => {
     if (!formData.title)
       return Alert.alert("Thiếu thông tin", "Vui lòng nhập tiêu đề gói hàng.");
+    
+    if (!formData.itemId) {
+      return Alert.alert("Lỗi", "Không tìm thấy itemId. Vui lòng thử lại.");
+    }
+    
+    console.log("📦 [PackageFormModal] Submitting package:", {
+      title: formData.title,
+      itemId: formData.itemId,
+      hasImages: formData.images?.length > 0,
+      imageData: formData.images?.[0] ? {
+        uri: formData.images[0].uri,
+        fileName: formData.images[0].fileName,
+        type: formData.images[0].type,
+      } : null,
+    });
+    
     setSubmitting(true);
-    Promise.resolve(onCreate(formData)).finally(() => setSubmitting(false));
+    Promise.resolve(onCreate(formData))
+      .then(() => {
+        console.log("✅ [PackageFormModal] Package created successfully");
+      })
+      .catch((err) => {
+        console.error("❌ [PackageFormModal] Failed to create package:", err);
+        Alert.alert(
+          "Lỗi tạo gói hàng",
+          err?.response?.data?.message || err?.message || "Không thể tạo gói hàng. Vui lòng kiểm tra kết nối mạng và thử lại."
+        );
+      })
+      .finally(() => setSubmitting(false));
   };
 
   if (!visible || !item) return null;
@@ -357,31 +367,34 @@ const PackageFormModal: React.FC<PackageFormModalProps> = ({
             <View style={styles.divider} />
             <Text style={styles.sectionTitle}>Hình ảnh kiện hàng</Text>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.imageList}
-            >
-              <TouchableOpacity style={styles.addImageBtn} onPress={pickImage}>
-                <Ionicons
-                  name="camera-outline"
-                  size={24}
-                  color={COLORS.textLight}
-                />
-                <Text style={styles.addImageText}>Thêm ảnh</Text>
-              </TouchableOpacity>
-              {packageImageUrls.map((imageUri: string, idx: number) => (
-                <View key={idx} style={styles.imageWrapper}>
-                  <Image source={{ uri: imageUri }} style={styles.thumbnail} />
-                  <TouchableOpacity
-                    style={styles.removeBtn}
-                    onPress={() => removeImage(idx)}
-                  >
-                    <Ionicons name="close" size={10} color="#fff" />
+            <View style={styles.imageSection}>
+              {formData.images?.[0] ? (
+                <View style={styles.imagePreviewWrapper}>
+                  <Image 
+                    source={{ uri: formData.images[0].uri }} 
+                    style={styles.imagePreview} 
+                    resizeMode="cover" 
+                  />
+                  
+                  <TouchableOpacity style={styles.changeImageBtn} onPress={pickImage}>
+                    <MaterialCommunityIcons name="camera-retake-outline" size={20} color="#fff" />
+                    <Text style={styles.changeImageText}>Đổi ảnh</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={styles.removeImageBtn} onPress={removeImage}>
+                    <Ionicons name="trash-outline" size={20} color="#fff" />
                   </TouchableOpacity>
                 </View>
-              ))}
-            </ScrollView>
+              ) : (
+                <TouchableOpacity style={styles.uploadPlaceholder} onPress={pickImage}>
+                  <View style={styles.iconCircle}>
+                    <Ionicons name="camera-outline" size={32} color={COLORS.primary} />
+                  </View>
+                  <Text style={styles.uploadText}>Tải ảnh kiện hàng</Text>
+                  <Text style={styles.uploadSubText}>Hỗ trợ JPG, PNG (tối ưu cho mobile)</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </ScrollView>
 
           <View style={styles.footer}>
@@ -467,41 +480,66 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", justifyContent: "space-between" },
   divider: { height: 1, backgroundColor: "#E5E7EB", marginVertical: 16 },
-  imageList: { flexDirection: "row" },
-  addImageBtn: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    borderWidth: 1,
+  imageSection: { alignItems: "center", marginBottom: 8 },
+  imagePreviewWrapper: {
+    width: "100%",
+    height: 180,
+    borderRadius: 12,
+    overflow: "hidden",
+    position: "relative",
+    backgroundColor: "#F3F4F6",
+  },
+  imagePreview: { width: "100%", height: "100%" },
+  changeImageBtn: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  changeImageText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  removeImageBtn: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "rgba(239, 68, 68, 0.9)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  uploadPlaceholder: {
+    width: "100%",
+    height: 140,
+    borderWidth: 1.5,
     borderColor: "#E5E7EB",
     borderStyle: "dashed",
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#F9FAFB",
-    marginRight: 12,
   },
-  addImageText: { fontSize: 11, color: "#6B7280", marginTop: 4 },
-  imageWrapper: { position: "relative", marginRight: 12 },
-  thumbnail: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  removeBtn: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    backgroundColor: "#9CA3AF",
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+  iconCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#E0F2FE",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#fff",
+    marginBottom: 8,
   },
+  uploadText: { fontSize: 14, fontWeight: "600", color: COLORS.primary },
+  uploadSubText: { fontSize: 12, color: COLORS.textLight, marginTop: 2 },
   footer: {
     flexDirection: "row",
     gap: 12,

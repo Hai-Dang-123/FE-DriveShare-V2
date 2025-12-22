@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -268,7 +268,7 @@ const PackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* HEADER */}
@@ -791,7 +791,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 32,
+    bottom: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
@@ -802,6 +802,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 6,
+    zIndex: 9999,
   },
   toastSuccess: {
     backgroundColor: "#10B981",

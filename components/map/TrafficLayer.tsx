@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react'
-import { LineLayer, ShapeSource } from '@vietmap/vietmap-gl-react-native'
+import { Platform } from 'react-native'
 import type { Position } from 'geojson'
+
+let LineLayer: any, ShapeSource: any
+if (Platform.OS !== 'web') {
+  const VietMapGL = require('@vietmap/vietmap-gl-react-native')
+  LineLayer = VietMapGL.LineLayer
+  ShapeSource = VietMapGL.ShapeSource
+}
 
 export type TrafficLevel = 'free' | 'moderate' | 'heavy' | 'severe'
 

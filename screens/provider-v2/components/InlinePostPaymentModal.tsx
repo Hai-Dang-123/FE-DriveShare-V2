@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   Modal,
-  SafeAreaView,
+
   View,
   Text,
   TouchableOpacity,
@@ -11,6 +11,7 @@ import {
   Dimensions,
   StatusBar
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import postPackageService from '@/services/postPackageService'
@@ -146,7 +147,7 @@ const InlinePostPaymentModal: React.FC<Props> = ({ visible, postId, onClose, onD
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         
         {/* 1. Header */}

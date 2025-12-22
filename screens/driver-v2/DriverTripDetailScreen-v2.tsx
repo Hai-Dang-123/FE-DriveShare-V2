@@ -9,7 +9,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -22,11 +21,45 @@ import {
   StatusBar,
   Modal,
   TextInput,
+  PermissionsAndroid,
+  NativeModules,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Location from "expo-location";
+const IntentLauncher = (() => {
+  try {
+    // Require dynamically so TypeScript/tsc won't error if the module isn't installed.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const m = require("expo-intent-launcher");
+    return m;
+  } catch {
+    return null;
+  }
+})();
+import Constants from "expo-constants";
+
+// Helper: open app settings on Android (use IntentLauncher if available, fallback to Linking)
+const openAppSettingsForAndroid = async () => {
+  if (IntentLauncher && typeof IntentLauncher.startActivityAsync === "function") {
+    try {
+      await IntentLauncher.startActivityAsync(
+        IntentLauncher.ActivityAction.APPLICATION_DETAILS_SETTINGS,
+        { data: "package:" + (Constants as any)?.expoConfig?.android?.package }
+      );
+      return;
+    } catch {
+      // fallthrough to generic Linking
+    }
+  }
+  try {
+    await Linking.openSettings();
+  } catch {
+    // ignore
+  }
+};
 // import * as Speech from 'expo-speech'
 // import { Ionicons, MaterialIcons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons'
 import * as Speech from "expo-speech";
@@ -97,7 +130,9 @@ type VehicleIssueType =
 interface LiquidationItem {
   Description: string;
   Amount: number;
-  IsNegative: boolean;
+  IsDeduction?: boolean;
+  // Backward compat (old schema)
+  IsNegative?: boolean;
 }
 
 interface PersonReport {
@@ -106,12 +141,15 @@ interface PersonReport {
   Email: string;
   Role: string;
   Items: LiquidationItem[];
-  FinalWalletChange: number;
+  FinalAmount?: number;
+  // Backward compat (old schema)
+  FinalWalletChange?: number;
 }
 
 interface LiquidationReport {
   TripId: string;
   TripCode: string;
+  CompletedDate?: string;
   OwnerReport: PersonReport;
   ProviderReport: PersonReport;
   DriverReports: PersonReport[];
@@ -197,6 +235,835 @@ const showConfirmCrossPlatform = (
   });
 };
 
+/**
+ * FALLBACK: Use React Native's Geolocation API (more reliable than expo-location on some devices)
+ */
+const getNativeGeolocation = (): Promise<any> => {
+  return new Promise(async (resolve, reject) => {
+    console.log('[NativeGeo] 📱 Trying native geolocation (module/browser)...');
+
+    // ===== 1) Prefer a real native module on RN (works in dev-client / bare builds) =====
+    let geoModule: any = null;
+    try {
+      // Using require keeps this optional (won't crash if not installed)
+      geoModule = require('react-native-geolocation-service');
+      geoModule = geoModule?.default ?? geoModule;
+    } catch {
+      geoModule = null;
+    }
+
+    const isNativeModuleAvailable =
+      !!geoModule &&
+      (typeof geoModule.getCurrentPosition === 'function' ||
+        typeof geoModule.watchPosition === 'function');
+
+    if (Platform.OS !== 'web' && isNativeModuleAvailable) {
+      console.log('[NativeGeo] ✅ Using react-native-geolocation-service');
+
+      // If you're running in Expo Go, this native module will NOT be linked.
+      // Detect it early so we can show a clear message instead of a null crash.
+      const fused = (NativeModules as any)?.RNFusedLocation;
+      const isLinked = !!fused && typeof fused.getCurrentPosition === 'function';
+      if (!isLinked) {
+        const ownership = (Constants as any)?.appOwnership;
+        const hint =
+          ownership === 'expo'
+            ? 'Bạn đang chạy Expo Go nên native module không có. Hãy build dev-client (`npm run android`) rồi chạy `npx expo start --dev-client`.'
+            : 'Native module chưa được link/build vào app. Hãy rebuild Android app (`npm run android` / `expo run:android`).';
+        return reject(new Error('Native geolocation module is not linked (RNFusedLocation missing). ' + hint));
+      }
+
+      if (Platform.OS === 'android') {
+        try {
+          const fine = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+          );
+          const coarse = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION
+          );
+          const granted =
+            fine === PermissionsAndroid.RESULTS.GRANTED ||
+            coarse === PermissionsAndroid.RESULTS.GRANTED;
+          if (!granted) {
+            return reject(new Error('Permission denied'));
+          }
+        } catch (err) {
+          return reject(err);
+        }
+      }
+
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Native geolocation timeout'));
+      }, 20000);
+
+      try {
+        geoModule.getCurrentPosition(
+          (position: any) => {
+            clearTimeout(timeoutId);
+            console.log('[NativeGeo] ✅ SUCCESS:', {
+              lat: position?.coords?.latitude,
+              lng: position?.coords?.longitude,
+              accuracy: position?.coords?.accuracy,
+              provider: position?.provider,
+            });
+
+            resolve({
+              coords: {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                altitude: position.coords.altitude,
+                heading: position.coords.heading,
+                speed: position.coords.speed,
+                altitudeAccuracy: position.coords.altitudeAccuracy ?? null,
+              },
+              timestamp: position.timestamp,
+            });
+          },
+          (error: any) => {
+            clearTimeout(timeoutId);
+            console.log('[NativeGeo] ❌ Error:', {
+              code: error?.code,
+              message: error?.message,
+            });
+            reject(error);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0,
+            forceRequestLocation: true,
+            showLocationDialog: true,
+          }
+        );
+      } catch (err) {
+        clearTimeout(timeoutId);
+        reject(err);
+      }
+      return;
+    }
+
+    // ===== 2) Web fallback (browser navigator.geolocation) =====
+    const geo = (navigator as any)?.geolocation;
+    if (Platform.OS === 'web' && geo?.getCurrentPosition) {
+      console.log('[NativeGeo] 🌐 Using browser navigator.geolocation');
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Browser geolocation timeout'));
+      }, 20000);
+
+      geo.getCurrentPosition(
+        (position: any) => {
+          clearTimeout(timeoutId);
+          resolve({
+            coords: {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              altitude: position.coords.altitude,
+              heading: position.coords.heading,
+              speed: position.coords.speed,
+              altitudeAccuracy: null,
+            },
+            timestamp: position.timestamp,
+          });
+        },
+        (error: any) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      );
+      return;
+    }
+
+    reject(
+      new Error(
+        'Native geolocation module is not available. ' +
+          'If you want a true native fallback on Android, install react-native-geolocation-service and rebuild a dev-client (`expo run:android`).'
+      )
+    );
+  });
+};
+
+/**
+ * Android-friendly: wait for the FIRST fix via watchPositionAsync.
+ * This avoids cold-start issues where getCurrentPositionAsync can hang for a while.
+ */
+const getFirstFixFromWatch = async (
+  accuracy: any,
+  timeoutMs: number
+): Promise<any> => {
+  console.log('[Location] 🛰️ Starting watchPositionAsync (first-fix)...');
+
+  let subscription: any = null;
+
+  return new Promise<any>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try {
+        subscription?.remove();
+      } catch {
+        // ignore
+      }
+      reject(new Error('WatchPosition timeout'));
+    }, timeoutMs);
+
+    Location.watchPositionAsync(
+      {
+        accuracy,
+        mayShowUserSettingsDialog: true,
+        timeInterval: 1000,
+        distanceInterval: 0,
+      },
+      (loc: any) => {
+        clearTimeout(timer);
+        try {
+          subscription?.remove();
+        } catch {
+          // ignore
+        }
+        console.log('[Location] ✅ watchPosition first-fix:', {
+          lat: loc.coords.latitude,
+          lng: loc.coords.longitude,
+          accuracy: loc.coords.accuracy,
+        });
+        resolve(loc);
+      }
+    )
+      .then((sub: any) => {
+        subscription = sub;
+      })
+      .catch((err: any) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
+const LAST_GOOD_LOCATION_KEY = 'drivershare:lastGoodLocation:v1';
+
+const toFiniteNumberOrNull = (value: unknown): number | null => {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+
+// FINAL static fallback (only when all strategies fail): FPT University - HCMC Campus
+// Source: OpenStreetMap/Nominatim search result (Dec 2025)
+const STATIC_FALLBACK_FPT_HCM = {
+  latitude: 10.8414168,
+  longitude: 106.8100745,
+  accuracy: 500,
+  label: 'FPT University - HCMC Campus (Saigon Hi-Tech Park)',
+} as const;
+
+const persistLastGoodLocation = async (loc: any) => {
+  try {
+    const lat = toFiniteNumberOrNull(loc?.coords?.latitude);
+    const lng = toFiniteNumberOrNull(loc?.coords?.longitude);
+    if (lat === null || lng === null) return;
+    const payload = {
+      coords: {
+        latitude: lat,
+        longitude: lng,
+        accuracy: loc.coords.accuracy ?? null,
+        altitude: loc.coords.altitude ?? null,
+        heading: loc.coords.heading ?? null,
+        speed: loc.coords.speed ?? null,
+        altitudeAccuracy: loc.coords.altitudeAccuracy ?? null,
+      },
+      timestamp: loc.timestamp ?? Date.now(),
+      savedAt: Date.now(),
+    };
+    await AsyncStorage.setItem(LAST_GOOD_LOCATION_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore
+  }
+};
+
+const loadLastGoodLocation = async (): Promise<any | null> => {
+  try {
+    const raw = await AsyncStorage.getItem(LAST_GOOD_LOCATION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const lat = toFiniteNumberOrNull(parsed?.coords?.latitude);
+    const lng = toFiniteNumberOrNull(parsed?.coords?.longitude);
+    if (lat === null || lng === null) return null;
+    return {
+      coords: {
+        ...parsed.coords,
+        latitude: lat,
+        longitude: lng,
+      },
+      timestamp: parsed.timestamp ?? parsed.savedAt ?? Date.now(),
+      mocked: true,
+      source: 'lastGoodLocationCache',
+      savedAt: parsed.savedAt ?? null,
+    };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Helper function to get current location - Google Maps style!
+ * Uses NETWORK/WIFI positioning first (fast), then GPS if needed
+ * This mimics how Google Maps gets location quickly
+ * FALLBACK to React Native Geolocation if expo-location fails
+ */
+const getLocationWithTimeout = async (
+  accuracy = Location.Accuracy.Balanced, // Default: Balanced (uses network + GPS)
+  timeoutMs = 40000,
+  fallback?: { latitude: number | string; longitude: number | string; accuracy?: number }
+): Promise<any> => {
+  console.log('[Location] 🎯 Starting location acquisition (multi-fallback)...');
+  try {
+    console.log('[Location] Expo appOwnership:', (Constants as any)?.appOwnership);
+    console.log('[Location] Expo executionEnvironment:', (Constants as any)?.executionEnvironment);
+  } catch {
+    // ignore
+  }
+  
+  // ===== FORCE CHECK & REQUEST PERMISSIONS EVERY TIME =====
+  // This ensures permission is still valid even if user revoked it after initial grant
+  console.log('[Location] 🔐 Checking permissions...');
+  
+  // For Android: Request native permissions FIRST before using Expo Location
+  if (Platform.OS === 'android') {
+    try {
+      console.log('[Location] 📱 Requesting Android native permissions...');
+      const fineResult = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        {
+          title: 'Cần Quyền Vị Trí',
+          message: 'Ứng dụng cần quyền truy cập vị trí chính xác để dẫn đường',
+          buttonPositive: 'Cho phép',
+          buttonNegative: 'Từ chối',
+        }
+      );
+      
+      const coarseResult = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+        {
+          title: 'Cần Quyền Vị Trí',
+          message: 'Ứng dụng cần quyền truy cập vị trí để dẫn đường',
+          buttonPositive: 'Cho phép',
+          buttonNegative: 'Từ chối',
+        }
+      );
+      
+      console.log('[Location] Android permission results:', { fine: fineResult, coarse: coarseResult });
+      
+      const hasNativePermission = 
+        fineResult === PermissionsAndroid.RESULTS.GRANTED ||
+        coarseResult === PermissionsAndroid.RESULTS.GRANTED;
+      
+      if (!hasNativePermission) {
+        const errorMessage = '⛔ Cần cấp quyền truy cập vị trí để sử dụng tính năng này.\n\nVui lòng cấp quyền "Vị trí" cho ứng dụng trong Cài đặt.';
+        
+        Alert.alert(
+          'Cần Cấp Quyền Vị Trí',
+          errorMessage,
+          [
+            { text: 'Hủy', style: 'cancel' },
+            {
+              text: 'Mở Cài Đặt',
+              onPress: async () => {
+                await openAppSettingsForAndroid();
+              }
+            }
+          ]
+        );
+        
+        throw new Error(errorMessage);
+      }
+      
+      console.log('[Location] ✅ Android native permissions granted');
+    } catch (err: any) {
+      console.error('[Location] ❌ Failed to request Android permissions:', err);
+      throw err;
+    }
+  }
+  
+  // Now check Expo Location permissions
+  const { status: foregroundStatus } = await Location.getForegroundPermissionsAsync();
+  console.log('[Location] Expo permission status:', foregroundStatus);
+  
+  // ALWAYS request permission if not granted (covers revoked permission case)
+  if (foregroundStatus !== 'granted') {
+    console.log('[Location] ⚠️ Expo permission not granted. Requesting now...');
+    const { status: requestStatus } = await Location.requestForegroundPermissionsAsync();
+    console.log('[Location] Expo permission request result:', requestStatus);
+    
+    if (requestStatus !== 'granted') {
+      // Open Settings directly to allow user to grant permission
+      const errorMessage = '⛔ Cần cấp quyền truy cập vị trí để sử dụng tính năng này.\n\nVui lòng cấp quyền "Vị trí" cho ứng dụng trong Cài đặt.';
+      
+      if (Platform.OS === 'android') {
+        Alert.alert(
+          'Cần Cấp Quyền Vị Trí',
+          errorMessage,
+          [
+            { text: 'Hủy', style: 'cancel' },
+            {
+              text: 'Mở Cài Đặt',
+              onPress: async () => {
+                // Use helper that tries IntentLauncher if available, otherwise falls back to Linking.openSettings()
+                await openAppSettingsForAndroid();
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Cần Cấp Quyền Vị Trí', errorMessage, [
+          { text: 'Hủy', style: 'cancel' },
+          { text: 'Mở Cài Đặt', onPress: () => Linking.openSettings() }
+        ]);
+      }
+      
+      throw new Error(errorMessage);
+    }
+    console.log('[Location] ✅ Permission granted after request');
+  } else {
+    console.log('[Location] ✅ Permission already granted');
+  }
+
+  // Check location services + provider availability (more diagnostic than hasServicesEnabledAsync)
+  const isEnabled = await Location.hasServicesEnabledAsync();
+  const providerStatus = await Location.getProviderStatusAsync().catch(() => null);
+  console.log('[Location] Services enabled:', isEnabled);
+  if (providerStatus) {
+    console.log('[Location] Provider status:', providerStatus);
+  }
+
+  // If services are disabled, strategies will likely fail anyway. We'll still allow fallbacks
+  // (cache / provided / static) to keep the demo flow stable.
+  if (!isEnabled) {
+    console.log('[Location] ⚠️ Location services are OFF; will skip strategies and use fallbacks if available.');
+  }
+
+  const startedAt = Date.now();
+  const deadline = startedAt + Math.max(1000, timeoutMs);
+  const remainingMs = () => Math.max(1000, deadline - Date.now());
+
+  // Helpful hint for Android 12+ where user can disable "Precise" location.
+  try {
+    const fgPerm = await Location.getForegroundPermissionsAsync();
+    const isApproxOnly = (fgPerm as any)?.android?.accuracy === 'coarse';
+    if (Platform.OS === 'android' && isApproxOnly) {
+      console.log('[Location] ⚠️ Android permission is COARSE only (Precise location OFF).');
+    }
+  } catch {
+    // ignore
+  }
+
+  if (isEnabled) {
+    // ===== STRATEGY 1: Last Known Position (instant) =====
+    try {
+      // Tune how aggressively we accept cached fixes based on requested accuracy.
+      // This prevents "first start" using a stale/cached point (often previous destination).
+      let maxAgeMs = 60000; // default: 1 minute
+      let requiredAccuracyM = 1000; // default: 1km
+      if (
+        accuracy === (Location as any).Accuracy?.BestForNavigation ||
+        accuracy === Location.Accuracy.Highest
+      ) {
+        maxAgeMs = 8000;
+        requiredAccuracyM = 100;
+      } else if (accuracy === Location.Accuracy.Balanced) {
+        maxAgeMs = 20000;
+        requiredAccuracyM = 300;
+      }
+
+      const lastKnown = await Location.getLastKnownPositionAsync({
+        maxAge: maxAgeMs,
+        requiredAccuracy: requiredAccuracyM,
+      });
+      const lkAcc = toFiniteNumberOrNull((lastKnown as any)?.coords?.accuracy);
+      if (lastKnown && (lkAcc === null || lkAcc <= requiredAccuracyM)) {
+        console.log('[Location] ✅ Strategy 1 SUCCESS - Last known:', {
+          lat: lastKnown.coords.latitude,
+          lng: lastKnown.coords.longitude,
+          accuracy: lastKnown.coords.accuracy,
+        });
+        await persistLastGoodLocation(lastKnown);
+        return lastKnown;
+      }
+      if (lastKnown) {
+        console.log('[Location] ⚠️ Strategy 1 ignored (too coarse):', {
+          lat: lastKnown.coords.latitude,
+          lng: lastKnown.coords.longitude,
+          accuracy: lastKnown.coords.accuracy,
+          requiredAccuracyM,
+          maxAgeMs,
+        });
+      }
+    } catch {
+      console.log('[Location] Strategy 1: No cached location');
+    }
+
+    // ===== STRATEGY 2: COARSE FIRST (fast / indoor friendly) =====
+    // If GPS is slow (indoors), coarse/network may still give a fix.
+    console.log('[Location] 📶 Strategy 2: Trying coarse watchPositionAsync (Lowest)...');
+    try {
+      const coarseWatchLoc = await getFirstFixFromWatch(
+        Location.Accuracy.Lowest,
+        Math.min(45000, remainingMs())
+      );
+      if (coarseWatchLoc) {
+        console.log('[Location] ✅ Strategy 2 SUCCESS - coarse watchPositionAsync worked!');
+        await persistLastGoodLocation(coarseWatchLoc);
+        return coarseWatchLoc;
+      }
+    } catch (watchError: any) {
+      const errorMsg = watchError?.message ?? String(watchError);
+      console.log('[Location] Strategy 2 failed:', errorMsg);
+
+      // If SecurityException, permission was revoked - throw immediately
+      if (errorMsg.includes('SecurityException') || errorMsg.includes('permission')) {
+        throw new Error('⛔ Quyền truy cập vị trí đã bị từ chối.\n\nVui lòng vào: Cài đặt > Ứng dụng > DriveShare > Quyền > Vị trí\n\nChọn "Cho phép mọi lúc" hoặc "Chỉ cho phép khi dùng ứng dụng"');
+      }
+    }
+
+    // ===== STRATEGY 3: GPS-FIRST (Highest accuracy) =====
+    // Some devices won't yield any fix unless we explicitly request GPS.
+    console.log('[Location] 🛰️ Strategy 3: Trying GPS-first watchPositionAsync (Highest)...');
+    try {
+      const gpsWatchLoc = await getFirstFixFromWatch(
+        Location.Accuracy.Highest,
+        Math.min(90000, remainingMs())
+      );
+      if (gpsWatchLoc) {
+        console.log('[Location] ✅ Strategy 3 SUCCESS - GPS watchPositionAsync worked!');
+        await persistLastGoodLocation(gpsWatchLoc);
+        return gpsWatchLoc;
+      }
+    } catch (watchError: any) {
+      const errorMsg = watchError?.message ?? String(watchError);
+      console.log('[Location] Strategy 3 failed:', errorMsg);
+
+      // If SecurityException, permission was revoked - throw immediately
+      if (errorMsg.includes('SecurityException') || errorMsg.includes('permission')) {
+        throw new Error('⛔ Quyền truy cập vị trí đã bị từ chối.\n\nVui lòng vào: Cài đặt > Ứng dụng > DriveShare > Quyền > Vị trí\n\nChọn "Cho phép mọi lúc" hoặc "Chỉ cho phép khi dùng ứng dụng"');
+      }
+    }
+
+    // ===== STRATEGY 4: EXPO CURRENT (Highest) =====
+    console.log('[Location] 🎯 Strategy 4: Trying Expo getCurrentPositionAsync (Highest)...');
+    try {
+      const highestLoc = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Highest,
+          mayShowUserSettingsDialog: true,
+        }),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Highest timeout')), Math.min(60000, remainingMs()))
+        ),
+      ]);
+      if (highestLoc) {
+        console.log('[Location] ✅ Strategy 4 SUCCESS - Expo highest:', {
+          lat: highestLoc.coords.latitude,
+          lng: highestLoc.coords.longitude,
+          accuracy: highestLoc.coords.accuracy,
+        });
+        await persistLastGoodLocation(highestLoc);
+        return highestLoc;
+      }
+    } catch (err: any) {
+      console.log('[Location] Strategy 4 failed:', err?.message ?? String(err));
+    }
+
+    // ===== STRATEGY 5: NATIVE GEOLOCATION (native module or browser) =====
+    console.log('[Location] 🌍 Strategy 5: Trying NATIVE Geolocation (module/browser) ...');
+    // IMPORTANT: On some Android builds, calling RNFusedLocation can crash the app
+    // (RuntimeException / IncompatibleClassChangeError). To keep demo stable,
+    // we skip native-module fallback on Android and continue with Expo network/balanced.
+    if (Platform.OS === 'android') {
+      console.log('[Location] ⚠️ Strategy 5 skipped on Android to avoid native crash (RNFusedLocation).');
+    } else {
+      try {
+        const nativeLoc = await getNativeGeolocation();
+        if (nativeLoc) {
+          console.log('[Location] ✅ Strategy 5 SUCCESS - Native geolocation worked!');
+          return nativeLoc;
+        }
+      } catch (nativeError: any) {
+        console.log('[Location] Strategy 5 failed:', nativeError?.message ?? String(nativeError));
+      }
+    }
+
+    // ===== STRATEGY 6: EXPO NETWORK LOCATION =====
+    console.log('[Location] 📡 Strategy 6: Trying Expo NETWORK/WIFI location...');
+    try {
+      const networkLoc = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Lowest, // Prefer network/coarse
+          mayShowUserSettingsDialog: true,
+        }),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Network timeout')), Math.min(30000, remainingMs()))
+        ),
+      ]);
+
+      if (networkLoc) {
+        console.log('[Location] ✅ Strategy 6 SUCCESS - Expo network location:', {
+          lat: networkLoc.coords.latitude,
+          lng: networkLoc.coords.longitude,
+          accuracy: networkLoc.coords.accuracy,
+        });
+        await persistLastGoodLocation(networkLoc);
+        return networkLoc;
+      }
+    } catch (netError) {
+      console.log('[Location] Strategy 6 failed:', (netError as any)?.message ?? String(netError));
+    }
+
+    // ===== STRATEGY 7: EXPO BALANCED =====
+    console.log('[Location] 🌐 Strategy 7: Trying Expo BALANCED mode...');
+    try {
+      const balancedLoc = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+          mayShowUserSettingsDialog: true,
+        }),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Balanced timeout')), Math.min(30000, remainingMs()))
+        ),
+      ]);
+
+      if (balancedLoc) {
+        console.log('[Location] ✅ Strategy 7 SUCCESS - Expo balanced:', {
+          lat: balancedLoc.coords.latitude,
+          lng: balancedLoc.coords.longitude,
+          accuracy: balancedLoc.coords.accuracy,
+        });
+        await persistLastGoodLocation(balancedLoc);
+        return balancedLoc;
+      }
+    } catch (balancedError) {
+      console.log('[Location] Strategy 7 failed:', (balancedError as any)?.message ?? String(balancedError));
+    }
+  }
+
+  // ===== STRATEGY 2: COARSE FIRST (fast / indoor friendly) =====
+  // If GPS is slow (indoors), coarse/network may still give a fix.
+  console.log('[Location] 📶 Strategy 2: Trying coarse watchPositionAsync (Lowest)...');
+  try {
+    const coarseWatchLoc = await getFirstFixFromWatch(
+      Location.Accuracy.Lowest,
+      Math.min(45000, remainingMs())
+    );
+    if (coarseWatchLoc) {
+      console.log('[Location] ✅ Strategy 2 SUCCESS - coarse watchPositionAsync worked!');
+      await persistLastGoodLocation(coarseWatchLoc);
+      return coarseWatchLoc;
+    }
+  } catch (watchError: any) {
+    const errorMsg = watchError?.message ?? String(watchError);
+    console.log('[Location] Strategy 2 failed:', errorMsg);
+    
+    // If SecurityException, permission was revoked - throw immediately
+    if (errorMsg.includes('SecurityException') || errorMsg.includes('permission')) {
+      throw new Error('⛔ Quyền truy cập vị trí đã bị từ chối.\n\nVui lòng vào: Cài đặt > Ứng dụng > DriveShare > Quyền > Vị trí\n\nChọn "Cho phép mọi lúc" hoặc "Chỉ cho phép khi dùng ứng dụng"');
+    }
+  }
+
+  // ===== STRATEGY 3: GPS-FIRST (Highest accuracy) =====
+  // Some devices won't yield any fix unless we explicitly request GPS.
+  console.log('[Location] 🛰️ Strategy 3: Trying GPS-first watchPositionAsync (Highest)...');
+  try {
+    const gpsWatchLoc = await getFirstFixFromWatch(
+      Location.Accuracy.Highest,
+      Math.min(90000, remainingMs())
+    );
+    if (gpsWatchLoc) {
+      console.log('[Location] ✅ Strategy 3 SUCCESS - GPS watchPositionAsync worked!');
+      await persistLastGoodLocation(gpsWatchLoc);
+      return gpsWatchLoc;
+    }
+  } catch (watchError: any) {
+    const errorMsg = watchError?.message ?? String(watchError);
+    console.log('[Location] Strategy 3 failed:', errorMsg);
+    
+    // If SecurityException, permission was revoked - throw immediately
+    if (errorMsg.includes('SecurityException') || errorMsg.includes('permission')) {
+      throw new Error('⛔ Quyền truy cập vị trí đã bị từ chối.\n\nVui lòng vào: Cài đặt > Ứng dụng > DriveShare > Quyền > Vị trí\n\nChọn "Cho phép mọi lúc" hoặc "Chỉ cho phép khi dùng ứng dụng"');
+    }
+  }
+
+  // ===== STRATEGY 4: EXPO CURRENT (Highest) =====
+  console.log('[Location] 🎯 Strategy 4: Trying Expo getCurrentPositionAsync (Highest)...');
+  try {
+    const highestLoc = await Promise.race([
+      Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
+        mayShowUserSettingsDialog: true,
+      }),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error('Highest timeout')), Math.min(60000, remainingMs()))
+      ),
+    ]);
+    if (highestLoc) {
+      console.log('[Location] ✅ Strategy 4 SUCCESS - Expo highest:', {
+        lat: highestLoc.coords.latitude,
+        lng: highestLoc.coords.longitude,
+        accuracy: highestLoc.coords.accuracy,
+      });
+      await persistLastGoodLocation(highestLoc);
+      return highestLoc;
+    }
+  } catch (err: any) {
+    console.log('[Location] Strategy 4 failed:', err?.message ?? String(err));
+  }
+
+  // ===== STRATEGY 5: NATIVE GEOLOCATION (native module or browser) =====
+  console.log('[Location] 🌍 Strategy 5: Trying NATIVE Geolocation (module/browser) ...');
+  // IMPORTANT: On some Android builds, calling RNFusedLocation can crash the app
+  // (RuntimeException / IncompatibleClassChangeError). To keep demo stable,
+  // we skip native-module fallback on Android and continue with Expo network/balanced.
+  if (Platform.OS === 'android') {
+    console.log('[Location] ⚠️ Strategy 5 skipped on Android to avoid native crash (RNFusedLocation).');
+  } else {
+    try {
+      const nativeLoc = await getNativeGeolocation();
+      if (nativeLoc) {
+        console.log('[Location] ✅ Strategy 5 SUCCESS - Native geolocation worked!');
+        return nativeLoc;
+      }
+    } catch (nativeError: any) {
+      console.log('[Location] Strategy 5 failed:', nativeError?.message ?? String(nativeError));
+    }
+  }
+
+  // ===== STRATEGY 6: EXPO NETWORK LOCATION =====
+  console.log('[Location] 📡 Strategy 6: Trying Expo NETWORK/WIFI location...');
+  try {
+    const networkLoc = await Promise.race([
+      Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Lowest, // Prefer network/coarse
+        mayShowUserSettingsDialog: true,
+      }),
+      new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error('Network timeout')), Math.min(30000, remainingMs()))
+      )
+    ]);
+    
+    if (networkLoc) {
+      console.log('[Location] ✅ Strategy 3 SUCCESS - Expo network location:', {
+        lat: networkLoc.coords.latitude,
+        lng: networkLoc.coords.longitude,
+        accuracy: networkLoc.coords.accuracy
+      });
+      await persistLastGoodLocation(networkLoc);
+      return networkLoc;
+    }
+  } catch (netError) {
+    console.log('[Location] Strategy 6 failed:', (netError as any)?.message ?? String(netError));
+  }
+
+  // ===== STRATEGY 7: EXPO BALANCED =====
+  console.log('[Location] 🌐 Strategy 7: Trying Expo BALANCED mode...');
+  try {
+    const balancedLoc = await Promise.race([
+      Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        mayShowUserSettingsDialog: true,
+      }),
+      new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error('Balanced timeout')), Math.min(30000, remainingMs()))
+      )
+    ]);
+    
+    if (balancedLoc) {
+      console.log('[Location] ✅ Strategy 4 SUCCESS - Expo balanced:', {
+        lat: balancedLoc.coords.latitude,
+        lng: balancedLoc.coords.longitude,
+        accuracy: balancedLoc.coords.accuracy
+      });
+      await persistLastGoodLocation(balancedLoc);
+      return balancedLoc;
+    }
+  } catch (balancedError) {
+    console.log('[Location] Strategy 7 failed:', (balancedError as any)?.message ?? String(balancedError));
+  }
+  
+  // ===== ALL STRATEGIES FAILED =====
+  const errorMsg = `Không thể lấy vị trí. Đã thử tất cả phương thức:
+✗ Cache location
+✗ Coarse watchPosition (Lowest)
+✗ GPS watchPosition (Highest)
+✗ Expo getCurrentPosition (Highest)
+✗ Native Geolocation module/browser (Android: skipped to avoid crash)
+✗ Expo Network location
+✗ Expo Balanced mode
+
+🔧 Có thể là lỗi của Expo Location module trên thiết bị này.
+Thử:
+1. Vào Google Maps - nếu Maps lấy được vị trí, quay lại đây
+2. Khởi động lại app hoàn toàn
+3. Xóa cache app: Settings > Apps > DriveShare > Clear Cache
+4. Bật "Google Location Accuracy" + tắt chế độ tiết kiệm pin cho app
+5. Nếu bạn đang chạy Expo Go: hãy chạy build dev-client  để bật fallback native (react-native-geolocation-service)`;
+  
+  // ===== FALLBACK: use last known good location (stable demo behavior) =====
+  const cached = await loadLastGoodLocation();
+  if (cached) {
+    console.log('[Location] 🧩 Fallback: using cached last-good location:', {
+      lat: cached.coords.latitude,
+      lng: cached.coords.longitude,
+      accuracy: cached.coords.accuracy,
+      savedAt: cached.savedAt,
+    });
+    return cached;
+  }
+
+  // ===== FALLBACK #2: use provided fallback coordinates (e.g., API driver start) =====
+  const fbLat = toFiniteNumberOrNull(fallback?.latitude);
+  const fbLng = toFiniteNumberOrNull(fallback?.longitude);
+  if (fbLat !== null && fbLng !== null) {
+    console.log('[Location] 🧩 Fallback: using provided fallback coordinates:', {
+      lat: fbLat,
+      lng: fbLng,
+      accuracy: fallback?.accuracy ?? null,
+    });
+    return {
+      coords: {
+        latitude: fbLat,
+        longitude: fbLng,
+        accuracy: fallback?.accuracy ?? null,
+        altitude: null,
+        heading: null,
+        speed: null,
+        altitudeAccuracy: null,
+      },
+      timestamp: Date.now(),
+      mocked: true,
+      source: 'providedFallback',
+    };
+  }
+
+  // ===== FALLBACK #3 (FINAL): static default location (FPT University HCMC) =====
+  console.log('[Location] 🧩 Fallback: using STATIC default location:', {
+    label: STATIC_FALLBACK_FPT_HCM.label,
+    lat: STATIC_FALLBACK_FPT_HCM.latitude,
+    lng: STATIC_FALLBACK_FPT_HCM.longitude,
+    accuracy: STATIC_FALLBACK_FPT_HCM.accuracy,
+  });
+  return {
+    coords: {
+      latitude: STATIC_FALLBACK_FPT_HCM.latitude,
+      longitude: STATIC_FALLBACK_FPT_HCM.longitude,
+      accuracy: STATIC_FALLBACK_FPT_HCM.accuracy,
+      altitude: null,
+      heading: null,
+      speed: null,
+      altitudeAccuracy: null,
+    },
+    timestamp: Date.now(),
+    mocked: true,
+    source: 'staticFallbackFptHcm',
+    label: STATIC_FALLBACK_FPT_HCM.label,
+  };
+};
+
 // --- COMPONENT: DRIVER LIQUIDATION REPORT ---
 const DriverLiquidationReportView = ({ 
   report, 
@@ -216,6 +1083,18 @@ const DriverLiquidationReportView = ({
     }).format(amount);
   };
 
+  const isDeduction = (item: LiquidationItem) => {
+    if (typeof item.IsDeduction === 'boolean') return item.IsDeduction;
+    if (typeof item.IsNegative === 'boolean') return item.IsNegative;
+    return (item.Amount ?? 0) < 0;
+  };
+
+  const getFinalAmount = (person: PersonReport) => {
+    if (typeof person.FinalAmount === 'number') return person.FinalAmount;
+    if (typeof person.FinalWalletChange === 'number') return person.FinalWalletChange;
+    return 0;
+  };
+
   // Find driver's report
   const driverReport = report.DriverReports.find(d => d.UserId === driverUserId);
   
@@ -223,12 +1102,12 @@ const DriverLiquidationReportView = ({
 
   // Calculate totals
   const totalIncome = driverReport.Items
-    .filter(item => !item.IsNegative)
-    .reduce((sum, item) => sum + item.Amount, 0);
+    .filter(item => !isDeduction(item))
+    .reduce((sum, item) => sum + Math.abs(item.Amount ?? 0), 0);
   
   const totalDeduction = driverReport.Items
-    .filter(item => item.IsNegative)
-    .reduce((sum, item) => sum + item.Amount, 0);
+    .filter(item => isDeduction(item))
+    .reduce((sum, item) => sum + Math.abs(item.Amount ?? 0), 0);
 
   return (
     <View style={styles.liquidationContainer}>
@@ -289,12 +1168,12 @@ const DriverLiquidationReportView = ({
                 <Text style={styles.financialNetLabel}>Thay đổi ví</Text>
                 <Text style={[
                   styles.financialNetValue,
-                  driverReport.FinalWalletChange >= 0 ? { color: '#10B981' } : { color: '#DC2626' }
+                  getFinalAmount(driverReport) >= 0 ? { color: '#10B981' } : { color: '#DC2626' }
                 ]}>
-                  {driverReport.FinalWalletChange >= 0 ? '+' : ''}{formatCurrency(driverReport.FinalWalletChange)}
+                  {getFinalAmount(driverReport) >= 0 ? '+' : ''}{formatCurrency(getFinalAmount(driverReport))}
                 </Text>
               </View>
-              {driverReport.FinalWalletChange >= 0 ? (
+              {getFinalAmount(driverReport) >= 0 ? (
                 <Ionicons name="checkmark-circle" size={32} color="#10B981" />
               ) : (
                 <Ionicons name="alert-circle" size={32} color="#DC2626" />
@@ -325,21 +1204,21 @@ const DriverLiquidationReportView = ({
                   <View style={styles.liquidationItemLeft}>
                     <View style={[
                       styles.liquidationItemDot,
-                      { backgroundColor: item.IsNegative ? '#DC2626' : '#10B981' }
+                      { backgroundColor: isDeduction(item) ? '#DC2626' : '#10B981' }
                     ]} />
                     <Text style={styles.liquidationItemDesc}>{item.Description}</Text>
                   </View>
                   <View style={[
                     styles.liquidationItemAmountBox,
-                    item.IsNegative 
+                    isDeduction(item) 
                       ? { backgroundColor: '#FEE2E2', borderColor: '#DC2626' }
                       : { backgroundColor: '#D1FAE5', borderColor: '#10B981' }
                   ]}>
                     <Text style={[
                       styles.liquidationItemAmount,
-                      item.IsNegative ? styles.negativeAmount : styles.positiveAmount
+                      isDeduction(item) ? styles.negativeAmount : styles.positiveAmount
                     ]}>
-                      {item.IsNegative ? '-' : '+'}{formatCurrency(item.Amount)}
+                      {isDeduction(item) ? '-' : '+'}{formatCurrency(Math.abs(item.Amount ?? 0))}
                     </Text>
                   </View>
                 </View>
@@ -350,21 +1229,21 @@ const DriverLiquidationReportView = ({
 
             <View style={[
               styles.liquidationTotal,
-              driverReport.FinalWalletChange >= 0 
+              getFinalAmount(driverReport) >= 0 
                 ? { backgroundColor: '#ECFDF5' }
                 : { backgroundColor: '#FEF2F2' }
             ]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.liquidationTotalLabel}>Tổng thay đổi ví</Text>
                 <Text style={styles.liquidationTotalNote}>
-                  {driverReport.FinalWalletChange >= 0 ? 'Tăng' : 'Giảm'}
+                  {getFinalAmount(driverReport) >= 0 ? 'Tăng' : 'Giảm'}
                 </Text>
               </View>
               <Text style={[
                 styles.liquidationTotalAmount,
-                driverReport.FinalWalletChange >= 0 ? styles.positiveAmount : styles.negativeAmount
+                getFinalAmount(driverReport) >= 0 ? styles.positiveAmount : styles.negativeAmount
               ]}>
-                {driverReport.FinalWalletChange >= 0 ? '+' : ''}{formatCurrency(driverReport.FinalWalletChange)}
+                {getFinalAmount(driverReport) >= 0 ? '+' : ''}{formatCurrency(getFinalAmount(driverReport))}
               </Text>
             </View>
           </View>
@@ -681,8 +1560,6 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   // Contract signing UI state
   const [showContractModal, setShowContractModal] = useState(false);
-  const [showDigitalSignatureTerms, setShowDigitalSignatureTerms] =
-    useState(false);
   const [showContractOtpModal, setShowContractOtpModal] = useState(false);
   const [otpDigits, setOtpDigits] = useState<string[]>(Array(6).fill(""));
   const otpInputsRef = useRef<Array<TextInput | null>>([]);
@@ -717,17 +1594,11 @@ const DriverTripDetailScreenV2: React.FC = () => {
     setShowContractModal(true);
   };
 
-  const handleSignContractFromModal = () => {
-    // Step 2: Show digital signature terms
-    setShowDigitalSignatureTerms(true);
-  };
-
-  const handleAcceptDigitalSignatureTerms = async () => {
+  const handleSignContractFromModal = async () => {
     if (!myDriverContract?.contractId) return;
-    setShowDigitalSignatureTerms(false);
     setSigningContract(true);
     try {
-      // Step 3: Send OTP using TripProviderContract API
+      // Send OTP using TripProviderContract API
       const res: any = await tripProviderContractService.sendSignOtp(
         myDriverContract.contractId
       );
@@ -783,9 +1654,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (status !== "granted")
         throw new Error("Cần quyền vị trí để dẫn đường.");
 
-      const now = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const now = await getLocationWithTimeout(
+        Location.Accuracy.Balanced
+      );
       const currentPosition: Position = [
         now.coords.longitude,
         now.coords.latitude,
@@ -911,7 +1782,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           // ========== START TRACKING: CHOOSE MODE ==========
           if (trackingMode === "simulation") {
             // Simulation Mode: Use RouteSimulator
-            await startSimulation();
+            await startSimulation(0, coerced);
           } else {
             // Real Mode: Use GPS
             startLocationWatcher();
@@ -922,6 +1793,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
               language: "vi-VN",
             });
           } catch {}
+
+          return;
         } else {
           throw new Error("Không thể tạo route từ vị trí hiện tại đến điểm lấy hàng");
         }
@@ -929,9 +1802,11 @@ const DriverTripDetailScreenV2: React.FC = () => {
         console.warn("Plan to pickup (address) failed", e);
         throw new Error("Không thể lấy route đến điểm lấy hàng");
       }
+      throw new Error("Không thể bắt đầu dẫn đường");
+    } catch (error: any) {
       showAlertCrossPlatform(
         "Lỗi",
-        "Không thể bắt đầu dẫn đường"
+        error?.message || "Không thể bắt đầu dẫn đường"
       );
     } finally {
       setStartingNav(false);
@@ -963,9 +1838,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (status !== "granted")
         throw new Error("Cần quyền vị trí để dẫn đường.");
 
-      const now = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const now = await getLocationWithTimeout(
+        Location.Accuracy.Balanced
+      );
       const currentPosition: Position = [
         now.coords.longitude,
         now.coords.latitude,
@@ -1089,7 +1964,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           // ========== START TRACKING: CHOOSE MODE ==========
           if (trackingMode === "simulation") {
             // Simulation Mode: Use RouteSimulator
-            await startSimulation();
+            await startSimulation(0, coerced);
           } else {
             // Real Mode: Use GPS
             startLocationWatcher();
@@ -1100,6 +1975,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
               language: "vi-VN",
             });
           } catch {}
+
+          return;
         } else {
           throw new Error("Không thể tạo route từ vị trí hiện tại đến điểm giao hàng");
         }
@@ -1107,8 +1984,12 @@ const DriverTripDetailScreenV2: React.FC = () => {
         console.warn("Plan to delivery (address) failed", e);
         throw new Error("Không thể lấy route đến điểm giao hàng");
       }
-      // Fallback alert when navigation planning fails (avoid referencing undefined 'error')
-      showAlertCrossPlatform("Lỗi", "Không thể bắt đầu dẫn đường");
+      throw new Error("Không thể bắt đầu dẫn đường");
+    } catch (error: any) {
+      showAlertCrossPlatform(
+        "Lỗi",
+        error?.message || "Không thể bắt đầu dẫn đường"
+      );
     } finally {
       setStartingNav(false);
     }
@@ -1142,9 +2023,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (status !== "granted")
         throw new Error("Cần quyền vị trí để dẫn đường.");
 
-      const now = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const now = await getLocationWithTimeout(
+        Location.Accuracy.Balanced
+      );
       const currentPosition: Position = [
         now.coords.longitude,
         now.coords.latitude,
@@ -1175,8 +2056,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
             Number(c[1]),
           ]) as [number, number][];
 
+          setReturnRouteCoords(coerced);
           setRouteCoords(coerced);
-          setVisibleRoute("overview");
+          setVisibleRoute("toReturn");
           if (planned.instructions) setRouteInstructions(planned.instructions);
 
           // Start driver work session
@@ -1243,7 +2125,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           // ========== START TRACKING: CHOOSE MODE ==========
           if (trackingMode === "simulation") {
             // Simulation Mode: Use RouteSimulator
-            await startSimulation();
+            await startSimulation(0, coerced);
           } else {
             // Real Mode: Use GPS
             startLocationWatcher();
@@ -1675,49 +2557,36 @@ const DriverTripDetailScreenV2: React.FC = () => {
     DeliveryIssueType.DAMAGED
   );
   const [issueDescription, setIssueDescription] = useState("");
-  const [issueImages, setIssueImages] = useState<(string | File)[]>([]);
+  const [issueImages, setIssueImages] = useState<Array<{ uri: string; imageURL: string; fileName: string; type: string }>>([]);
   const [submittingIssue, setSubmittingIssue] = useState(false);
 
   // Check-in Modal States
   const [showCheckInModal, setShowCheckInModal] = useState(false);
-  const [checkInImage, setCheckInImage] = useState<any>(null);
+  const [checkInImage, setCheckInImage] = useState<{
+    uri: string;
+    imageURL: string;
+    fileName: string;
+    type: string;
+  } | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [checkInRouteCoordinates, setCheckInRouteCoordinates] = useState<
     Position[]
   >([]);
   const [overlayMapReady, setOverlayMapReady] = useState(false);
+  const checkInRouteInFlightRef = useRef(false);
+  const checkInWatchSubRef = useRef<{ remove: () => void } | null>(null);
+  const checkInWatchLastRouteAtRef = useRef(0);
 
   // Check-out Modal States
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
-  const [checkOutImage, setCheckOutImage] = useState<any>(null);
+  const [checkOutImage, setCheckOutImage] = useState<{
+    uri: string;
+    imageURL: string;
+    fileName: string;
+    type: string;
+  } | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
-
-  // Cache blob URLs for check-in/check-out images to prevent memory leaks
-  const checkInImageUrl = useMemo(() => {
-    if (!checkInImage) return "";
-    if (checkInImage instanceof File) return URL.createObjectURL(checkInImage);
-    return checkInImage.uri || "";
-  }, [checkInImage]);
-
-  const checkOutImageUrl = useMemo(() => {
-    if (!checkOutImage) return "";
-    if (checkOutImage instanceof File)
-      return URL.createObjectURL(checkOutImage);
-    return checkOutImage.uri || "";
-  }, [checkOutImage]);
-
-  // Cleanup blob URLs
-  useEffect(() => {
-    return () => {
-      if (checkInImageUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(checkInImageUrl);
-      }
-      if (checkOutImageUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(checkOutImageUrl);
-      }
-    };
-  }, [checkInImageUrl, checkOutImageUrl]);
 
   // Vehicle handover states
   const [showHandoverModal, setShowHandoverModal] = useState(false);
@@ -1772,6 +2641,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [deliveryRouteCoords, setDeliveryRouteCoords] = useState<
     [number, number][] | null
   >(null);
+  const [returnRouteCoords, setReturnRouteCoords] = useState<
+    [number, number][] | null
+  >(null);
+  const [loadingReturnRoute, setLoadingReturnRoute] = useState<boolean>(false);
   const [startPoint, setStartPoint] = useState<[number, number] | undefined>();
   const [endPoint, setEndPoint] = useState<[number, number] | undefined>();
   const [routeInstructions, setRouteInstructions] = useState<any[]>([]);
@@ -1803,6 +2676,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const [showApproachingAlert, setShowApproachingAlert] =
     useState<boolean>(false);
   const [approachAlertShown, setApproachAlertShown] = useState<boolean>(false);
+  const [showExceededAlert, setShowExceededAlert] = useState<boolean>(false);
+  const [exceedAlertShown, setExceedAlertShown] = useState<boolean>(false);
   const [isSessionRunning, setIsSessionRunning] = useState<boolean>(false);
   const eligibilityTimerRef = useRef<any | null>(null);
   const [baseHoursToday, setBaseHoursToday] = useState<number>(0);
@@ -1810,6 +2685,73 @@ const DriverTripDetailScreenV2: React.FC = () => {
   const continuousTimerRef = useRef<any | null>(null);
   const stoppedTimerRef = useRef<any | null>(null);
   const [stoppedSeconds, setStoppedSeconds] = useState<number>(0);
+
+  const isReturnVehicleStatus =
+    trip?.status === "READY_FOR_VEHICLE_RETURN" ||
+    trip?.status === "RETURNING_VEHICLE" ||
+    trip?.status === "VEHICLE_RETURNING";
+
+  const getReturnPoint = useCallback((): Position | null => {
+    if (!trip) return null;
+    const lng = Number((trip as any).vehicleDropoffLng);
+    const lat = Number((trip as any).vehicleDropoffLat);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+    return [lng, lat];
+  }, [trip]);
+
+  const planReturnRouteFromCurrentLocation = useCallback(async () => {
+    if (!trip) return null;
+    if (loadingReturnRoute) return null;
+    const returnPoint = getReturnPoint();
+    if (!returnPoint) {
+      showAlertCrossPlatform("Lỗi", "Không tìm thấy toạ độ điểm trả xe");
+      return null;
+    }
+
+    setLoadingReturnRoute(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        showAlertCrossPlatform("Lỗi", "Cần quyền vị trí để tính tuyến đến điểm trả xe.");
+        return null;
+      }
+
+      const now = await getLocationWithTimeout(Location.Accuracy.Balanced);
+      const currentPosition: Position = [
+        now.coords.longitude,
+        now.coords.latitude,
+      ];
+      setCurrentPos(currentPosition);
+
+      const planned = await vietmapService.planBetweenPoints(
+        currentPosition,
+        returnPoint,
+        "car"
+      );
+
+      if (!planned?.coordinates?.length) {
+        showAlertCrossPlatform("Lỗi", "Không thể lấy route đến điểm trả xe");
+        return null;
+      }
+
+      const coerced = planned.coordinates.map((c: any) => [
+        Number(c[0]),
+        Number(c[1]),
+      ]) as [number, number][];
+
+      setReturnRouteCoords(coerced);
+      if (planned.instructions) setRouteInstructions(planned.instructions);
+      setVisibleRoute("toReturn");
+
+      return coerced;
+    } catch (e: any) {
+      console.warn("[DriverTripDetail] planReturnRouteFromCurrentLocation failed", e);
+      showAlertCrossPlatform("Lỗi", e?.message || "Không thể tính tuyến đến điểm trả xe");
+      return null;
+    } finally {
+      setLoadingReturnRoute(false);
+    }
+  }, [trip, loadingReturnRoute, getReturnPoint]);
 
   const watchSubRef = useRef<any | null>(null);
   const previousSpeedRef = useRef<number>(0);
@@ -1853,6 +2795,37 @@ const DriverTripDetailScreenV2: React.FC = () => {
       };
     }, [tripId])
   );
+
+  // Ensure map route selection stays consistent with trip status.
+  // In return-to-vehicle statuses, we must always focus the return leg.
+  useEffect(() => {
+    if (!trip?.status) return;
+
+    if (trip.status === "VEHICLE_RETURNED") {
+      if (visibleRoute === "toReturn") setVisibleRoute("overview");
+      if (returnRouteCoords) setReturnRouteCoords(null);
+      return;
+    }
+
+    if (isReturnVehicleStatus) {
+      if (visibleRoute !== "toReturn") setVisibleRoute("toReturn");
+      if (!returnRouteCoords && !loadingReturnRoute) {
+        // Fire-and-forget preload so the Start button can enable once ready.
+        planReturnRouteFromCurrentLocation();
+      }
+      return;
+    }
+
+    if (visibleRoute === "toReturn") setVisibleRoute("overview");
+    if (returnRouteCoords) setReturnRouteCoords(null);
+  }, [
+    trip?.status,
+    isReturnVehicleStatus,
+    visibleRoute,
+    returnRouteCoords,
+    loadingReturnRoute,
+    planReturnRouteFromCurrentLocation,
+  ]);
 
   // Polling: Auto-refresh session info khi có nhiều tài xế
   useEffect(() => {
@@ -2032,7 +3005,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         continuousTimerRef.current = null;
       }
     };
-  }, [activeSessionStart, sessionPaused]);
+  }, [isSessionRunning, sessionPaused]);
 
   // Count stopped/paused seconds while session is paused
   useEffect(() => {
@@ -2081,22 +3054,43 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
       if (!needsCheckIn || !overlayMapReady) return;
 
+      if (checkInRouteInFlightRef.current) {
+        console.log("[CheckInRoute] Skipped (already in-flight)");
+        return;
+      }
+      checkInRouteInFlightRef.current = true;
+
       try {
+        console.log("[CheckInRoute] Starting location fetch...");
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
           console.log("[CheckInRoute] Location permission denied");
+          Alert.alert(
+            "Cần quyền truy cập vị trí",
+            "Vui lòng cấp quyền truy cập vị trí để sử dụng tính năng này."
+          );
           return;
         }
 
-        const now = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+        console.log("[CheckInRoute] Getting location (using watchPosition for Android reliability)...");
+
+        // Destination (start location from API)
+        const driverStartLat = toFiniteNumberOrNull(currentDriver?.startLat);
+        const driverStartLng = toFiniteNumberOrNull(currentDriver?.startLng);
+
+        // IMPORTANT: Fallback should represent "my current location" when phone GPS fails,
+        // not the destination. Otherwise from==to and the route becomes zero-length.
+        // getLocationWithTimeout already has fallbacks (cache -> static FPT HCM).
+
+        const now = await getLocationWithTimeout(Location.Accuracy.Lowest, 20000);
+        console.log('[CheckInRoute] Location resolved:', {
+          mocked: !!now?.mocked,
+          source: now?.source ?? 'expoLocation',
+          accuracy: now?.coords?.accuracy ?? null,
         });
+
         const myLat = now.coords.latitude;
         const myLng = now.coords.longitude;
-
-        // Lấy điểm xuất phát của driver (startAddress) từ API
-        const driverStartLat = currentDriver?.startLat;
-        const driverStartLng = currentDriver?.startLng;
 
         console.log("[CheckInRoute] My current location:", myLat, myLng);
         console.log(
@@ -2105,7 +3099,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
           driverStartLng
         );
 
-        if (!driverStartLat || !driverStartLng) {
+        if (driverStartLat === null || driverStartLng === null) {
           console.log(
             "[CheckInRoute] No driver start location in API response"
           );
@@ -2125,28 +3119,136 @@ const DriverTripDetailScreenV2: React.FC = () => {
           "points"
         );
 
-        if (
-          routeRes &&
-          routeRes.coordinates &&
-          routeRes.coordinates.length > 0
-        ) {
-          setCheckInRouteCoordinates(routeRes.coordinates as Position[]);
-          console.log("[CheckInRoute] ✓ Route set successfully");
-        } else {
-          // Fallback to just two points
-          const fallbackRoute = [
-            [myLng, myLat] as Position,
-            [driverStartLng, driverStartLat] as Position,
-          ];
-          setCheckInRouteCoordinates(fallbackRoute);
-          console.log("[CheckInRoute] ⚠ Using fallback route (2 points)");
+        const fromPos: Position = [myLng, myLat];
+        const toPos: Position = [driverStartLng, driverStartLat];
+
+        let coords: Position[] =
+          routeRes?.coordinates && Array.isArray(routeRes.coordinates) && routeRes.coordinates.length >= 2
+            ? (routeRes.coordinates as Position[])
+            : ([fromPos, toPos] as Position[]);
+
+        // If start and end are the same (or extremely close), VietMap may return a 1-point route.
+        // A line with <2 distinct points won't render, so inject a tiny visible segment for demo clarity.
+        const distMeters = haversine(fromPos, toPos);
+        if (distMeters < 5) {
+          const eps = 0.00005; // ~5m-ish
+          coords = [fromPos, [fromPos[0] + eps, fromPos[1] + eps] as Position];
+          console.log('[CheckInRoute] ⚠ Route too short (A≈B). Injecting tiny segment so it renders on map.');
         }
+
+        setCheckInRouteCoordinates(coords);
+        console.log(
+          "[CheckInRoute] ✓ Route set successfully",
+          `(points=${coords.length}, dist≈${Math.round(distMeters)}m)`
+        );
       } catch (err) {
         console.error("[CheckInRoute] Error:", err);
+      } finally {
+        checkInRouteInFlightRef.current = false;
       }
     };
 
     fetchCheckInRoute();
+  }, [trip, currentDriver, overlayMapReady]);
+
+  // Keep a live watch during check-in overlay to eventually get a real GPS fix on MIUI/Redmi.
+  // Even if initial one-shot attempts time out, this watch can succeed later and refresh the route.
+  useEffect(() => {
+    if (!trip || !currentDriver) return;
+
+    const needsCheckIn = !currentDriver.isOnBoard;
+    const driverStartLat = toFiniteNumberOrNull(currentDriver?.startLat);
+    const driverStartLng = toFiniteNumberOrNull(currentDriver?.startLng);
+
+    if (!needsCheckIn || !overlayMapReady) {
+      try {
+        checkInWatchSubRef.current?.remove();
+      } catch {
+        // ignore
+      }
+      checkInWatchSubRef.current = null;
+      return;
+    }
+
+    if (driverStartLat === null || driverStartLng === null) return;
+    if (checkInWatchSubRef.current) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const sub = await Location.watchPositionAsync(
+          {
+            accuracy: Platform.OS === 'android' ? Location.Accuracy.Highest : Location.Accuracy.BestForNavigation,
+            mayShowUserSettingsDialog: true,
+            timeInterval: 1000,
+            distanceInterval: 0,
+          },
+          async (loc: any) => {
+            if (cancelled) return;
+            const lat = toFiniteNumberOrNull(loc?.coords?.latitude);
+            const lng = toFiniteNumberOrNull(loc?.coords?.longitude);
+            if (lat === null || lng === null) return;
+
+            console.log('[CheckInRoute] Live GPS fix:', {
+              lat,
+              lng,
+              accuracy: loc?.coords?.accuracy ?? null,
+            });
+
+            await persistLastGoodLocation(loc);
+
+            // Throttle route recomputation to avoid spamming VietMap.
+            const now = Date.now();
+            if (now - checkInWatchLastRouteAtRef.current < 8000) return;
+            checkInWatchLastRouteAtRef.current = now;
+
+            try {
+              const fromPos: Position = [lng, lat];
+              const toPos: Position = [driverStartLng, driverStartLat];
+              const routeRes = await vietmapService.planBetweenPoints(fromPos, toPos);
+
+              let coords: Position[] =
+                routeRes?.coordinates && Array.isArray(routeRes.coordinates) && routeRes.coordinates.length >= 2
+                  ? (routeRes.coordinates as Position[])
+                  : ([fromPos, toPos] as Position[]);
+
+              const distMeters = haversine(fromPos, toPos);
+              if (distMeters < 5) {
+                const eps = 0.00005; // ~5m-ish
+                coords = [fromPos, [fromPos[0] + eps, fromPos[1] + eps] as Position];
+              }
+
+              setCheckInRouteCoordinates(coords);
+            } catch {
+              // ignore
+            }
+          }
+        );
+
+        if (cancelled) {
+          try {
+            sub?.remove();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        checkInWatchSubRef.current = sub;
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        checkInWatchSubRef.current?.remove();
+      } catch {
+        // ignore
+      }
+      checkInWatchSubRef.current = null;
+    };
   }, [trip, currentDriver, overlayMapReady]);
 
   // Set overlay map ready after a short delay when driver not checked in
@@ -2176,6 +3278,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       const res = await driverWorkSessionService.getCurrentSessionInTrip(
         tripId
       );
+      
       console.log("[DriverTripDetail] Current session:", res);
       if (res?.isSuccess && res?.result) {
         setCurrentSession(res.result);
@@ -2443,16 +3546,22 @@ const DriverTripDetailScreenV2: React.FC = () => {
    * ONLY call this after route is confirmed ready
    * Checks: route exists, route valid, not already running
    */
-  const startSimulation = async () => {
+  const startSimulation = async (
+    startIndex?: number,
+    routeOverride?: [number, number][]
+  ) => {
+    const effectiveRoute =
+      routeOverride && routeOverride.length ? routeOverride : routeCoords;
+
     // STEP 1: Validate route exists and is valid
-    if (!routeCoords || routeCoords.length === 0) {
+    if (!effectiveRoute || effectiveRoute.length === 0) {
       console.warn("[Simulation] ❌ No route coords available");
       showAlertCrossPlatform("Chưa sẵn sàng", "Chưa có tuyến đường để giả lập. Vui lòng nhấn 'Đến lấy hàng' trước.");
       return;
     }
 
-    if (routeCoords.length < 2) {
-      console.warn("[Simulation] ❌ Route too short:", routeCoords.length, "points");
+    if (effectiveRoute.length < 2) {
+      console.warn("[Simulation] ❌ Route too short:", effectiveRoute.length, "points");
       showAlertCrossPlatform("Lỗi", "Tuyến đường không hợp lệ (cần ít nhất 2 điểm)");
       return;
     }
@@ -2470,15 +3579,24 @@ const DriverTripDetailScreenV2: React.FC = () => {
     }
 
     console.log("[Simulation] 🚀 Starting simulation");
-    console.log("[Simulation] 📍 Route has", routeCoords.length, "points");
-    console.log("[Simulation] 📍 First point:", routeCoords[0]);
-    console.log("[Simulation] 📍 Last point:", routeCoords[routeCoords.length - 1]);
-    console.log("[Simulation] 📍 Starting from index:", simulatorIndex);
+    console.log("[Simulation] 📍 Route has", effectiveRoute.length, "points");
+    console.log("[Simulation] 📍 First point:", effectiveRoute[0]);
+    console.log("[Simulation] 📍 Last point:", effectiveRoute[effectiveRoute.length - 1]);
+    const baseIndex =
+      typeof startIndex === "number" && Number.isFinite(startIndex)
+        ? startIndex
+        : simulatorIndex;
+    const clampedIndex = Math.max(
+      0,
+      Math.min(Math.floor(baseIndex), effectiveRoute.length - 1)
+    );
+
+    console.log("[Simulation] 📍 Starting from index:", clampedIndex);
 
     try {
       // Initialize simulator
       simulatorRef.current = new SimpleRouteSimulator({
-        route: routeCoords,
+        route: effectiveRoute,
         speedKmH: 300, // 300 km/h - Very fast for testing
         updateIntervalMs: 1000, // 1 second - UI updates (throttled by sendLocationToServer)
         onUpdate: (location: SimulatorLocation) => {
@@ -2502,10 +3620,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
         },
       });
 
-      // Start from saved index or 0
-      simulatorRef.current.start(simulatorIndex);
+      // Start from provided index (new leg) or saved index (resume)
+      simulatorRef.current.start(clampedIndex);
       setIsSimulationRunning(true);
-      console.log("[Simulation] ✅ Started successfully from index", simulatorIndex);
+      console.log("[Simulation] ✅ Started successfully from index", clampedIndex);
     } catch (error: any) {
       console.error("[Simulation] ❌ Start failed:", error);
       const errorMsg = error?.message || "Không thể bắt đầu giả lập";
@@ -2547,9 +3665,19 @@ const DriverTripDetailScreenV2: React.FC = () => {
    */
   const handleDestinationReached = async () => {
     console.log("[Driver] 🎯 Destination reached - Journey phase:", journeyPhase);
-    
-    // Stop simulation first
-    stopSimulation();
+
+    // Exit navigation UI + stop tracking first
+    stopNavigationSilently();
+
+    // Return-to-vehicle legs should not auto-change pickup/dropoff status
+    if (
+      trip?.status === "READY_FOR_VEHICLE_RETURN" ||
+      trip?.status === "RETURNING_VEHICLE" ||
+      trip?.status === "VEHICLE_RETURNING"
+    ) {
+      showToast("Đã đến nơi trả xe");
+      return;
+    }
     
     try {
       if (journeyPhase === "TO_PICKUP") {
@@ -2568,7 +3696,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         if (res?.isSuccess) {
           showAlertCrossPlatform("Thành công", "Đã đến điểm lấy hàng");
           // Exit navigation UI
-          setNavActive(false);
+          stopNavigationSilently();
           setJourneyPhase("COMPLETED");
           // Refresh trip data
           await fetchTripData(true);
@@ -2592,7 +3720,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         if (res?.isSuccess) {
           showAlertCrossPlatform("Thành công", "Đã đến điểm giao hàng");
           // Exit navigation UI
-          setNavActive(false);
+          stopNavigationSilently();
           setJourneyPhase("COMPLETED");
           // Refresh trip data
           await fetchTripData(true);
@@ -2645,9 +3773,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (status !== "granted")
         throw new Error("Cần quyền vị trí để dẫn đường.");
 
-      const now = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const now = await getLocationWithTimeout(
+        Location.Accuracy.Balanced
+      );
       const currentPosition: Position = [
         now.coords.longitude,
         now.coords.latitude,
@@ -2760,7 +3888,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
       // ========== START TRACKING: CHOOSE MODE ==========
       if (trackingMode === "simulation") {
         // Simulation Mode: Use RouteSimulator
-        await startSimulation();
+        await startSimulation(0);
       } else {
         // Real Mode: Use GPS
         startLocationWatcher();
@@ -2801,23 +3929,64 @@ const DriverTripDetailScreenV2: React.FC = () => {
     }
 
     try {
+      // Request permission
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        // Silent fail - không hiện thông báo lỗi
         console.warn("[DriverTripDetail] Location permission denied");
+        showAlertCrossPlatform(
+          "Cần quyền truy cập vị trí",
+          "Vui lòng cấp quyền truy cập vị trí để sử dụng tính năng chỉ đường."
+        );
+        return;
+      }
+
+      // Check if location services are enabled
+      const isEnabled = await Location.hasServicesEnabledAsync();
+      if (!isEnabled) {
+        showAlertCrossPlatform(
+          "Vị trí bị tắt",
+          "Vui lòng bật GPS/Dịch vụ vị trí trong cài đặt thiết bị để sử dụng tính năng chỉ đường.",
+          () => {
+            if (Platform.OS === 'android') {
+              Linking.openSettings();
+            } else if (Platform.OS === 'ios') {
+              Linking.openURL('app-settings:');
+            }
+          }
+        );
         return;
       }
       
-      const now = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const currentPosition: Position = [
-        now.coords.longitude,
-        now.coords.latitude,
-      ];
+      // Get current location with timeout
+      let currentPosition: Position;
+      try {
+        // Android (especially MIUI) can take >8s for the first fix.
+        const now = await getLocationWithTimeout(Location.Accuracy.Balanced, 25000);
+        currentPosition = [now.coords.longitude, now.coords.latitude];
+        console.log('[DriverTripDetail] 📍 Current location:', currentPosition);
+      } catch (locError: any) {
+        console.warn("[DriverTripDetail] Location timeout or unavailable:", locError.message);
+        
+        // Fallback: Use pickup point as starting point (user is probably already there)
+        const pickupPoint = routeCoords && routeCoords.length ? (routeCoords[0] as Position) : null;
+        if (!pickupPoint) {
+          showAlertCrossPlatform(
+            "Không thể lấy vị trí",
+            "Không thể xác định vị trí hiện tại. Vui lòng kiểm tra GPS và thử lại."
+          );
+          return;
+        }
+        
+        // Just show the overview route instead of route to pickup
+        setVisibleRoute("overview");
+        showAlertCrossPlatform(
+          "Thông báo",
+          "Không lấy được vị trí hiện tại. Hiển thị tuyến đường chính từ điểm lấy hàng."
+        );
+        return;
+      }
 
-      const pickupPoint =
-        routeCoords && routeCoords.length ? (routeCoords[0] as Position) : null;
+      const pickupPoint = routeCoords && routeCoords.length ? (routeCoords[0] as Position) : null;
       if (!pickupPoint) {
         console.warn("[DriverTripDetail] No pickup point found");
         return;
@@ -2912,9 +4081,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted")
         throw new Error("Cần quyền vị trí để tính tuyến đến điểm giao hàng.");
-      const now = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const now = await getLocationWithTimeout(
+        Location.Accuracy.Balanced
+      );
       const currentPosition: Position = [
         now.coords.longitude,
         now.coords.latitude,
@@ -2955,81 +4124,123 @@ const DriverTripDetailScreenV2: React.FC = () => {
   };
 
   const startLocationWatcher = async () => {
+    // Stop existing watcher if any
     if (watchSubRef.current) {
       try {
         const s: any = watchSubRef.current;
         if (typeof s.remove === "function") s.remove();
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[Location] Error stopping previous watcher:', e);
+      }
       watchSubRef.current = null;
     }
 
-    interface LocationObjectCoords {
-      longitude: number;
-      latitude: number;
-      heading?: number;
-      speed?: number;
-    }
+    try {
+      // Request location permission first
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        showAlertCrossPlatform(
+          'Quyền truy cập vị trí',
+          'Ứng dụng cần quyền truy cập vị trí để theo dõi hành trình. Vui lòng cấp quyền trong cài đặt.'
+        );
+        return;
+      }
 
-    interface LocationObject {
-      coords: LocationObjectCoords;
-    }
+      // Get initial position to verify GPS is working
+      try {
+        const initialLocation = await getLocationWithTimeout(Location.Accuracy.Balanced);
+        console.log('[Location] ✅ Initial position:', initialLocation.coords.latitude, initialLocation.coords.longitude);
+      } catch (initError) {
+        console.warn('[Location] ⚠️ Could not get initial position:', initError);
+        // Continue anyway, watchPositionAsync might still work
+      }
 
-    type WatchPositionCallback = (loc: LocationObject) => void;
+      interface LocationObjectCoords {
+        longitude: number;
+        latitude: number;
+        heading?: number;
+        speed?: number;
+      }
 
-    watchSubRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.BestForNavigation,
-        distanceInterval: 5,
-        timeInterval: 1000,
-      },
-      (loc: any) => {
-        const pos: Position = [loc.coords.longitude, loc.coords.latitude];
-        const latitude = loc.coords.latitude;
-        const longitude = loc.coords.longitude;
-        const bearing = loc.coords.heading ?? 0;
-        const speed = loc.coords.speed ?? 0;
+      interface LocationObject {
+        coords: LocationObjectCoords;
+      }
 
-        // Update UI
-        setCurrentPos(pos);
-        if (loc.coords.heading) setCurrentHeading(loc.coords.heading);
+      type WatchPositionCallback = (loc: LocationObject) => void;
 
-        // Send location to server (Real mode)
-        sendLocationToServer(latitude, longitude, bearing, speed);
+      watchSubRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          distanceInterval: 5,
+          timeInterval: 1000,
+        },
+        (loc: any) => {
+          try {
+            const pos: Position = [loc.coords.longitude, loc.coords.latitude];
+            const latitude = loc.coords.latitude;
+            const longitude = loc.coords.longitude;
+            const bearing = loc.coords.heading ?? 0;
+            const speed = loc.coords.speed ?? 0;
 
-        // Calculate progress
-        if (routeCoords.length) {
-          const nearest = nearestCoordIndex(pos, routeCoords);
-          const idx = (nearest && (nearest.index ?? nearest)) as number;
-          setNearestIdx(idx);
-          const rem = remainingDistanceFrom(idx, routeCoords, pos);
-          setRemaining(rem);
-          setEta(calculateArrivalTime(rem));
+            // Validate coordinates
+            if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
+              console.warn('[Location] ⚠️ Invalid coordinates received:', latitude, longitude);
+              return;
+            }
 
-          const smooth = smoothSpeed(speed, previousSpeedRef.current);
-          previousSpeedRef.current = speed;
-          setCurrentSpeed(smooth);
+            // Update UI
+            setCurrentPos(pos);
+            if (loc.coords.heading) setCurrentHeading(loc.coords.heading);
 
-          // Proximity checks
-          const dest =
-            journeyPhase === "TO_PICKUP"
-              ? routeCoords[0]
-              : routeCoords[routeCoords.length - 1];
-          if (haversine(pos, dest) <= 50) {
-            if (journeyPhase === "TO_PICKUP") setCanConfirmPickup(true);
-            else setCanConfirmDelivery(true);
+            // Send location to server (Real mode)
+            sendLocationToServer(latitude, longitude, bearing, speed);
+
+            // Calculate progress
+            if (routeCoords.length) {
+              const nearest = nearestCoordIndex(pos, routeCoords);
+              const idx = (nearest && (nearest.index ?? nearest)) as number;
+              setNearestIdx(idx);
+              const rem = remainingDistanceFrom(idx, routeCoords, pos);
+              setRemaining(rem);
+              setEta(calculateArrivalTime(rem));
+
+              const smooth = smoothSpeed(speed, previousSpeedRef.current);
+              previousSpeedRef.current = speed;
+              setCurrentSpeed(smooth);
+
+              // Proximity checks
+              const dest =
+                journeyPhase === "TO_PICKUP"
+                  ? routeCoords[0]
+                  : routeCoords[routeCoords.length - 1];
+              if (haversine(pos, dest) <= 50) {
+                if (journeyPhase === "TO_PICKUP") setCanConfirmPickup(true);
+                else setCanConfirmDelivery(true);
+              }
+            }
+          } catch (error) {
+            console.error('[Location] Error processing location update:', error);
           }
         }
-      }
-    );
+      );
+      
+      console.log('[Location] ✅ Location watcher started successfully');
+    } catch (error) {
+      console.error('[Location] ❌ Failed to start location watcher:', error);
+      showAlertCrossPlatform(
+        'Lỗi GPS',
+        'Không thể bắt đầu theo dõi vị trí. Vui lòng kiểm tra cài đặt GPS và thử lại.'
+      );
+    }
   };
 
-  const stopNavigation = async () => {
+  const stopNavigationSilently = () => {
     // Stop Real GPS
     if (watchSubRef.current) {
       try {
         const s: any = watchSubRef.current;
         if (typeof s.remove === "function") s.remove();
-      } catch (e) {}
+      } catch {}
       watchSubRef.current = null;
     }
 
@@ -3039,12 +4250,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
     setNavActive(false);
     setNavMinimized(false);
     setNavHidden(false);
+    setNavPaused(false);
+  };
+
+  const stopNavigation = async () => {
+    stopNavigationSilently();
     try {
       Speech.speak("Đã dừng dẫn đường", { language: "vi-VN" });
     } catch {}
   };
 
-  // Call backend to end current driver work session (but keep navigation UI active)
   // Call backend to end current driver work session (but keep navigation UI active)
   const handlePauseSession = async () => {
     if (!driverSessionId) {
@@ -3320,8 +4535,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
     //     } catch (e) { console.warn('Plan delivery failed', e) }
     // }
 
-    // Start delivery navigation directly (removed auto-open delivery record)
-    beginDeliveryNavigation();
+    // Arrived at pickup: close navigation UI and stop simulation
+    stopNavigationSilently();
+    setJourneyPhase("COMPLETED");
+    await fetchTripData(true);
   };
 
   const beginDeliveryNavigation = async () => {
@@ -3807,6 +5024,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
               ? ({ ...prev, status: "VEHICLE_RETURNING" } as TripDetailData)
               : prev
           );
+          await handleEndAndExit();
           await fetchTripData();
         } else {
           showAlert("Lỗi", res?.message || "Không thể cập nhật trạng thái");
@@ -3847,8 +5065,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
               ? ({ ...prev, status: "VEHICLE_RETURNED" } as TripDetailData)
               : prev
           );
-          // stop any navigation if active
-          stopNavigation();
+          await handleEndAndExit();
           await fetchTripData();
         } else {
           showAlert(
@@ -3884,9 +5101,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (status !== "granted") {
         throw new Error("Cần quyền vị trí để check-in.");
       }
-      const now = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const now = await getLocationWithTimeout(
+        Location.Accuracy.Balanced
+      );
       const latitude = now.coords.latitude;
       const longitude = now.coords.longitude;
 
@@ -3904,44 +5121,74 @@ const DriverTripDetailScreenV2: React.FC = () => {
         console.warn("Get address failed", e);
       }
 
-      // Step 1: Change trip status to VEHICLE_HANDOVERED (only main driver)
-      try {
-        const statusRes: any = await tripService.changeStatus({
-          TripId: trip.tripId,
-          NewStatus: "VEHICLE_HANDOVERED",
-        });
-        if (!statusRes?.isSuccess && statusRes?.statusCode !== 200) {
-          showAlert(
-            "Lỗi",
-            statusRes?.message || "Không thể thay đổi trạng thái chuyến đi"
-          );
-          return;
-        }
-      } catch (statusErr: any) {
-        showAlert(
-          "Lỗi",
-          statusErr?.message || "Không thể thay đổi trạng thái chuyến đi"
-        );
-        return;
-      }
+      // IMPORTANT: Check-in FIRST. If we change status first and check-in fails,
+      // the UI can get stuck because main driver can no longer see the check-in button.
+      const tryCheckIn = async () =>
+        (await assignmentService.driverCheckIn(
+          trip.tripId,
+          latitude,
+          longitude,
+          currentAddress,
+          checkInImage
+        )) as any;
 
-      // Step 2: Check-in
-      const res: any = await assignmentService.driverCheckIn(
-        trip.tripId,
-        latitude,
-        longitude,
-        currentAddress,
-        checkInImage
-      );
+      let res: any = await tryCheckIn();
+
+      // Fallback: If backend requires status change before check-in, try that path once.
+      const msg = String(res?.message || "").toLowerCase();
+      const maybeStatusGate =
+        !res?.isSuccess &&
+        res?.statusCode !== 200 &&
+        (msg.includes("status") ||
+          msg.includes("handover") ||
+          msg.includes("vehicle") ||
+          msg.includes("trạng thái"));
+
+      if (maybeStatusGate) {
+        try {
+          const statusRes: any = await tripService.changeStatus({
+            TripId: trip.tripId,
+            NewStatus: "VEHICLE_HANDOVERED",
+          });
+          if (statusRes?.isSuccess || statusRes?.statusCode === 200) {
+            res = await tryCheckIn();
+          }
+        } catch {
+          // ignore and fall through to normal error handling
+        }
+      }
 
       if (res?.isSuccess || res?.statusCode === 200) {
         const warning = res?.result?.warning || "";
+        setIsCheckedIn(true);
+        setShowCheckInModal(false);
+
+        // After successful check-in, update status for main driver.
+        try {
+          const statusRes: any = await tripService.changeStatus({
+            TripId: trip.tripId,
+            NewStatus: "VEHICLE_HANDOVERED",
+          });
+          const okStatus = statusRes?.isSuccess ?? statusRes?.statusCode === 200;
+          if (!okStatus) {
+            showAlert(
+              "Cảnh báo",
+              statusRes?.message ||
+                "Check-in thành công nhưng chưa thể cập nhật trạng thái chuyến đi. Vui lòng thử lại sau."
+            );
+          }
+        } catch (statusErr: any) {
+          showAlert(
+            "Cảnh báo",
+            statusErr?.message ||
+              "Check-in thành công nhưng chưa thể cập nhật trạng thái chuyến đi."
+          );
+        }
+
         showToast(
           "Xác nhận lấy xe & check-in thành công! Bắt đầu chuyến đi." + warning
         );
-        setIsCheckedIn(true);
-        setShowCheckInModal(false);
-        await fetchTripData();
+        await fetchTripData(true);
       } else {
         showAlert("Lỗi", res?.message || "Không thể check-in");
       }
@@ -3964,9 +5211,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
       if (status !== "granted") {
         throw new Error("Cần quyền vị trí để check-in.");
       }
-      const now = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      const now = await getLocationWithTimeout(
+        Location.Accuracy.Balanced
+      );
       const latitude = now.coords.latitude;
       const longitude = now.coords.longitude;
 
@@ -4023,6 +5270,8 @@ const DriverTripDetailScreenV2: React.FC = () => {
       }
       const now = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
+        timeInterval: 5000,
+        maybeTimeoutOrBackgroundMessage: true,
       });
       const latitude = now.coords.latitude;
       const longitude = now.coords.longitude;
@@ -4096,7 +5345,10 @@ const DriverTripDetailScreenV2: React.FC = () => {
       return deliveryRouteCoords && deliveryRouteCoords.length > 0
         ? deliveryRouteCoords
         : routeCoords;
-    if (visibleRoute === "toReturn") return routeCoords; // Use main routeCoords for return journey
+    if (visibleRoute === "toReturn")
+      return returnRouteCoords && returnRouteCoords.length > 0
+        ? returnRouteCoords
+        : routeCoords;
     return routeCoords;
   })();
 
@@ -4119,15 +5371,42 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
   const primaryDriver = trip?.drivers?.find((d) => d && d.type === "PRIMARY");
 
-  // helper: are we approaching the 4-hour continuous limit (TEST: 30 seconds for demo, production: 15 minutes)
+  // DEMO thresholds:
+  // - Warn at ~1 minute
+  // - Exceed at ~3 minutes
+  const DEMO_APPROACH_SECONDS = 60;
+  const DEMO_EXCEED_SECONDS = 180;
+
+  // helper: are we approaching / exceeding the 4-hour continuous limit
   // const approachingContinuousLimit = continuousSeconds >= 4 * 3600 - 15 * 60; // PRODUCTION
-  const approachingContinuousLimit = continuousSeconds >= 30; // TEST: Cảnh báo sau 30 giây
+  const approachingContinuousLimit =
+    continuousSeconds >= DEMO_APPROACH_SECONDS &&
+    continuousSeconds < DEMO_EXCEED_SECONDS;
+  const exceededContinuousLimit = continuousSeconds >= DEMO_EXCEED_SECONDS;
+
+  // Reset demo alert flags when timer resets / drops below thresholds
+  useEffect(() => {
+    if (continuousSeconds < DEMO_APPROACH_SECONDS && approachAlertShown) {
+      setApproachAlertShown(false);
+    }
+    if (continuousSeconds < DEMO_EXCEED_SECONDS && exceedAlertShown) {
+      setExceedAlertShown(false);
+    }
+    if (continuousSeconds < DEMO_EXCEED_SECONDS && showExceededAlert) {
+      setShowExceededAlert(false);
+    }
+  }, [
+    continuousSeconds,
+    approachAlertShown,
+    exceedAlertShown,
+    showExceededAlert,
+  ]);
 
   // Show an in-app banner and platform-specific toast/alert when approaching limit
   useEffect(() => {
     if (approachingContinuousLimit && !approachAlertShown) {
       const message =
-        "Bạn sắp đạt giới hạn lái liên tục. Vui lòng nghỉ ngơi sớm để đảm bảo an toàn.";
+        "DEMO: Bạn sắp tới ngưỡng vi phạm thời gian lái liên tục (mốc 4h liên tục).";
       setShowApproachingAlert(true);
       setApproachAlertShown(true);
 
@@ -4143,7 +5422,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
             setTimeout(() => window.alert(message), 50);
           }
         } else {
-          Alert.alert("Cảnh báo", message, [{ text: "OK" }]);
+          Alert.alert("Cảnh báo (DEMO)", message, [{ text: "OK" }]);
         }
       } catch (e) {
         console.warn("[DriverTripDetail] notify approaching limit failed", e);
@@ -4154,6 +5433,38 @@ const DriverTripDetailScreenV2: React.FC = () => {
       return () => clearTimeout(t);
     }
   }, [approachingContinuousLimit, approachAlertShown]);
+
+  // Exceeded demo limit (stronger message)
+  useEffect(() => {
+    if (exceededContinuousLimit && !exceedAlertShown) {
+      const message =
+        "DEMO: Bạn đã vượt ngưỡng thời gian quy định (4h liên tục). Vui lòng nhấn Nghỉ.";
+      // Hide the approaching banner if it's still visible
+      setShowApproachingAlert(false);
+      setShowExceededAlert(true);
+      setExceedAlertShown(true);
+
+      try {
+        if (Platform.OS === "android" && ToastAndroid && ToastAndroid.show) {
+          ToastAndroid.show(message, ToastAndroid.LONG);
+        } else if (Platform.OS === "web") {
+          if (typeof window !== "undefined" && (window as any).toast) {
+            (window as any).toast(message);
+          } else if (typeof window !== "undefined") {
+            setTimeout(() => window.alert(message), 50);
+          }
+        } else {
+          Alert.alert("Vượt ngưỡng (DEMO)", message, [{ text: "OK" }]);
+        }
+      } catch (e) {
+        console.warn("[DriverTripDetail] notify exceeded limit failed", e);
+      }
+
+      // auto-hide banner after 10 seconds
+      const t = setTimeout(() => setShowExceededAlert(false), 10000);
+      return () => clearTimeout(t);
+    }
+  }, [exceededContinuousLimit, exceedAlertShown]);
 
   // ===== CHECK-IN FLOW LOGIC =====
   // Phân biệt tài xế có hợp đồng (external) vs tài xế nội bộ (internal/no contract)
@@ -4196,90 +5507,60 @@ const DriverTripDetailScreenV2: React.FC = () => {
   // Helper: pick image for check-in
   const pickCheckInImage = async () => {
     const permissionResult =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+      await ImagePicker.requestCameraPermissionsAsync();
     if (permissionResult.granted === false) {
-      showAlert("Lỗi", "Cần quyền truy cập thư viện ảnh");
+      showAlert("Lỗi", "Cần quyền truy cập camera");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
+      allowsEditing: false,
+      quality: 0.5,
+      base64: true,
     });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
+    if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
+      const fileName = asset.fileName || "checkin-" + Date.now() + ".jpg";
+      const dataUrl = asset.base64
+        ? `data:image/jpeg;base64,${asset.base64}`
+        : undefined;
 
-      // WEB: Convert to File object
-      if (Platform.OS === "web") {
-        try {
-          const response = await fetch(asset.uri);
-          const blob = await response.blob();
-          const file = new File(
-            [blob],
-            asset.fileName || "checkin-" + Date.now() + ".jpg",
-            {
-              type: asset.mimeType || "image/jpeg",
-            }
-          );
-          setCheckInImage(file);
-        } catch (err) {
-          console.error("Failed to convert image to File:", err);
-          showAlert("Lỗi", "Không thể xử lý ảnh");
-        }
-      } else {
-        // MOBILE: React Native format
-        setCheckInImage({
-          uri: asset.uri,
-          type: asset.mimeType || "image/jpeg",
-          name: asset.fileName || "checkin-" + Date.now() + ".jpg",
-        } as any);
-      }
+      setCheckInImage({
+        uri: asset.uri,
+        imageURL: dataUrl || asset.uri,
+        fileName,
+        type: asset.mimeType || "image/jpeg",
+      });
     }
   };
 
   // Helper: pick image for check-out
   const pickCheckOutImage = async () => {
     const permissionResult =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+      await ImagePicker.requestCameraPermissionsAsync();
     if (permissionResult.granted === false) {
-      showAlert("Lỗi", "Cần quyền truy cập thư viện ảnh");
+      showAlert("Lỗi", "Cần quyền truy cập camera");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
+      allowsEditing: false,
+      quality: 0.5,
+      base64: true,
     });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
+    if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
+      const fileName = asset.fileName || "checkout-" + Date.now() + ".jpg";
+      const dataUrl = asset.base64
+        ? `data:image/jpeg;base64,${asset.base64}`
+        : undefined;
 
-      // WEB: Convert to File object
-      if (Platform.OS === "web") {
-        try {
-          const response = await fetch(asset.uri);
-          const blob = await response.blob();
-          const file = new File(
-            [blob],
-            asset.fileName || "checkout-" + Date.now() + ".jpg",
-            {
-              type: asset.mimeType || "image/jpeg",
-            }
-          );
-          setCheckOutImage(file);
-        } catch (err) {
-          console.error("Failed to convert image to File:", err);
-          showAlert("Lỗi", "Không thể xử lý ảnh");
-        }
-      } else {
-        // MOBILE: React Native format
-        setCheckOutImage({
-          uri: asset.uri,
-          type: asset.mimeType || "image/jpeg",
-          name: asset.fileName || "checkout-" + Date.now() + ".jpg",
-        } as any);
-      }
+      setCheckOutImage({
+        uri: asset.uri,
+        imageURL: dataUrl || asset.uri,
+        fileName,
+        type: asset.mimeType || "image/jpeg",
+      });
     }
   };
 
@@ -4757,14 +6038,19 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   </TouchableOpacity>
                 )}
 
-                {trip.status === "READY_FOR_VEHICLE_RETURN" && (
+                {isReturnVehicleStatus && (
                   <TouchableOpacity
                     style={[
                       styles.smallToggle,
                       visibleRoute === "toReturn" && styles.smallToggleActive,
                       { marginLeft: 8 },
                     ]}
-                    onPress={() => setVisibleRoute("toReturn")}
+                    onPress={async () => {
+                      setVisibleRoute("toReturn");
+                      if (!returnRouteCoords || returnRouteCoords.length < 2) {
+                        await planReturnRouteFromCurrentLocation();
+                      }
+                    }}
                   >
                     <Text
                       style={[
@@ -4789,7 +6075,9 @@ const DriverTripDetailScreenV2: React.FC = () => {
                       styles.mapFabDisabled,
                   ]}
                   onPress={
-                    visibleRoute === "toPickup"
+                    isReturnVehicleStatus
+                      ? startNavigationToReturnPoint
+                      : visibleRoute === "toPickup"
                       ? startNavigationToPickupAddress
                       : visibleRoute === "toDelivery"
                       ? startNavigationToDeliveryAddress
@@ -4800,17 +6088,28 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   disabled={
                     navActive ||
                     (eligibility && !eligibility.canDrive) ||
-                    continuousSeconds / 3600 >= 4
+                    continuousSeconds / 3600 >= 4 ||
+                    (isReturnVehicleStatus &&
+                      (!returnRouteCoords || returnRouteCoords.length < 2)) ||
+                    loadingReturnRoute
                   }
                 >
                   <Ionicons name="navigate" size={20} color="#FFF" />
                   <Text style={styles.mapFabText}>
                     {navActive
                       ? "Đang dẫn đường"
+                      : isReturnVehicleStatus
+                      ? loadingReturnRoute ||
+                        !returnRouteCoords ||
+                        returnRouteCoords.length < 2
+                        ? "Đang tải tuyến đến điểm trả xe..."
+                        : "Bắt đầu đi đến điểm trả xe"
                       : visibleRoute === "toPickup"
                       ? "Bắt đầu đi đến điểm lấy hàng"
                       : visibleRoute === "toDelivery"
                       ? "Bắt đầu đi đến điểm giao hàng"
+                      : visibleRoute === "toReturn"
+                      ? "Bắt đầu đi đến điểm trả xe"
                       : "Bắt đầu đi"}
                   </Text>
                 </TouchableOpacity>
@@ -5200,8 +6499,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         <View style={styles.navFullscreen}>
           {/* Driving hours overlay in fullscreen nav (top-left) */}
           {eligibility && (
-            <View style={[styles.navTimerContainer, { top: 84 }]}>
-              {/* moved slightly down */}
+            <View style={styles.navTimerContainer}>
               <View style={styles.navTimerPanel}>
                 <View style={styles.timerCol}>
                   <Text style={styles.timerTitle}>Thời gian lái</Text>
@@ -5256,7 +6554,11 @@ const DriverTripDetailScreenV2: React.FC = () => {
           />
           <NavigationHUD
             nextInstruction={
-              journeyPhase === "TO_PICKUP"
+              trip.status === "READY_FOR_VEHICLE_RETURN" ||
+              trip.status === "RETURNING_VEHICLE" ||
+              trip.status === "VEHICLE_RETURNING"
+                ? "Đến điểm trả xe"
+                : journeyPhase === "TO_PICKUP"
                 ? "Đến điểm lấy hàng"
                 : "Đến điểm giao hàng"
             }
@@ -5279,8 +6581,26 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   color="#92400E"
                 />
                 <Text style={styles.approachAlertText} numberOfLines={2}>
-                  Bạn sắp đạt giới hạn lái liên tục. Vui lòng nghỉ ngơi sớm để
-                  đảm bảo an toàn.
+                  DEMO: Bạn sắp tới ngưỡng vi phạm thời gian lái liên tục (mốc
+                  4h liên tục).
+                </Text>
+              </View>
+            </View>
+          )}
+          {showExceededAlert && (
+            <View
+              style={styles.approachAlertContainer}
+              pointerEvents="box-none"
+            >
+              <View style={styles.approachAlert}>
+                <MaterialCommunityIcons
+                  name="alert"
+                  size={18}
+                  color="#92400E"
+                />
+                <Text style={styles.approachAlertText} numberOfLines={2}>
+                  DEMO: Bạn đã vượt ngưỡng thời gian quy định (4h liên tục).
+                  Vui lòng nhấn Nghỉ.
                 </Text>
               </View>
             </View>
@@ -5431,9 +6751,15 @@ const DriverTripDetailScreenV2: React.FC = () => {
         <View style={styles.miniBar}>
           <View style={{ flex: 1 }}>
             <Text style={styles.miniTitle}>
-              {navPaused ? "⏸️ Đang tạm dừng" : (journeyPhase === "TO_PICKUP"
+              {navPaused
+                ? "⏸️ Đang tạm dừng"
+                : trip?.status === "READY_FOR_VEHICLE_RETURN" ||
+                  trip?.status === "RETURNING_VEHICLE" ||
+                  trip?.status === "VEHICLE_RETURNING"
+                ? "Đang đến trả xe"
+                : journeyPhase === "TO_PICKUP"
                 ? "Đang đến lấy hàng"
-                : "Đang đi giao hàng")}
+                : "Đang đi giao hàng"}
             </Text>
             <Text style={styles.miniSub}>
               {navPaused ? "Nhấn 'Bắt đầu đi tiếp' để tiếp tục" : `${formatMeters(remaining)} • ${eta}`}
@@ -5465,6 +6791,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
             </TouchableOpacity>
 
             <ScrollView
+              style={{ flex: 1 }}
               contentContainerStyle={styles.paperScrollContent}
               showsVerticalScrollIndicator={true}
             >
@@ -5536,298 +6863,6 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   <Text style={styles.signButtonText}>Ký Hợp Đồng</Text>
                 </TouchableOpacity>
               )}
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Digital Signature Terms Modal */}
-      <Modal
-        visible={showDigitalSignatureTerms}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDigitalSignatureTerms(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View
-            style={[
-              styles.modalCard,
-              { maxWidth: 500, width: "95%", maxHeight: "85%" },
-            ]}
-          >
-            <ScrollView
-              contentContainerStyle={{ padding: 20 }}
-              showsVerticalScrollIndicator={true}
-            >
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "800",
-                  color: "#1F2937",
-                  marginBottom: 16,
-                  textAlign: "center",
-                }}
-              >
-                Điều khoản Chữ ký số
-              </Text>
-
-              {/* Section 1 */}
-              <View style={{ marginBottom: 16 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "700",
-                    color: "#111827",
-                    marginBottom: 8,
-                  }}
-                >
-                  1. Chấp thuận sử dụng chữ ký số
-                </Text>
-                <Text
-                  style={{ fontSize: 14, color: "#374151", lineHeight: 22 }}
-                >
-                  Hai Bên đồng ý sử dụng chữ ký số/ chữ ký điện tử để ký kết,
-                  xác nhận các tài liệu, hợp đồng, phụ lục hoặc trao đổi trong
-                  suốt quá trình thực hiện hợp đồng này.
-                </Text>
-              </View>
-
-              {/* Section 2 */}
-              <View style={{ marginBottom: 16 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "700",
-                    color: "#111827",
-                    marginBottom: 8,
-                  }}
-                >
-                  2. Giá trị pháp lý
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    marginBottom: 6,
-                  }}
-                >
-                  Chữ ký số của mỗi Bên được tạo lập từ chứng thư số hợp lệ và
-                  được xem là:
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    paddingLeft: 12,
-                  }}
-                >
-                  • Có giá trị pháp lý tương đương chữ ký tay theo quy định của
-                  Luật Giao dịch điện tử Việt Nam;
-                  {"\n"}• Là bằng chứng xác thực về việc Bên ký đã đồng ý toàn
-                  bộ nội dung tài liệu được ký.
-                </Text>
-              </View>
-
-              {/* Section 3 */}
-              <View style={{ marginBottom: 16 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "700",
-                    color: "#111827",
-                    marginBottom: 8,
-                  }}
-                >
-                  3. Trách nhiệm bảo mật
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    marginBottom: 6,
-                  }}
-                >
-                  Mỗi Bên tự chịu trách nhiệm về:
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    paddingLeft: 12,
-                  }}
-                >
-                  • Bảo mật thiết bị ký số và mã PIN/mật khẩu;
-                  {"\n"}• Các giao dịch phát sinh từ chữ ký số của mình;
-                  {"\n"}• Mọi hậu quả phát sinh nếu để lộ thiết bị, mật khẩu
-                  hoặc để người khác ký thay.
-                </Text>
-              </View>
-
-              {/* Section 4 */}
-              <View style={{ marginBottom: 16 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "700",
-                    color: "#111827",
-                    marginBottom: 8,
-                  }}
-                >
-                  4. Hiệu lực tài liệu ký số
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    marginBottom: 6,
-                  }}
-                >
-                  Bất kỳ tài liệu, hợp đồng hoặc phụ lục nào được ký bằng chữ ký
-                  số hợp lệ của các Bên sẽ:
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    paddingLeft: 12,
-                  }}
-                >
-                  • Được xem là bản chính thức;
-                  {"\n"}• Có hiệu lực kể từ thời điểm chữ ký số được gắn vào tài
-                  liệu;
-                  {"\n"}• Được chấp nhận khi gửi qua email, hệ thống phần mềm,
-                  nền tảng ký điện tử hoặc bất kỳ hình thức điện tử hợp pháp
-                  nào.
-                </Text>
-              </View>
-
-              {/* Section 5 */}
-              <View style={{ marginBottom: 16 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "700",
-                    color: "#111827",
-                    marginBottom: 8,
-                  }}
-                >
-                  5. Trường hợp hệ thống gặp sự cố
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    marginBottom: 6,
-                  }}
-                >
-                  Trong trường hợp hệ thống ký số gặp lỗi kỹ thuật khiến việc ký
-                  không thực hiện được, các Bên có thể tạm thời:
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    paddingLeft: 12,
-                  }}
-                >
-                  • Ký tay trên bản giấy; hoặc
-                  {"\n"}• Ký bằng phương thức điện tử khác mà hai Bên thống nhất
-                  bằng văn bản/email.
-                </Text>
-              </View>
-
-              {/* Section 6 */}
-              <View style={{ marginBottom: 20 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "700",
-                    color: "#111827",
-                    marginBottom: 8,
-                  }}
-                >
-                  6. Lưu trữ và kiểm tra
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 22,
-                    paddingLeft: 12,
-                  }}
-                >
-                  • Các Bên có trách nhiệm lưu trữ tài liệu đã ký số;
-                  {"\n"}• Tài liệu được xác minh qua chứng thư số hợp lệ được
-                  xem là bằng chứng hợp lệ nếu phát sinh tranh chấp.
-                </Text>
-              </View>
-
-              {/* Warning Box */}
-              <View
-                style={{
-                  backgroundColor: "#FEF3C7",
-                  padding: 12,
-                  borderRadius: 8,
-                  borderLeftWidth: 4,
-                  borderLeftColor: "#F59E0B",
-                  marginBottom: 20,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: "#92400E",
-                    fontWeight: "600",
-                    lineHeight: 20,
-                  }}
-                >
-                  ⚠️ Lưu ý: Bằng việc nhấn "Tôi đồng ý", bạn xác nhận đã đọc,
-                  hiểu rõ và chấp thuận toàn bộ các điều khoản trên về việc sử
-                  dụng chữ ký số.
-                </Text>
-              </View>
-            </ScrollView>
-
-            {/* Action Buttons */}
-            <View
-              style={{
-                flexDirection: "row",
-                padding: 16,
-                paddingTop: 12,
-                borderTopWidth: 1,
-                borderTopColor: "#E5E7EB",
-                gap: 12,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => {
-                  setShowDigitalSignatureTerms(false);
-                  // Quay lại modal hợp đồng nếu đang mở
-                  // setShowContractModal(true);
-                }}
-                style={[styles.actionBtnSecondary, { flex: 1 }]}
-              >
-                <Text style={styles.actionBtnTextSec}>Không đồng ý</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleAcceptDigitalSignatureTerms}
-                style={[styles.actionBtnPrimary, { flex: 1 }]}
-                disabled={signingContract}
-              >
-                {signingContract ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <Text style={styles.actionBtnTextPri}>Tôi đồng ý</Text>
-                )}
-              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -6266,6 +7301,16 @@ const DriverTripDetailScreenV2: React.FC = () => {
               <Ionicons name="close" size={20} color="#FFF" />
             </TouchableOpacity>
 
+            {/* Loading Overlay khi đang gửi OTP */}
+            {sendingHandoverOtp && (
+              <View style={styles.loadingOverlay}>
+                <View style={styles.loadingBox}>
+                  <ActivityIndicator size="large" color="#2563EB" />
+                  <Text style={styles.loadingText}>Đang gửi OTP...</Text>
+                </View>
+              </View>
+            )}
+
             <ScrollView
               contentContainerStyle={styles.paperScrollContent}
               showsVerticalScrollIndicator={false}
@@ -6693,33 +7738,40 @@ const DriverTripDetailScreenV2: React.FC = () => {
       </Modal>
 
       {/* OTP Modal for Vehicle Handover Signing */}
-      <Modal visible={showHandoverOtpModal} transparent animationType="fade">
+      <Modal visible={showHandoverOtpModal} transparent animationType="fade" onRequestClose={() => {
+        if (!handoverOtpLoading) {
+          setShowHandoverOtpModal(false);
+          setHandoverOtpDigits(["", "", "", "", "", ""]);
+        }
+      }}>
         <View style={styles.modalBackdrop}>
-          <View style={styles.otpModalContainer}>
+          <View style={[styles.modalCard, { width: "90%", maxWidth: 400 }]}>
             <Text style={styles.otpModalTitle}>Nhập mã OTP</Text>
             <Text style={styles.otpModalSubtitle}>
               Mã OTP đã được gửi đến email của bạn
             </Text>
 
-            <View style={styles.otpInputContainer}>
+            <View style={styles.otpRow}>
               {handoverOtpDigits.map((digit, index) => (
-                <TextInput
-                  key={index}
-                  ref={(ref) => {
-                    if (ref) handoverOtpInputRefs.current[index] = ref;
-                  }}
-                  style={styles.otpInput}
-                  value={digit}
-                  onChangeText={(value) =>
-                    handleHandoverOtpChange(index, value)
-                  }
-                  onKeyPress={({ nativeEvent }) =>
-                    handleHandoverOtpKeyPress(index, nativeEvent.key)
-                  }
-                  keyboardType="number-pad"
-                  maxLength={1}
-                  selectTextOnFocus
-                />
+                <View key={index} style={[styles.otpBox, digit && styles.otpInputFilled]}>
+                  <TextInput
+                    ref={(ref) => {
+                      if (ref) handoverOtpInputRefs.current[index] = ref;
+                    }}
+                    style={styles.otpInput}
+                    value={digit}
+                    onChangeText={(value) =>
+                      handleHandoverOtpChange(index, value)
+                    }
+                    onKeyPress={({ nativeEvent }) =>
+                      handleHandoverOtpKeyPress(index, nativeEvent.key)
+                    }
+                    keyboardType="number-pad"
+                    maxLength={1}
+                    selectTextOnFocus
+                    editable={!handoverOtpLoading}
+                  />
+                </View>
               ))}
             </View>
 
@@ -6736,7 +7788,11 @@ const DriverTripDetailScreenV2: React.FC = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.actionBtnPrimary, { flex: 1 }]}
+                style={[
+                  styles.actionBtnPrimary,
+                  { flex: 1 },
+                  (handoverOtpLoading || handoverOtpDigits.join("").length !== 6) && { opacity: 0.6 }
+                ]}
                 onPress={submitOtpSignature}
                 disabled={
                   handoverOtpLoading || handoverOtpDigits.join("").length !== 6
@@ -6880,24 +7936,22 @@ const DriverTripDetailScreenV2: React.FC = () => {
         !isCheckedIn &&
         needsContractSign &&
         !showContractModal &&
-        !showDigitalSignatureTerms &&
         !showContractOtpModal && (
           <Modal visible={true} transparent animationType="none">
-            <View style={styles.overlayContainer} pointerEvents="box-none">
+            <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.overlayContainer} pointerEvents="box-none">
               {/* Map visible - 60-70% */}
               <View style={styles.overlayMapSection}>
                 <VietMapUniversal
                   coordinates={
                     checkInRouteCoordinates.length > 0
                       ? checkInRouteCoordinates
-                      : currentDriver?.startLat && currentDriver?.startLng
-                      ? [
-                          [
-                            currentDriver.startLng,
-                            currentDriver.startLat,
-                          ] as Position,
-                        ]
-                      : []
+                      : (() => {
+                          const lat = toFiniteNumberOrNull(currentDriver?.startLat);
+                          const lng = toFiniteNumberOrNull(currentDriver?.startLng);
+                          return lat !== null && lng !== null
+                            ? ([[lng, lat] as Position] as Position[])
+                            : ([] as Position[]);
+                        })()
                   }
                   style={{ flex: 1 }}
                   navigationActive={false}
@@ -6958,7 +8012,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
+            </SafeAreaView>
           </Modal>
         )}
 
@@ -6967,25 +8021,23 @@ const DriverTripDetailScreenV2: React.FC = () => {
         showOverlay &&
         !needsContractSign &&
         !showContractModal &&
-        !showDigitalSignatureTerms &&
         !showContractOtpModal &&
         !showCheckInModal && (
           <Modal visible={true} transparent animationType="none">
-            <View style={styles.overlayContainer} pointerEvents="box-none">
+            <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.overlayContainer} pointerEvents="box-none">
               {/* Map visible - 60-70% */}
               <View style={styles.overlayMapSection}>
                 <VietMapUniversal
                   coordinates={
                     checkInRouteCoordinates.length > 0
                       ? checkInRouteCoordinates
-                      : currentDriver?.startLat && currentDriver?.startLng
-                      ? [
-                          [
-                            currentDriver.startLng,
-                            currentDriver.startLat,
-                          ] as Position,
-                        ]
-                      : []
+                      : (() => {
+                          const lat = toFiniteNumberOrNull(currentDriver?.startLat);
+                          const lng = toFiniteNumberOrNull(currentDriver?.startLng);
+                          return lat !== null && lng !== null
+                            ? ([[lng, lat] as Position] as Position[])
+                            : ([] as Position[]);
+                        })()
                   }
                   style={{ flex: 1 }}
                   navigationActive={false}
@@ -7016,126 +8068,149 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              {/* Bottom Sheet - 30-40% */}
+              {/* Bottom Sheet - Compact Design */}
               <View style={styles.overlayBottomSheet} pointerEvents="auto">
                 <View style={styles.sheetHandle} />
                 <View style={styles.sheetContent}>
-                  <View style={styles.sheetHeader}>
-                    <MaterialCommunityIcons
-                      name="car-key"
-                      size={48}
-                      color="#F59E0B"
-                    />
-                    <Text style={styles.sheetTitle}>
-                      {hasDriverOwnerContract
-                        ? "BƯỚC 2: NHẬN XE"
-                        : "NHẬN XE & CHECK-IN"}
-                    </Text>
-
-                    {!canShowCheckInButton ? (
-                      <View style={styles.waitingBox}>
-                        <ActivityIndicator color="#F59E0B" />
-                        <Text style={styles.waitingText}>
-                          Đang chờ Owner điều phối xe...
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.sheetSubtitle}>
-                        Xe đã sẵn sàng! Vui lòng đến bãi xe và xác nhận lấy xe.
+                  <View style={styles.sheetHeaderCompact}>
+                    <View style={styles.sheetIconWrapper}>
+                      <MaterialCommunityIcons
+                        name="car-key"
+                        size={18}
+                        color="#F59E0B"
+                      />
+                    </View>
+                    <View style={styles.sheetTextContent}>
+                      <Text style={styles.sheetTitleCompact}>
+                        {hasDriverOwnerContract
+                          ? "BƯỚC 2: NHẬN XE"
+                          : "NHẬN XE & CHECK-IN"}
                       </Text>
-                    )}
+                      {!canShowCheckInButton ? (
+                        <View style={styles.waitingBoxCompact}>
+                          <ActivityIndicator color="#F59E0B" size="small" />
+                          <Text style={styles.waitingTextCompact}>
+                            Đang chờ Owner điều phối xe...
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.sheetSubtitleCompact}>
+                          Xe đã sẵn sàng! Vui lòng đến bãi xe xác nhận.
+                        </Text>
+                      )}
+                    </View>
                   </View>
 
                   {canShowCheckInButton && (
                     <TouchableOpacity
-                      style={[
-                        styles.sheetPrimaryButton,
-                        { backgroundColor: "#F59E0B" },
-                      ]}
+                      style={styles.sheetPrimaryButtonCompact}
                       onPress={() => setShowCheckInModal(true)}
                     >
-                      <Text style={styles.sheetButtonText}>
-                        {isMainDriver
-                          ? "XÁC NHẬN ĐÃ LẤY XE & CHECK-IN"
-                          : "CHECK-IN"}
-                      </Text>
                       <Ionicons
                         name="checkmark-circle"
-                        size={20}
+                        size={16}
                         color="#FFF"
                       />
+                      <Text style={styles.sheetButtonText}>
+                        {isMainDriver
+                          ? "XÁC NHẬN LẤY XE"
+                          : "CHECK-IN"}
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
               </View>
-            </View>
+            </SafeAreaView>
           </Modal>
         )}
 
-      {/* CHECK-IN DETAIL MODAL */}
+      {/* CHECK-IN DETAIL MODAL - Compact */}
       <Modal
         visible={showCheckInModal}
         transparent
         animationType="slide"
         onRequestClose={() => setShowCheckInModal(false)}
       >
-        <View style={styles.checkInModalBackdrop}>
-          <View style={styles.checkInModalCard}>
-            <View style={styles.checkInModalHeader}>
-              <Text style={styles.checkInModalTitle}>Xác nhận Check-in</Text>
-              <TouchableOpacity onPress={() => setShowCheckInModal(false)}>
-                <Ionicons name="close" size={24} color="#6B7280" />
+        <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.checkInModalBackdrop}>
+          <View style={styles.checkInModalCardCompact}>
+            {/* Header */}
+            <View style={styles.checkInModalHeaderCompact}>
+              <View style={styles.modalTitleRow}>
+                <View style={styles.modalIconCircle}>
+                  <Ionicons name="checkmark-circle" size={20} color="#F59E0B" />
+                </View>
+                <Text style={styles.checkInModalTitleCompact}>Xác nhận Check-in</Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setShowCheckInModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.checkInModalContent}>
-              <View style={styles.checkInInfoBox}>
-                <Ionicons name="information-circle" size={20} color="#2563EB" />
-                <Text style={styles.checkInInfoText}>
+            <ScrollView 
+              style={styles.checkInModalContentCompact}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Info */}
+              <View style={styles.checkInInfoBoxCompact}>
+                <Ionicons name="information-circle" size={18} color="#2563EB" />
+                <Text style={styles.checkInInfoTextCompact}>
                   {isMainDriver
-                    ? "Vui lòng chụp ảnh minh chứng tại bãi xe để xác nhận bạn đã lấy xe và check-in. Hệ thống sẽ tự động chuyển trạng thái chuyến đi."
-                    : "Vui lòng chụp ảnh minh chứng tại bãi xe để xác nhận bạn đã đến và check-in."}
+                    ? "Chụp ảnh minh chứng tại bãi xe để xác nhận lấy xe."
+                    : "Chụp ảnh minh chứng để xác nhận check-in."}
                 </Text>
               </View>
 
-              <Text style={styles.checkInLabel}>Ảnh minh chứng (*)</Text>
-
+              {/* Image Picker */}
               {checkInImage ? (
-                <View style={styles.checkInImagePreview}>
+                <View style={styles.checkInImagePreviewCompact}>
                   <Image
-                    source={{ uri: checkInImageUrl }}
-                    style={styles.checkInImage}
+                    source={{ uri: checkInImage.uri }}
+                    style={styles.checkInImageCompact}
                     resizeMode="cover"
                   />
                   <TouchableOpacity
-                    style={styles.checkInImageRemove}
+                    style={styles.checkInImageRemoveCompact}
                     onPress={() => setCheckInImage(null)}
                   >
-                    <Ionicons name="close-circle" size={24} color="#DC2626" />
+                    <Ionicons name="close-circle" size={28} color="#FFF" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.checkInImageChangeCompact}
+                    onPress={pickCheckInImage}
+                  >
+                    <Ionicons name="camera" size={18} color="#FFF" />
+                    <Text style={styles.changeImageText}>Đổi ảnh</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
                 <TouchableOpacity
-                  style={styles.checkInImagePicker}
+                  style={styles.checkInImagePickerCompact}
                   onPress={pickCheckInImage}
                 >
-                  <Ionicons name="camera" size={48} color="#9CA3AF" />
-                  <Text style={styles.checkInImagePickerText}>Chụp ảnh</Text>
+                  <View style={styles.cameraIconCircle}>
+                    <Ionicons name="camera" size={32} color="#F59E0B" />
+                  </View>
+                  <Text style={styles.checkInImagePickerTextCompact}>Chụp ảnh minh chứng</Text>
+                  <Text style={styles.checkInImagePickerHint}>Nhấn để mở camera</Text>
                 </TouchableOpacity>
               )}
 
-              <View style={styles.checkInWarningBox}>
-                <Ionicons name="alert-circle" size={20} color="#F59E0B" />
-                <Text style={styles.checkInWarningText}>
-                  Hệ thống sẽ tự động kiểm tra vị trí của bạn so với bãi xe. Nếu
-                  cách quá xa (&gt;5km) sẽ có cảnh báo.
+              {/* Warning */}
+              <View style={styles.checkInWarningBoxCompact}>
+                <Ionicons name="location" size={16} color="#F59E0B" />
+                <Text style={styles.checkInWarningTextCompact}>
+                  Hệ thống tự động kiểm tra vị trí so với bãi xe
                 </Text>
               </View>
             </ScrollView>
 
-            <View style={styles.checkInModalFooter}>
+            {/* Footer */}
+            <View style={styles.checkInModalFooterCompact}>
               <TouchableOpacity
-                style={styles.btnSecondary}
+                style={styles.btnSecondaryCompact}
                 onPress={() => setShowCheckInModal(false)}
                 disabled={checkingIn}
               >
@@ -7144,7 +8219,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
 
               <TouchableOpacity
                 style={[
-                  styles.btnPrimary,
+                  styles.btnPrimaryCompact,
                   (!checkInImage || checkingIn) && styles.btnDisabled,
                 ]}
                 onPress={isMainDriver ? handleMainDriverCheckIn : handleCheckIn}
@@ -7153,16 +8228,17 @@ const DriverTripDetailScreenV2: React.FC = () => {
                 {checkingIn ? (
                   <ActivityIndicator color="#FFF" size="small" />
                 ) : (
-                  <Text style={styles.btnPrimaryText}>
-                    {isMainDriver
-                      ? "Xác nhận lấy xe & Check-in"
-                      : "Xác nhận Check-in"}
-                  </Text>
+                  <>
+                    <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                    <Text style={styles.btnPrimaryText}>
+                      {isMainDriver ? "Xác nhận" : "Check-in"}
+                    </Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* CHECK-OUT DETAIL MODAL */}
@@ -7172,7 +8248,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
         animationType="slide"
         onRequestClose={() => setShowCheckOutModal(false)}
       >
-        <View style={styles.checkInModalBackdrop}>
+        <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.checkInModalBackdrop}>
           <View style={styles.checkInModalCard}>
             <View style={styles.checkInModalHeader}>
               <Text style={styles.checkInModalTitle}>Xác nhận Check-out</Text>
@@ -7195,7 +8271,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
               {checkOutImage ? (
                 <View style={styles.checkInImagePreview}>
                   <Image
-                    source={{ uri: checkOutImageUrl }}
+                    source={{ uri: checkOutImage.uri }}
                     style={styles.checkInImage}
                     resizeMode="cover"
                   />
@@ -7251,7 +8327,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -7590,9 +8666,22 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: "#F9FAFB",
+    gap: 8,
   },
-  kvLabel: { fontSize: 14, color: "#6B7280" },
-  kvValue: { fontSize: 14, fontWeight: "600", color: "#111827" },
+  kvLabel: { 
+    fontSize: 14, 
+    color: "#6B7280",
+    flexShrink: 0,
+    minWidth: 110,
+  },
+  kvValue: { 
+    fontSize: 14, 
+    fontWeight: "600", 
+    color: "#111827",
+    flex: 1,
+    textAlign: "right",
+    flexWrap: "wrap",
+  },
 
   // Package Cards
   packageCard: {
@@ -7706,7 +8795,7 @@ const styles = StyleSheet.create({
   navActionBarAbove: { zIndex: 2500 },
   approachAlertContainer: {
     position: "absolute",
-    top: 16,
+    bottom: 340,
     left: 20,
     right: 20,
     zIndex: 4000,
@@ -7831,7 +8920,7 @@ const styles = StyleSheet.create({
   // fullscreen nav timer overlay
   navTimerContainer: {
     position: "absolute",
-    top: 50,
+    bottom: 480,
     left: 12,
     right: 12,
     zIndex: 1100,
@@ -7876,7 +8965,7 @@ const styles = StyleSheet.create({
   },
   paperModal: {
     width: "95%",
-    height: "90%",
+    height: "85%",
     backgroundColor: "#E5E7EB",
     borderRadius: 8,
     overflow: "hidden",
@@ -7887,6 +8976,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
+    
   },
   modalCard: {
     backgroundColor: "#FFF",
@@ -7922,7 +9012,7 @@ const styles = StyleSheet.create({
     padding: 6,
     opacity: 0.7,
   },
-  paperScrollContent: { padding: 12, paddingBottom: 0 },
+  paperScrollContent: { padding: 12, paddingBottom: 24 },
   a4Paper: {
     backgroundColor: "#FFFFFF",
     padding: 16,
@@ -8379,6 +9469,7 @@ const styles = StyleSheet.create({
     padding: 0,
     height: 52,
     width: "100%",
+    textAlign: "center",
   },
 
   // Toast
@@ -8653,9 +9744,42 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 24,
   },
+  otpInputFilled: {
+    borderColor: "#2563EB",
+    backgroundColor: "#EFF6FF",
+  },
   otpModalButtons: {
     flexDirection: "row",
     gap: 12,
+  },
+  // Loading Overlay
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  loadingBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 24,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#374151",
   },
   otpModalButton: {
     flex: 1,
@@ -8782,7 +9906,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
   },
   overlayMapSection: {
-    flex: 0.65, // 65% for map
+    flex: 0.9, // 90% for map
   },
   checkInMapDescOverlay: {
     position: "absolute",
@@ -8828,10 +9952,10 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   overlayBottomSheet: {
-    flex: 0.35, // 35% for bottom sheet
+    flex: 0.10, // 10% for bottom sheet
     backgroundColor: "#FFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,
@@ -8839,17 +9963,17 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   sheetHandle: {
-    width: 40,
-    height: 4,
+    width: 32,
+    height: 3,
     backgroundColor: "#E5E7EB",
     borderRadius: 2,
     alignSelf: "center",
-    marginTop: 12,
-    marginBottom: 16,
+    marginTop: 6,
+    marginBottom: 6,
   },
   sheetContent: {
     flex: 1,
-    padding: 24,
+    padding: 10,
     justifyContent: "space-between",
   },
   sheetHeader: {
@@ -8885,7 +10009,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   sheetButtonText: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: "700",
     color: "#FFF",
   },
@@ -8907,7 +10031,261 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Check-in Modal Styles
+  // Compact Bottom Sheet Styles
+  sheetHeaderCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  sheetIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#FFFBEB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetTextContent: {
+    flex: 1,
+  },
+  sheetTitleCompact: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 1,
+  },
+  sheetSubtitleCompact: {
+    fontSize: 10,
+    color: "#6B7280",
+    lineHeight: 14,
+  },
+  waitingBoxCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  waitingTextCompact: {
+    fontSize: 11,
+    color: "#92400E",
+    fontWeight: "500",
+    flex: 1,
+  },
+  sheetPrimaryButtonCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F59E0B",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 5,
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
+  // Compact Check-in Modal Styles
+  checkInModalCardCompact: {
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    maxHeight: "80%",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  checkInModalHeaderCompact: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  modalTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  modalIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#FFFBEB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkInModalTitleCompact: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+    flex: 1,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F9FAFB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkInModalContentCompact: {
+    padding: 16,
+    maxHeight: "70%",
+  },
+  checkInInfoBoxCompact: {
+    flexDirection: "row",
+    backgroundColor: "#EFF6FF",
+    padding: 12,
+    borderRadius: 10,
+    gap: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+  },
+  checkInInfoTextCompact: {
+    flex: 1,
+    fontSize: 13,
+    color: "#1E40AF",
+    lineHeight: 18,
+  },
+  checkInImagePickerCompact: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 2,
+    borderColor: "#FEF3C7",
+    borderStyle: "dashed",
+    borderRadius: 16,
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  cameraIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#FFF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  checkInImagePickerTextCompact: {
+    fontSize: 15,
+    color: "#92400E",
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  checkInImagePickerHint: {
+    fontSize: 12,
+    color: "#92400E",
+    opacity: 0.7,
+  },
+  checkInImagePreviewCompact: {
+    position: "relative",
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  checkInImageCompact: {
+    width: "100%",
+    height: 220,
+    backgroundColor: "#F3F4F6",
+  },
+  checkInImageRemoveCompact: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(220, 38, 38, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  checkInImageChangeCompact: {
+    position: "absolute",
+    bottom: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  changeImageText: {
+    fontSize: 12,
+    color: "#FFF",
+    fontWeight: "600",
+  },
+  checkInWarningBoxCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFFBEB",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FEF3C7",
+  },
+  checkInWarningTextCompact: {
+    flex: 1,
+    fontSize: 12,
+    color: "#92400E",
+    lineHeight: 16,
+  },
+  checkInModalFooterCompact: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+    backgroundColor: "#FAFAFA",
+  },
+  btnSecondaryCompact: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  btnPrimaryCompact: {
+    flex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#F59E0B",
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  // Keep old styles for compatibility
   checkInModalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

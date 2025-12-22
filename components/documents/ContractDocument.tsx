@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 
 // --- Interfaces ---
 interface ContractTerm {
@@ -29,8 +29,6 @@ interface ContractDocumentProps {
   startAddress?: string;
   endAddress?: string;
 }
-
-const { width } = Dimensions.get('window');
 
 export const ContractDocument: React.FC<ContractDocumentProps> = ({
   contractCode,
@@ -74,9 +72,7 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
   };
 
   return (
-    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-      {/* Contract "Paper" Container */}
-      <View style={styles.paperContainer}>
+    <View style={styles.paperContainer}>
         
         {/* --- 1. Header Section --- */}
         <View style={styles.headerRow}>
@@ -254,8 +250,7 @@ export const ContractDocument: React.FC<ContractDocumentProps> = ({
           </Text>
         </View>
 
-      </View>
-    </ScrollView>
+    </View>
   );
 };
 
@@ -298,13 +293,6 @@ const convertNumberToWords = (num: number): string => {
 
 // --- Styles ---
 const styles = StyleSheet.create({
-  scrollView: {
-    backgroundColor: '#F0F2F5', // Nền tổng thể màu xám nhẹ
-  },
-  scrollContent: {
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-  },
   paperContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 8,

@@ -8,6 +8,7 @@ import {
   StatusBar,
   RefreshControl
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
 import { Provider } from '@/models/types'
 import { useAuthStore } from '@/stores/authStore'
@@ -102,7 +103,7 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
   const onCreatePackage = () => console.log('Tạo gói')
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         <HeaderProvider provider={user} onRefresh={onRefresh} refreshing={refreshing} />
@@ -165,7 +166,7 @@ const ProviderHomePage: React.FC<ProviderHomePageProps> = ({ provider }) => {
           <View style={{ height: 40 }} />
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   )
 }
 

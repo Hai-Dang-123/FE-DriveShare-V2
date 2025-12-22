@@ -25,6 +25,7 @@ import React from "react";
 import { Tabs, usePathname } from "expo-router";
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
 import { Platform, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const COLORS = {
   primary: "#10439F",
@@ -40,6 +41,7 @@ const hideTabBarForRoutes = [
 
 export default function DriverLayout() {
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
   const isTabBarHidden = hideTabBarForRoutes.some((r) =>
     pathname.startsWith(r)
   );
@@ -53,8 +55,8 @@ export default function DriverLayout() {
         tabBarStyle: {
           display: isTabBarHidden ? "none" : "flex",
           backgroundColor: COLORS.background,
-          height: Platform.OS === "ios" ? 90 : 70,
-          paddingBottom: Platform.OS === "ios" ? 30 : 12,
+          height: Platform.OS === "ios" ? 90 : 70 + insets.bottom,
+          paddingBottom: Platform.OS === "ios" ? 30 : 12 + insets.bottom,
           paddingTop: 12,
           borderTopWidth: 1,
           borderTopColor: "#F1F5F9",

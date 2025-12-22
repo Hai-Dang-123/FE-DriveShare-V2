@@ -13,8 +13,8 @@ import * as ImagePicker from 'expo-image-picker'
 
 interface ImageUploaderProps {
   currentImage: string | null
-  // onImageChange sẽ trả về object chứa { uri?, base64? }
-  onImageChange: (img: { uri?: string; base64?: string; fileName?: string; type?: string; }) => void
+  // onImageChange trả về object chứa dataUrl giống ItemFormModal
+  onImageChange: (img: { uri?: string; imageURL?: string; base64?: string; fileName?: string; type?: string }) => void
 }
 
 const ImageUploader: React.FC<ImageUploaderProps> = ({
@@ -36,19 +36,27 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     // 2. Mở thư viện ảnh
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.7,
-      base64: true, // Yêu cầu ảnh dưới dạng base64
+      base64: true, // Dùng base64 cho preview (không dùng để upload)
     })
 
     // 3. Xử lý kết quả
     if (!result.canceled && result.assets && result.assets[0]) {
       const asset = result.assets[0]
-      const imageDataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null
-      // Trả về cả uri và base64 để service xử lý phù hợp nền tảng
-      onImageChange({ uri: asset.uri, base64: asset.base64 ?? undefined, fileName: asset.fileName ?? undefined, // <-- Lấy tên file gốc
-    type: asset.mimeType ?? undefined     // <-- Lấy loại file gốc
-   })
+      const dataUrl = asset.base64
+        ? `data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}`
+        : asset.uri
+      
+      // Trả về object với imageURL (dataUrl) giống ItemFormModal
+      onImageChange({
+        // IMPORTANT: Upload cần dùng file URI thật (asset.uri), không phải data URL
+        uri: asset.uri,
+        imageURL: dataUrl,
+        base64: asset.base64 ?? undefined,
+        fileName: asset.fileName ?? `photo_${Date.now()}.jpg`,
+        type: asset.mimeType ?? 'image/jpeg'
+      })
     }
   }
 

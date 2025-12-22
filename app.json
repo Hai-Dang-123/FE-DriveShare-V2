@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "DriverShare",
-    "slug": "drivershare-app",
-    "version": "1.0.0",
+    "name": "DriveShare",
+    "slug": "driveshare-app",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "myapp",
@@ -21,12 +21,14 @@
       }
     },
     "android": {
+      "newArchEnabled": false,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.anonymous.drivershareapp",
+      "versionCode": 2,
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.CAMERA",

@@ -7,7 +7,7 @@ const baseURL =
 
 const api = axios.create({
   baseURL,
-  timeout: 50000,
+  timeout: 120000, // Tăng timeout lên 120s cho upload file
 });
 api.interceptors.request.use(
   async (config) => {

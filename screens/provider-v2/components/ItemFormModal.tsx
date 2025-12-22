@@ -118,7 +118,7 @@ const ItemFormModal: React.FC<ItemFormModalProps> = ({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
-      quality: 0.7,
+      quality: 0.5, // Giảm từ 0.7 xuống 0.5 để giảm kích thước
       base64: true
     })
 

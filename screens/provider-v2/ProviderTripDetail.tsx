@@ -1,17 +1,18 @@
 
 
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
-  SafeAreaView, View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Alert, Linking, Modal, Image, Dimensions
+  View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Alert, Linking, Modal, Image, Dimensions
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import tripService from '@/services/tripService'
 import { TripDetailFullDTOExtended, Role } from '@/models/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useSignalRLocation } from '@/hooks/useSignalRLocation'
 import { useRouter } from 'expo-router'
 import { Ionicons, MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons'
-import NativeRouteMap from '@/components/map/NativeRouteMap'
+import VietMapUniversal from '@/components/map/VietMapUniversal'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import { decodePolyline } from '@/utils/polyline'
@@ -21,6 +22,35 @@ interface ProviderTripDetailProps {
   tripId?: string
   showHeader?: boolean
   onBack?: () => void
+}
+
+// --- LIQUIDATION REPORT (Trip Completed Report) ---
+interface LiquidationItem {
+  Description: string
+  Amount: number
+  IsDeduction?: boolean
+  // Backward compat
+  IsNegative?: boolean
+}
+
+interface PersonReport {
+  UserId: string
+  Role: string
+  FullName: string
+  Email: string
+  Items: LiquidationItem[]
+  FinalAmount?: number
+  // Backward compat
+  FinalWalletChange?: number
+}
+
+interface LiquidationReport {
+  TripId: string
+  TripCode: string
+  CompletedDate?: string
+  OwnerReport: PersonReport
+  ProviderReport: PersonReport
+  DriverReports: PersonReport[]
 }
 
 const { width } = Dimensions.get('window')
@@ -113,6 +143,9 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
   const [signing, setSigning] = useState(false)
   const [showContractModal, setShowContractModal] = useState(false)
 
+  const [liquidationReport, setLiquidationReport] = useState<LiquidationReport | null>(null)
+  const [liquidationExpanded, setLiquidationExpanded] = useState(false)
+
   // ========== REAL-TIME TRACKING ==========
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number; bearing: number } | null>(null)
   const { location, connected, error: signalRError } = useSignalRLocation({
@@ -139,14 +172,157 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
     try {
       const res = await tripService.getById(id)
       if (res.isSuccess && res.result) {
+        const data: any = res.result
+
+        // Parse liquidation report if trip is COMPLETED
+        if (data?.status === 'COMPLETED' && data?.liquidationReportJson) {
+          try {
+            const parsedReport = JSON.parse(data.liquidationReportJson)
+            setLiquidationReport(parsedReport)
+          } catch (err) {
+            console.warn('[Provider] Failed to parse liquidationReportJson:', err)
+            setLiquidationReport(null)
+          }
+        } else {
+          setLiquidationReport(null)
+        }
+
         setTrip({
-          ...res.result,
-          deliveryRecords: res.result.deliveryRecords || [],
-          compensations: res.result.compensations || [],
-          issues: res.result.issues || []
+          ...data,
+          deliveryRecords: data.deliveryRecords || [],
+          compensations: data.compensations || [],
+          issues: data.issues || []
         })
       } else throw new Error(res.message || 'Không tải được chuyến')
     } catch (e: any) { setError(e?.message || 'Lỗi không xác định') } finally { setLoading(false) }
+  }
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(amount)
+  }
+
+  const isDeduction = (item: LiquidationItem) => {
+    if (typeof item?.IsDeduction === 'boolean') return item.IsDeduction
+    if (typeof item?.IsNegative === 'boolean') return item.IsNegative
+    return (item?.Amount ?? 0) < 0
+  }
+
+  const getFinalAmount = (person: PersonReport) => {
+    if (typeof person?.FinalAmount === 'number') return person.FinalAmount
+    if (typeof person?.FinalWalletChange === 'number') return person.FinalWalletChange
+    return 0
+  }
+
+  const renderLiquidationReport = () => {
+    if (trip?.status !== 'COMPLETED' || !liquidationReport) return null
+
+    const report = liquidationReport
+    const completedAtText = report.CompletedDate
+      ? new Date(report.CompletedDate).toLocaleString('vi-VN')
+      : undefined
+
+    // Financial summary (based on OwnerReport items)
+    const totalRevenue = (report.OwnerReport?.Items || [])
+      .filter(i => !isDeduction(i))
+      .reduce((sum, i) => sum + Math.abs(i.Amount ?? 0), 0)
+
+    const totalExpense = (report.OwnerReport?.Items || [])
+      .filter(i => isDeduction(i))
+      .reduce((sum, i) => sum + Math.abs(i.Amount ?? 0), 0)
+
+    const allParticipants: PersonReport[] = [
+      report.OwnerReport,
+      report.ProviderReport,
+      ...(report.DriverReports || [])
+    ].filter(Boolean) as PersonReport[]
+
+    const renderPerson = (person: PersonReport) => {
+      return (
+        <View key={person.UserId} style={styles.liquidationCard}>
+          <View style={styles.liquidationCardHeader}>
+            <View style={styles.liquidationAvatar}>
+              <Text style={styles.liquidationAvatarText}>{(person.Role || '?').slice(0, 1).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.liquidationName}>{person.FullName}</Text>
+              <Text style={styles.liquidationRole}>{person.Role}</Text>
+              <Text style={styles.liquidationEmail}>{person.Email}</Text>
+            </View>
+            <View style={styles.liquidationFinalBox}>
+              <Text style={styles.liquidationFinalLabel}>Final</Text>
+              <Text style={[
+                styles.liquidationFinalValue,
+                getFinalAmount(person) >= 0 ? styles.positiveAmount : styles.negativeAmount
+              ]}>
+                {getFinalAmount(person) >= 0 ? '+' : ''}{formatCurrency(getFinalAmount(person))}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.liquidationDivider} />
+
+          {(person.Items || []).map((item, idx) => (
+            <View key={`${person.UserId}:${idx}`} style={styles.liquidationItemRow}>
+              <View style={styles.liquidationItemLeft}>
+                <View style={[
+                  styles.liquidationDot,
+                  { backgroundColor: isDeduction(item) ? COLORS.danger : COLORS.success }
+                ]} />
+                <Text style={styles.liquidationItemText}>{item.Description}</Text>
+              </View>
+              <Text style={[
+                styles.liquidationItemAmount,
+                isDeduction(item) ? styles.negativeAmount : styles.positiveAmount
+              ]}>
+                {isDeduction(item) ? '-' : '+'}{formatCurrency(Math.abs(item.Amount ?? 0))}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )
+    }
+
+    return (
+      <View style={styles.card}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => setLiquidationExpanded(v => !v)}
+          style={styles.liquidationHeader}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>📊 Báo cáo chuyến (Hoàn tất)</Text>
+            <Text style={styles.liquidationSub}>Trip: {report.TripCode}{completedAtText ? ` • ${completedAtText}` : ''}</Text>
+          </View>
+          <Ionicons
+            name={liquidationExpanded ? 'chevron-up' : 'chevron-down'}
+            size={22}
+            color={COLORS.text}
+          />
+        </TouchableOpacity>
+
+        {liquidationExpanded && (
+          <>
+            <View style={styles.liquidationSummaryRow}>
+              <View style={styles.liquidationSummaryBox}>
+                <Text style={styles.liquidationSummaryLabel}>Tổng Thu</Text>
+                <Text style={[styles.liquidationSummaryValue, { color: COLORS.success }]}>{formatCurrency(totalRevenue)}</Text>
+              </View>
+              <View style={styles.liquidationSummaryBox}>
+                <Text style={styles.liquidationSummaryLabel}>Tổng Chi</Text>
+                <Text style={[styles.liquidationSummaryValue, { color: COLORS.danger }]}>{formatCurrency(totalExpense)}</Text>
+              </View>
+            </View>
+
+            <View style={{ height: 12 }} />
+
+            {allParticipants.map(renderPerson)}
+          </>
+        )}
+      </View>
+    )
   }
 
   // --- LOGIC ---
@@ -158,6 +334,34 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
   const waitingForOther = providerSigned && !ownerSigned
   const canSign = isProviderUser && !providerSigned
   const signBtnLabel = bothSigned ? 'Đã hoàn tất' : (!providerSigned ? 'Ký ngay' : 'Đợi đối tác')
+
+  const routeCoordinates = useMemo<[number, number][]>(() => {
+    const routeData: unknown = trip?.tripRoute?.routeData
+    if (!routeData) return []
+
+    // Legacy/alternate format support: GeoJSON-like object or JSON string
+    try {
+      if (typeof routeData === 'string') {
+        const trimmed = routeData.trim()
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          const parsed = JSON.parse(trimmed)
+          const coords = (parsed as any)?.geometry?.coordinates
+          if (Array.isArray(coords) && coords.length > 1) return coords as [number, number][]
+        }
+
+        // Default: encoded polyline
+        const decoded = decodePolyline(trimmed)
+        return decoded.coordinates || []
+      }
+
+      const coords = (routeData as any)?.geometry?.coordinates
+      if (Array.isArray(coords) && coords.length > 1) return coords as [number, number][]
+    } catch (e) {
+      console.warn('[Provider] Failed to decode routeData:', e)
+    }
+
+    return []
+  }, [trip?.tripRoute?.routeData])
 
   const paymentEligibleStatuses = ['AWAITING_PROVIDER_PAYMENT','AWAITING_FINAL_PROVIDER_PAYMENT']
   const showPayment = paymentEligibleStatuses.includes(trip?.status || '')
@@ -322,12 +526,12 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
           <View style={styles.statusBanner}>
             <Text style={styles.statusBannerText}>{trip.status}</Text>
           </View>
-            {trip?.tripRoute?.routeData ? (
-              (Constants?.appOwnership === 'expo' || Platform.OS === 'web') ? (
-                <MapPreview routeData={trip.tripRoute.routeData} style={{ height: 220, width: '100%' }} />
-              ) : (
-                <NativeRouteMap routeData={trip.tripRoute.routeData} style={{ height: 220, width: '100%' }} />
-              )
+            {routeCoordinates.length > 1 ? (
+              <VietMapUniversal
+                coordinates={routeCoordinates}
+                style={{ height: 220, width: '100%' }}
+                showUserLocation={false}
+              />
             ) : (
               <View style={styles.mapPlaceholder}>
                 <MaterialCommunityIcons name="map" size={80} color="#CBD5E1" />
@@ -364,10 +568,8 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
             </View>
           </View>
 
-        {/* --- 2. GRID: HÀNG HÓA & XE --- */}
-        <View style={styles.gridContainer}>
-            {/* Cột Trái: Hàng */}
-            <View style={[styles.card, styles.gridItem]}>
+        {/* --- 2. HÀNG HÓA --- */}
+        <View style={styles.card}>
                 <Text style={styles.cardTitleSmall}>📦 Hàng Hóa</Text>
                 <View style={styles.specRow}>
                     <View style={styles.specBox}>
@@ -406,10 +608,10 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
                     </View>
                   </View>
                 ))}
-            </View>
+        </View>
 
-            {/* Cột Phải: Xe */}
-            <View style={[styles.card, styles.gridItem]}>
+        {/* --- 3. PHƯƠNG TIỆN --- */}
+        <View style={styles.card}>
                 <Text style={styles.cardTitleSmall}>🚛 Phương Tiện</Text>
                 <View style={styles.vehicleThumb}>
                   {trip.vehicle?.imageUrls && trip.vehicle.imageUrls.length > 0 ? (
@@ -426,9 +628,8 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
                     <Text style={styles.driverNameCompact} numberOfLines={1}>{(trip.drivers && trip.drivers.length > 0) ? trip.drivers[0].fullName : 'Chưa có TX'}</Text>
                 </View>
             </View>
-        </View>
 
-        {/* --- 3. LIÊN HỆ --- */}
+            {/* --- 4. LIÊN HỆ --- */}
         <View style={styles.card}>
             <Text style={[styles.cardTitle, {marginBottom: 12}]}>📞 Điểm Giao & Nhận</Text>
             <View style={[styles.contactRow, {backgroundColor: COLORS.senderBg}]}>
@@ -451,8 +652,11 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
             </View>
         </View>
 
-        {/* --- 4. HỢP ĐỒNG --- */}
+        {/* --- 5. HỢP ĐỒNG --- */}
         {renderContractSummary()}
+
+        {/* --- 6. BÁO CÁO HOÀN TẤT --- */}
+        {renderLiquidationReport()}
 
         <View style={{ height: showPayment ? 100 : 40 }} />
       </ScrollView>
@@ -460,7 +664,7 @@ const ProviderTripDetail: React.FC<ProviderTripDetailProps> = ({ tripId, showHea
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       {/* HEADER */}
       {showHeader && (
         <View style={styles.header}>
@@ -626,6 +830,32 @@ const styles = StyleSheet.create({
   payBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, minWidth: 120, alignItems: 'center' },
   payBtnText: { color: '#FFFFFF', fontWeight: '800' }
   ,
+  // LIQUIDATION REPORT
+  liquidationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  liquidationSub: { marginTop: 4, fontSize: 12, color: COLORS.textLight, fontWeight: '500' },
+  liquidationSummaryRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  liquidationSummaryBox: { flex: 1, backgroundColor: '#F3F4F6', borderRadius: 12, padding: 12 },
+  liquidationSummaryLabel: { fontSize: 12, color: COLORS.textLight, fontWeight: '600' },
+  liquidationSummaryValue: { marginTop: 6, fontSize: 14, fontWeight: '800', color: COLORS.text },
+  liquidationCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, padding: 12, marginBottom: 12 },
+  liquidationCardHeader: { flexDirection: 'row', alignItems: 'center' },
+  liquidationAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#DBEAFE', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  liquidationAvatarText: { fontSize: 14, fontWeight: '900', color: '#1E40AF' },
+  liquidationName: { fontSize: 14, fontWeight: '800', color: COLORS.text },
+  liquidationRole: { marginTop: 2, fontSize: 12, fontWeight: '700', color: COLORS.textLight },
+  liquidationEmail: { marginTop: 2, fontSize: 12, color: COLORS.textLight },
+  liquidationFinalBox: { alignItems: 'flex-end' },
+  liquidationFinalLabel: { fontSize: 11, color: COLORS.textLight, fontWeight: '700' },
+  liquidationFinalValue: { marginTop: 2, fontSize: 13, fontWeight: '900' },
+  liquidationDivider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 10 },
+  liquidationItemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
+  liquidationItemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 10 },
+  liquidationDot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
+  liquidationItemText: { fontSize: 12, color: COLORS.text, fontWeight: '600', flex: 1 },
+  liquidationItemAmount: { fontSize: 12, fontWeight: '800' },
+  positiveAmount: { color: '#059669' },
+  negativeAmount: { color: '#DC2626' },
+
   /* New styles for horizontal cards and small components */
   hScrollContainer: { paddingHorizontal: 12, paddingVertical: 18 },
   ribbon: { position: 'absolute', top: 12, left: 12, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, zIndex: 5 },

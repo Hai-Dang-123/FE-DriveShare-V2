@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import notificationService, { NotificationDTO } from '@/services/notificationService'
@@ -260,7 +261,7 @@ const NotificationListScreen = () => {
   const unreadCount = notifications.filter(n => !n.isRead).length
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -313,7 +314,7 @@ const NotificationListScreen = () => {
         ListFooterComponent={renderFooter}
         showsVerticalScrollIndicator={false}
       />
-    </View>
+    </SafeAreaView>
   )
 }
 

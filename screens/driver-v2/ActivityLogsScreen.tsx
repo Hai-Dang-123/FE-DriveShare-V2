@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  SafeAreaView,
+  
   View,
   Text,
   StyleSheet,
@@ -10,6 +10,7 @@ import {
   StatusBar,
   Platform,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import driverActivityLogService, {
@@ -198,7 +199,7 @@ const ActivityLogsScreen: React.FC = () => {
   // Loading State
   if (loading && logs.length === 0) {
     return (
-      <SafeAreaView style={styles.centered}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.centered}>
         <ActivityIndicator size="large" color="#4F46E5" />
         <Text style={{ marginTop: 12, color: "#6B7280" }}>
           Đang tải nhật ký...
@@ -210,7 +211,7 @@ const ActivityLogsScreen: React.FC = () => {
   // Error State
   if (error && logs.length === 0) {
     return (
-      <SafeAreaView style={styles.centered}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.centered}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={() => fetchLogs(1)}>
           <Text style={styles.retryText}>Thử lại</Text>
@@ -220,7 +221,7 @@ const ActivityLogsScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       {/* Header */}

@@ -186,8 +186,11 @@ async createItem(payload: any) {
       }
     }
 
-    // 4. Gửi request
-    const res = await api.post('api/item/provider-create-item', form)
+    // 4. Gửi request với timeout cao hơn (60s)
+    const res = await api.post('api/item/provider-create-item', form, {
+      timeout: 60000, // 60 seconds
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
     
     return res.data as ResponseDTO
 
@@ -196,9 +199,13 @@ async createItem(payload: any) {
     if (e.response) {
       console.error('Response data:', e.response.data)
       console.error('Response status:', e.response.status)
-      Alert.alert('Lỗi Server', `Status: ${e.response.status} - Data: ${JSON.stringify(e.response.data)}`);
+      Alert.alert('Lỗi Server', `Status: ${e.response.status}`)
+    } else if (e.request) {
+      console.error('No response received:', e.request)
+      Alert.alert('Lỗi Network', 'Không nhận được phản hồi từ server. Kiểm tra kết nối mạng hoặc thử lại sau.')
     } else {
-      Alert.alert('Lỗi Request', (e as Error).message);
+      console.error('Error message:', e.message)
+      Alert.alert('Lỗi', e.message)
     }
     throw e
   }

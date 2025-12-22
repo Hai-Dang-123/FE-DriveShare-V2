@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { ShapeSource } from '@vietmap/vietmap-gl-react-native';
+import { Platform } from 'react-native';
 import { RouteSimulator } from '../../utils/RouteSimulator';
 import PulseCircleLayer from './PulseCircleLayer';
+
+let ShapeSource: any;
+if (Platform.OS !== 'web') {
+  const VietMapGL = require('@vietmap/vietmap-gl-react-native');
+  ShapeSource = VietMapGL.ShapeSource;
+}
 
 type RouteSimulatorFeature = GeoJSON.Feature<
   GeoJSON.Point,

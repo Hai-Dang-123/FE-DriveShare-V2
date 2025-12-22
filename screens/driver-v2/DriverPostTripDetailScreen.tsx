@@ -1083,7 +1083,7 @@ const DriverPostTripDetailScreen: React.FC = () => {
         animationType="slide"
         onRequestClose={() => setShowAIModal(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <SafeAreaView style={styles.modalBackdrop}>
           <View style={styles.aiModalCard}>
             <View style={styles.aiModalHeader}>
               <View style={styles.aiModalTitleRow}>
@@ -1309,7 +1309,7 @@ const DriverPostTripDetailScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Toast */}
@@ -1587,6 +1587,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     padding: 20,
+    paddingTop: 40,
   },
   modalCard: { backgroundColor: "#FFF", borderRadius: 16, padding: 20 },
   locationModalCard: {
@@ -1798,11 +1799,11 @@ const styles = StyleSheet.create({
   aiModalCard: {
     backgroundColor: "#FFF",
     borderRadius: 20,
-    maxHeight: "90%",
+    maxHeight: "85%",
     maxWidth: 500,
     width: "100%",
     alignSelf: "center",
-    overflow: "hidden",
+    marginTop: 20,
   },
   aiModalHeader: {
     flexDirection: "row",
@@ -1811,6 +1812,9 @@ const styles = StyleSheet.create({
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
+    backgroundColor: "#FFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   aiModalTitleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   aiModalTitle: { fontSize: 20, fontWeight: "800", color: "#111827" },

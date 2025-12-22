@@ -64,7 +64,7 @@ const DeliveryRecordScreen = () => {
   const [showIssueReportModal, setShowIssueReportModal] = useState(false)
   const [issueType, setIssueType] = useState<DeliveryIssueType>(DeliveryIssueType.DAMAGED)
   const [issueDescription, setIssueDescription] = useState('')
-  const [issueImages, setIssueImages] = useState<(string | File)[]>([])
+  const [issueImages, setIssueImages] = useState<Array<{ uri: string; imageURL: string; fileName: string; type: string }>>([])
   const [submittingIssue, setSubmittingIssue] = useState(false)
   
   // Compensation/Surcharge State
@@ -450,15 +450,32 @@ const DeliveryRecordScreen = () => {
       </View>
 
       {/* --- OTP MODAL --- */}
-      <Modal visible={showOtpModal} transparent animationType="slide" onRequestClose={() => setShowOtpModal(false)}>
+      <Modal 
+        visible={showOtpModal} 
+        transparent 
+        animationType="fade" 
+        onRequestClose={() => {
+          if (!submittingOtp) setShowOtpModal(false);
+        }}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Xác thực OTP</Text>
-              <TouchableOpacity onPress={() => setShowOtpModal(false)}>
+              <TouchableOpacity onPress={() => setShowOtpModal(false)} disabled={submittingOtp}>
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
+            
+            {/* Loading Overlay khi đang submit OTP */}
+            {submittingOtp && (
+              <View style={styles.loadingOverlay}>
+                <View style={styles.loadingBox}>
+                  <ActivityIndicator size="large" color="#2563EB" />
+                  <Text style={styles.loadingText}>Đang xác thực...</Text>
+                </View>
+              </View>
+            )}
             
             <View style={styles.modalBody}>
               <Text style={styles.otpInstruction}>
@@ -478,20 +495,28 @@ const DeliveryRecordScreen = () => {
                     onChangeText={(text) => handleOtpChange(index, text)}
                     onKeyPress={(e) => handleOtpBackspace(index, e)}
                     selectTextOnFocus
+                    editable={!submittingOtp}
                   />
                 ))}
               </View>
 
               <TouchableOpacity 
-                style={[styles.btnSubmitOtp, submittingOtp && { opacity: 0.7 }]}
+                style={[
+                  styles.btnSubmitOtp, 
+                  (submittingOtp || otpDigits.join('').length !== 6) && { opacity: 0.6 }
+                ]}
                 onPress={handleSubmitOtp}
-                disabled={submittingOtp}
+                disabled={submittingOtp || otpDigits.join('').length !== 6}
               >
                 {submittingOtp ? <ActivityIndicator color="#FFF" /> : <Text style={styles.btnTextWhite}>Xác Nhận & Ký Tên</Text>}
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.btnResend} onPress={handleStartSignProcess} disabled={sendingOtp}>
-                <Text style={styles.btnResendText}>Chưa nhận được mã? Gửi lại</Text>
+              <TouchableOpacity style={styles.btnResend} onPress={handleStartSignProcess} disabled={sendingOtp || submittingOtp}>
+                {sendingOtp ? (
+                  <ActivityIndicator color="#2563EB" size="small" />
+                ) : (
+                  <Text style={styles.btnResendText}>Chưa nhận được mã? Gửi lại</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -705,6 +730,36 @@ const styles = StyleSheet.create({
   btnSubmitOtp: { width: '100%', backgroundColor: '#2563EB', paddingVertical: 14, borderRadius: 10, alignItems: 'center', marginBottom: 16 },
   btnResend: { padding: 10 },
   btnResendText: { color: '#2563EB', fontWeight: '600' },
+
+  // Loading Overlay
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+  },
 
   // Issue Report Modal
   issueModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },

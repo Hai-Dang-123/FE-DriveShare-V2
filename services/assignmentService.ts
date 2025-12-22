@@ -1,4 +1,6 @@
-import api from '@/config/api'
+import api from "@/config/api";
+import { Platform } from "react-native";
+import * as FileSystem from "expo-file-system/legacy";
 
 export interface CreateAssignmentPayload {
   tripId: string
@@ -16,6 +18,114 @@ export interface CreateAssignmentByPostTripDTO {
   startLocation: string | null | { address: string; latitude: number; longitude: number }
   endLocation: string | null | { address: string; latitude: number; longitude: number }
 }
+
+const normalizeMimeType = (value?: string) => {
+  const v = (value || "image/jpeg").trim();
+  if (v.length === 0) return "image/jpeg";
+  if (v.includes("/")) return v;
+  // If type is just "jpeg" or "png", convert to "image/jpeg" etc.
+  return `image/${v}`;
+};
+
+const extensionFromMime = (mimeType: string) => {
+  const m = (mimeType || "").toLowerCase();
+  if (m.includes("png")) return "png";
+  if (m.includes("webp")) return "webp";
+  if (m.includes("heic") || m.includes("heif")) return "heic";
+  return "jpg";
+};
+
+const ensureFileName = (value: string | undefined, fallback: string) => {
+  const name = (value || "").trim();
+  return name.length > 0 ? name : fallback;
+};
+
+const appendEvidenceImage = async (
+  formData: FormData,
+  evidenceImage: any,
+  fallbackPrefix: string
+) => {
+  const uri: string | undefined = evidenceImage?.imageURL || evidenceImage?.uri;
+  if (!uri) throw new Error("Invalid image format");
+
+  const mimeType = normalizeMimeType(evidenceImage?.type || evidenceImage?.mimeType);
+  const ext = extensionFromMime(mimeType);
+  let fileName = ensureFileName(
+    evidenceImage?.fileName || evidenceImage?.name,
+    `${fallbackPrefix}-${Date.now()}.${ext}`
+  );
+  if (!fileName.includes(".")) fileName = `${fileName}.${ext}`;
+
+  if (uri.startsWith("data:")) {
+    if (Platform.OS === "web") {
+      const resp = await fetch(uri);
+      const blob = await resp.blob();
+      // @ts-ignore
+      formData.append("EvidenceImage", blob, fileName);
+      return;
+    }
+
+    const base64Data = uri.split(",")[1];
+    if (!base64Data) throw new Error("Invalid base64 image");
+
+    const baseDir =
+      (FileSystem as any).cacheDirectory ??
+      (FileSystem as any).documentDirectory ??
+      "";
+    const tempUri = baseDir + fileName;
+
+    await FileSystem.writeAsStringAsync(tempUri, base64Data, {
+      encoding: (FileSystem as any).EncodingType?.Base64 ?? "base64",
+    });
+
+    const rnFile: any = { uri: tempUri, name: fileName, type: mimeType };
+    // @ts-ignore
+    formData.append("EvidenceImage", rnFile);
+    return;
+  }
+
+  if (uri.startsWith("content://") && Platform.OS !== "web") {
+    const baseDir =
+      (FileSystem as any).cacheDirectory ??
+      (FileSystem as any).documentDirectory ??
+      "";
+    const tempUri = baseDir + fileName;
+    try {
+      await FileSystem.copyAsync({ from: uri, to: tempUri });
+      const rnFile: any = { uri: tempUri, name: fileName, type: mimeType };
+      // @ts-ignore
+      formData.append("EvidenceImage", rnFile);
+      return;
+    } catch (e) {
+      // Fall through and try content:// directly
+      console.warn(
+        "⚠️ [assignmentService] copyAsync failed, falling back to content://",
+        e
+      );
+    }
+  }
+
+  if (
+    uri.startsWith("file://") ||
+    uri.startsWith("content://") ||
+    uri.startsWith("/")
+  ) {
+    const rnFile: any = { uri, name: fileName, type: mimeType };
+    // @ts-ignore
+    formData.append("EvidenceImage", rnFile);
+    return;
+  }
+
+  if (uri.startsWith("http://") || uri.startsWith("https://")) {
+    const resp = await fetch(uri);
+    const blob = await resp.blob();
+    // @ts-ignore
+    formData.append("EvidenceImage", blob, fileName);
+    return;
+  }
+
+  throw new Error("Unsupported image URI");
+};
 
 const assignmentService = {
   async assignDriverByOwner(payload: CreateAssignmentPayload) {
@@ -72,31 +182,15 @@ const assignmentService = {
     }
   }
   ,
-  async driverCheckIn(tripId: string, latitude: number, longitude: number, currentAddress: string, evidenceImage: File | any) {
+  async driverCheckIn(tripId: string, latitude: number, longitude: number, currentAddress: string, evidenceImage: any) {
     try {
       const formData = new FormData()
       formData.append('TripId', tripId)
       formData.append('Latitude', String(latitude))
       formData.append('Longitude', String(longitude))
       if (currentAddress) formData.append('CurrentAddress', currentAddress)
-      
-      // Handle file upload for both Web and Mobile
-      const fileName = evidenceImage.name || evidenceImage.uri?.split('/').pop() || 'evidence.jpg'
-      
-      // Check if it's a Web File object (has instanceof File or Blob)
-      if (evidenceImage instanceof File || evidenceImage instanceof Blob) {
-        // WEB: Direct append File/Blob object
-        formData.append('EvidenceImage', evidenceImage, fileName)
-      } else if (evidenceImage.uri) {
-        // MOBILE: React Native format with uri, name, type
-        formData.append('EvidenceImage', {
-          uri: evidenceImage.uri,
-          name: fileName,
-          type: evidenceImage.type || 'image/jpeg'
-        } as any)
-      } else {
-        throw new Error('Invalid image format')
-      }
+
+      await appendEvidenceImage(formData, evidenceImage, "checkin");
       
       const res = await api.post('api/TripDriverAssignments/check-in', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -108,31 +202,15 @@ const assignmentService = {
     }
   },
 
-  async driverCheckOut(tripId: string, latitude: number, longitude: number, currentAddress: string, evidenceImage: File | any) {
+  async driverCheckOut(tripId: string, latitude: number, longitude: number, currentAddress: string, evidenceImage: any) {
     try {
       const formData = new FormData()
       formData.append('TripId', tripId)
       formData.append('Latitude', String(latitude))
       formData.append('Longitude', String(longitude))
       if (currentAddress) formData.append('CurrentAddress', currentAddress)
-      
-      // Handle file upload for both Web and Mobile
-      const fileName = evidenceImage.name || evidenceImage.uri?.split('/').pop() || 'evidence.jpg'
-      
-      // Check if it's a Web File object (has instanceof File or Blob)
-      if (evidenceImage instanceof File || evidenceImage instanceof Blob) {
-        // WEB: Direct append File/Blob object
-        formData.append('EvidenceImage', evidenceImage, fileName)
-      } else if (evidenceImage.uri) {
-        // MOBILE: React Native format with uri, name, type
-        formData.append('EvidenceImage', {
-          uri: evidenceImage.uri,
-          name: fileName,
-          type: evidenceImage.type || 'image/jpeg'
-        } as any)
-      } else {
-        throw new Error('Invalid image format')
-      }
+
+      await appendEvidenceImage(formData, evidenceImage, "checkout");
       
       const res = await api.post('api/TripDriverAssignments/check-out', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }

@@ -9,10 +9,11 @@ import {
   ScrollView,
   Image,
   Dimensions,
-  SafeAreaView,
   StatusBar,
   Platform
 } from 'react-native';
+
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import postPackageService from '@/services/postPackageService';
 import { useRouter } from 'expo-router';
@@ -114,7 +115,7 @@ const PostPackageDetailModal: React.FC<Props> = ({ visible, postId, onClose }) =
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }} edges={['top', 'left', 'right']}>
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
         
         {/* HEADER */}

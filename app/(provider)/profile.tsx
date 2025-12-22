@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import userService, { BaseProfileDTO } from "@/services/userService";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ProviderProfileScreen() {
   const [profile, setProfile] = useState<BaseProfileDTO | null>(null);
@@ -44,22 +45,23 @@ export default function ProviderProfileScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color="#4F46E5" />
         <Text style={styles.loadingText}>Đang tải...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!profile) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, styles.centerContent]}>
         <Text style={styles.errorText}>Không thể tải thông tin hồ sơ</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
+    
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.avatarContainer}>

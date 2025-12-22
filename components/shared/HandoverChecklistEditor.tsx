@@ -110,18 +110,21 @@ const HandoverChecklistEditor: React.FC<Props> = ({
       setUploadingImageIndex(index);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
+        allowsEditing: false,
+        quality: 0.5,
+        base64: true,
       });
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
+        const dataUrl = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : undefined;
         
         // For Web: Convert to File object
-        if (Platform.OS === 'web' && asset.uri) {
+        if (Platform.OS === 'web' && (dataUrl || asset.uri)) {
           try {
-            const response = await fetch(asset.uri);
+            const response = await fetch(dataUrl || asset.uri);
             const blob = await response.blob();
             const file = new File([blob], `evidence-${index}-${Date.now()}.jpg`, {
               type: 'image/jpeg',
@@ -129,10 +132,10 @@ const HandoverChecklistEditor: React.FC<Props> = ({
             updateChecklistItem(index, 'evidenceImage', file);
           } catch (error) {
             console.error('Error converting to File:', error);
-            updateChecklistItem(index, 'evidenceImage', asset.uri);
+            updateChecklistItem(index, 'evidenceImage', dataUrl || asset.uri);
           }
         } else {
-          // For Mobile: Use URI directly
+          // For Mobile: Use dataUrl or URI
           updateChecklistItem(index, 'evidenceImage', asset.uri);
         }
       }

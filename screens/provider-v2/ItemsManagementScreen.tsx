@@ -1,17 +1,6 @@
 import React, { useState, useMemo } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  SafeAreaView,
-  TouchableOpacity,
-  Alert, // 1. Import Alert
-  ActivityIndicator, // 2. Import ActivityIndicator
-  TextInput,
-  Platform,
-  Modal,
-  Pressable,
-} from "react-native";
+import { StyleSheet, View, Text, TouchableOpacity, Alert, ActivityIndicator, TextInput, Platform, Modal, Pressable } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { Item, ItemStatus, Package } from "../../models/types";
 import packageService from "@/services/packageService";
@@ -282,6 +271,16 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
           itemId: (selectedItem as any)?.id ?? (selectedItem as any)?.itemId,
         };
 
+        console.log("📦 [ItemsManagement] Creating package:", {
+          itemId: dto.itemId,
+          hasImages: dto.images?.length > 0,
+          imageDetails: dto.images?.map((img: any) => ({
+            hasUri: !!img.uri,
+            fileName: img.fileName,
+            type: img.type,
+          })),
+        });
+
         const res = await packageService.createPackage(dto);
         if (res?.isSuccess) {
           showToast("Tạo gói thành công", "success");
@@ -297,6 +296,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
           showToast(res?.message || "Tạo gói không thành công", "error");
         }
       } catch (e: any) {
+        console.error("❌ [ItemsManagement] Create package failed:", e);
         showToast(e?.message || "Lỗi khi tạo gói", "error");
       } finally {
         setPackageModalOpen(false);
@@ -377,7 +377,7 @@ const ItemsManagementScreen: React.FC<ItemsManagementScreenProps> = ({
 
   // Toast/snackbar render (absolute at bottom)
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header similar to Vehicle screen: back | centered title | + Thêm */}
       <View style={styles.headerContainer}>
         <View style={styles.headerLeft}>

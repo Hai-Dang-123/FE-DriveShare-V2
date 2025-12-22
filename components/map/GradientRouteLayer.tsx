@@ -1,5 +1,12 @@
 import React from 'react';
-import { ShapeSource, LineLayer } from '@vietmap/vietmap-gl-react-native';
+import { Platform } from 'react-native';
+
+let ShapeSource: any, LineLayer: any;
+if (Platform.OS !== 'web') {
+  const VietMapGL = require('@vietmap/vietmap-gl-react-native');
+  ShapeSource = VietMapGL.ShapeSource;
+  LineLayer = VietMapGL.LineLayer;
+}
 
 interface GradientRouteLayerProps {
   route: GeoJSON.Feature<GeoJSON.LineString> | null;

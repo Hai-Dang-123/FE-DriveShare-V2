@@ -3,7 +3,6 @@ import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
-  SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   StatusBar,
   TextInput
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons, Feather } from '@expo/vector-icons'
@@ -183,10 +183,10 @@ const PostPackagesManagementScreen: React.FC<Props> = ({ onBack }) => {
           <Text style={styles.headerBtnText}>Back</Text>
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>Bài Đăng Của Tôi</Text>
+        <Text style={styles.headerTitle}>Săn tìm gói cước</Text>
 
         <TouchableOpacity onPress={handleCreatePost} style={styles.headerBtn}>
-          <Ionicons name="add" size={24} color={COLORS.primary} />
+          {/* <Ionicons name="add" size={24} color={COLORS.primary} /> */}
         </TouchableOpacity>
       </View>
 

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
@@ -13,13 +12,16 @@ import {
   Modal,
   TextInput,
   Dimensions,
+  Platform,
 } from 'react-native'
+
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from '@expo/vector-icons'
+import * as ImagePicker from 'expo-image-picker'
+import DateTimePicker from '@react-native-community/datetimepicker'
 import { VehicleDetail, VehicleImageType, DocumentType, DocumentStatus } from '@/models/types'
 import vehicleService from '@/services/vehicleService'
-import ImageUploader from '@/screens/provider-v2/components/ImageUploader'
-import DateInput from '@/components/DateInput'
 
 const { width } = Dimensions.get('window')
 
@@ -36,9 +38,10 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
   // Upload modal states
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadDocType, setUploadDocType] = useState<DocumentType | null>(null)
-  const [frontImage, setFrontImage] = useState<{ uri?: string; base64?: string; fileName?: string; type?: string } | null>(null)
-  const [backImage, setBackImage] = useState<{ uri?: string; base64?: string; fileName?: string; type?: string } | null>(null)
-  const [expirationDate, setExpirationDate] = useState<string | null>(null)
+  const [frontImage, setFrontImage] = useState<{ uri?: string; imageURL?: string; fileName?: string; type?: string } | null>(null)
+  const [backImage, setBackImage] = useState<{ uri?: string; imageURL?: string; fileName?: string; type?: string } | null>(null)
+  const [expirationDate, setExpirationDate] = useState<Date | null>(null)
+  const [showDatePicker, setShowDatePicker] = useState(false)
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
@@ -114,8 +117,63 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
     setUploadDocType(docType)
     setFrontImage(null)
     setBackImage(null)
-    setExpirationDate('')
+    setExpirationDate(null)
+    setShowDatePicker(false)
     setShowUploadModal(true)
+  }
+
+  const pickFrontImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Cần quyền', 'Vui lòng cấp quyền truy cập thư viện ảnh.')
+      return
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.5,
+      base64: true,
+    })
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0]
+      const dataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : undefined
+
+      setFrontImage({
+        uri: asset.uri,
+        imageURL: dataUrl,
+        fileName: asset.fileName || `front_${Date.now()}.jpg`,
+        type: 'image/jpeg', // Always use proper MIME type
+      })
+    }
+  }
+
+  const pickBackImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Cần quyền', 'Vui lòng cấp quyền truy cập thư viện ảnh.')
+      return
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.5,
+      base64: true,
+    })
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0]
+      const dataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : undefined
+
+      setBackImage({
+        uri: asset.uri,
+        imageURL: dataUrl,
+        fileName: asset.fileName || `back_${Date.now()}.jpg`,
+        type: 'image/jpeg', // Always use proper MIME type
+      })
+    }
   }
 
   const handleSubmitUpload = async () => {
@@ -132,10 +190,11 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
         backendDocType = 'VEHICLE_LINCENSE' // Backend typo fix
       }
 
+      // Sử dụng trực tiếp frontImage và backImage vì đã có dataUrl
       await vehicleService.addVehicleDocument(String(id), {
         documentType: backendDocType,
-        expirationDate: expirationDate || undefined,
-        frontFile: frontImage,
+        expirationDate: expirationDate ? expirationDate.toISOString().split('T')[0] : undefined,
+        frontFile: frontImage, // Đã có dataUrl từ ImageUploader
         backFile: backImage || undefined,
       })
 
@@ -194,28 +253,97 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={styles.uploadSection}>
                 <Text style={styles.uploadLabel}>Mặt trước <Text style={styles.required}>*</Text></Text>
-                <ImageUploader
-                  currentImage={frontImage?.uri || null}
-                  onImageChange={setFrontImage}
-                />
+                {frontImage?.uri || frontImage?.imageURL ? (
+                  <View style={styles.imagePreviewWrapper}>
+                    <Image 
+                      source={{ uri: frontImage.imageURL || frontImage.uri }} 
+                      style={styles.imagePreview} 
+                      resizeMode="cover" 
+                    />
+                    <TouchableOpacity style={styles.changeImageBtn} onPress={pickFrontImage}>
+                      <Ionicons name="camera-outline" size={18} color="#fff" />
+                      <Text style={styles.changeImageText}>Đổi ảnh</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.removeImageBtn} onPress={() => setFrontImage(null)}>
+                      <Ionicons name="trash-outline" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.uploadPlaceholder} onPress={pickFrontImage}>
+                    <View style={styles.iconCircle}>
+                      <Ionicons name="camera-outline" size={28} color="#10439F" />
+                    </View>
+                    <Text style={styles.uploadText}>Tải ảnh mặt trước</Text>
+                    <Text style={styles.uploadSubText}>Hỗ trợ JPG, PNG</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={styles.uploadSection}>
                 <Text style={styles.uploadLabel}>Mặt sau (Tùy chọn)</Text>
-                <ImageUploader
-                  currentImage={backImage?.uri || null}
-                  onImageChange={setBackImage}
-                />
+                {backImage?.uri || backImage?.imageURL ? (
+                  <View style={styles.imagePreviewWrapper}>
+                    <Image 
+                      source={{ uri: backImage.imageURL || backImage.uri }} 
+                      style={styles.imagePreview} 
+                      resizeMode="cover" 
+                    />
+                    <TouchableOpacity style={styles.changeImageBtn} onPress={pickBackImage}>
+                      <Ionicons name="camera-outline" size={18} color="#fff" />
+                      <Text style={styles.changeImageText}>Đổi ảnh</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.removeImageBtn} onPress={() => setBackImage(null)}>
+                      <Ionicons name="trash-outline" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.uploadPlaceholder} onPress={pickBackImage}>
+                    <View style={styles.iconCircle}>
+                      <Ionicons name="camera-outline" size={28} color="#10439F" />
+                    </View>
+                    <Text style={styles.uploadText}>Tải ảnh mặt sau</Text>
+                    <Text style={styles.uploadSubText}>Hỗ trợ JPG, PNG</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={styles.uploadSection}>
                 <Text style={styles.uploadLabel}>Ngày hết hạn</Text>
-                <DateInput
-                  value={expirationDate || undefined}
-                  onChange={(date) => setExpirationDate(date || '')}
-                  placeholder="Chọn ngày hết hạn"
-                  minDate={new Date().toISOString().split('T')[0]}
-                />
+                <TouchableOpacity 
+                  style={styles.datePickerButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Ionicons name="calendar-outline" size={18} color="#6B7280" />
+                  <Text style={[styles.datePickerText, !expirationDate && styles.datePickerPlaceholder]}>
+                    {expirationDate 
+                      ? expirationDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                      : 'Chọn ngày hết hạn'
+                    }
+                  </Text>
+                  {expirationDate && (
+                    <TouchableOpacity 
+                      onPress={() => setExpirationDate(null)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+                
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={expirationDate || new Date()}
+                    mode="date"
+                    display="default"
+                    minimumDate={new Date()}
+                    onChange={(event, selectedDate) => {
+                      setShowDatePicker(Platform.OS === 'ios')
+                      if (event.type === 'set' && selectedDate) {
+                        setExpirationDate(selectedDate)
+                      }
+                    }}
+                  />
+                )}
               </View>
 
               <View style={styles.noteBox}>
@@ -246,7 +374,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <SafeAreaView edges={['top', 'left', 'right']}  style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#10439F" />
         <Text style={styles.loadingText}>Đang tải thông tin xe...</Text>
       </SafeAreaView>
@@ -255,7 +383,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
 
   if (!vehicle) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
         <Text style={styles.errorText}>Không tìm thấy thông tin xe</Text>
       </SafeAreaView>
     )
@@ -282,7 +410,7 @@ const VehicleDetailScreen: React.FC<Props> = ({ onBack }) => {
   const statusStyle = getStatusStyle(vehicle.status || '');
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
 
       {/* HEADER */}
@@ -834,18 +962,97 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 8,
   },
+  imagePreviewWrapper: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#F3F4F6',
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  changeImageBtn: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+  },
+  changeImageText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadPlaceholder: {
+    width: '100%',
+    height: 120,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  uploadText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#10439F',
+  },
+  uploadSubText: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+  },
   required: {
     color: '#EF4444',
   },
-  dateInput: {
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#D1D5DB',
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    backgroundColor: '#FFF',
+    gap: 10,
+  },
+  datePickerText: {
+    flex: 1,
     fontSize: 15,
     color: '#111827',
-    backgroundColor: '#FFF',
+  },
+  datePickerPlaceholder: {
+    color: '#9CA3AF',
   },
   noteBox: {
     flexDirection: 'row',

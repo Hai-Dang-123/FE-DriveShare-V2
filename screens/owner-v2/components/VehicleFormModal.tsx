@@ -76,7 +76,7 @@ const DocumentUploadBox = ({
   <TouchableOpacity style={styles.docUploadBox} onPress={onPress}>
     {image ? (
       <Image
-        source={{ uri: image.uri }}
+        source={{ uri: image.documentImageURL || image.uri }}
         style={styles.docImage}
         resizeMode="cover"
       />
@@ -175,35 +175,66 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
 
   const pickImageWithType = async (imageType: VehicleImageType) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted")
-      return Alert.alert("Cần quyền", "Vui lòng cấp quyền ảnh.");
+    if (status !== "granted") {
+      Alert.alert("Cần quyền", "Vui lòng cấp quyền truy cập thư viện ảnh.");
+      return;
+    }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.5,
       base64: true,
     });
 
-    if (result.canceled || !result.assets?.[0]) return;
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const dataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : undefined;
 
-    const imageObj = {
-      uri: result.assets[0].uri,
-      base64: result.assets[0].base64,
-      ImageType: imageType,
-      Caption: getImageTypeLabel(imageType),
-    };
+      // Fix MIME type to ensure it's always in format image/xxx
+      let mimeType = asset.type || "image/jpeg";
+      if (mimeType && !mimeType.includes('/')) {
+        mimeType = `image/${mimeType}`;
+      }
 
-    setForm((p: any) => ({
-      ...p,
-      VehicleImages: [...(p.VehicleImages || []), imageObj],
-    }));
+      // Tìm ảnh cũ cùng loại để giữ lại vehicleImageId
+      const existingImage = form.VehicleImages.find(
+        (img: any) => img.ImageType === imageType
+      );
+
+      const imageObj = {
+        vehicleImageId: existingImage?.vehicleImageId || `vehicle-img-${Date.now()}`,
+        vehicleImageURL: dataUrl,
+        uri: asset.uri,
+        ImageType: imageType,
+        Caption: getImageTypeLabel(imageType),
+        status: 1, // ACTIVE
+        fileName: asset.fileName || `vehicle_${Date.now()}.jpg`,
+        type: mimeType,
+      };
+
+      // Loại bỏ ảnh cũ cùng loại và thêm ảnh mới
+      setForm((p: any) => ({
+        ...p,
+        VehicleImages: [
+          ...p.VehicleImages.filter((img: any) => img.ImageType !== imageType),
+          imageObj,
+        ],
+      }));
+    }
   };
 
   const removeImage = (index: number) => {
     setForm((p: any) => ({
       ...p,
       VehicleImages: p.VehicleImages.filter((_: any, i: number) => i !== index),
+    }));
+  };
+
+  const removeImageByType = (imageType: VehicleImageType) => {
+    setForm((p: any) => ({
+      ...p,
+      VehicleImages: p.VehicleImages.filter((img: any) => img.ImageType !== imageType),
     }));
   };
 
@@ -226,26 +257,41 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
     which: "FrontFile" | "BackFile"
   ) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted")
-      return Alert.alert("Cần quyền", "Vui lòng cấp quyền ảnh.");
+    if (status !== "granted") {
+      Alert.alert("Cần quyền", "Vui lòng cấp quyền truy cập thư viện ảnh.");
+      return;
+    }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.5,
       base64: true,
     });
-    if (result.canceled || !result.assets?.[0]) return;
+    
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const dataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : undefined;
 
-    const fileObj = {
-      uri: result.assets[0].uri,
-      base64: result.assets[0].base64,
-    };
-    setForm((p: any) => {
-      const docs = [...(p.Documents || [])];
-      docs[docIndex] = { ...(docs[docIndex] || {}), [which]: fileObj };
-      return { ...p, Documents: docs };
-    });
+      // Fix MIME type to ensure it's always in format image/xxx
+      let mimeType = asset.type || "image/jpeg";
+      if (mimeType && !mimeType.includes('/')) {
+        mimeType = `image/${mimeType}`;
+      }
+
+      const fileObj = {
+        documentImageURL: dataUrl,
+        uri: asset.uri,
+        fileName: asset.fileName || `document_${Date.now()}.jpg`,
+        type: mimeType,
+      };
+      
+      setForm((p: any) => {
+        const docs = [...(p.Documents || [])];
+        docs[docIndex] = { ...(docs[docIndex] || {}), [which]: fileObj };
+        return { ...p, Documents: docs };
+      });
+    }
   };
 
   const handleSubmit = () => {
@@ -437,170 +483,87 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
 
             {/* Overview Images Section */}
             <Text style={styles.imageSubtitle}>🚗 Ảnh Toàn cảnh xe *</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.imageList}
-            >
-              <TouchableOpacity
-                style={styles.addImageBtn}
-                onPress={() => pickImageWithType(VehicleImageType.OVERVIEW)}
-              >
-                <MaterialCommunityIcons
-                  name="car-side"
-                  size={24}
-                  color={COLORS.primary}
-                />
-                <Text style={styles.addImageText}>Thêm ảnh</Text>
-              </TouchableOpacity>
-
-              {form.VehicleImages.filter(
-                (img: any) => img.ImageType === VehicleImageType.OVERVIEW
-              ).map((img: any, index: number) => {
-                const actualIndex = form.VehicleImages.findIndex(
-                  (i: any) => i === img
-                );
-                return (
-                  <View key={actualIndex} style={styles.imageWrapper}>
-                    <Image
-                      source={{
-                        uri:
-                          img.uri ??
-                          (img.base64
-                            ? `data:image/jpeg;base64,${img.base64}`
-                            : img.vehicleImageURL),
-                      }}
-                      style={styles.thumbnail}
-                    />
-                    <View style={styles.imageTypeBadge}>
-                      <Text style={styles.imageTypeBadgeText}>
-                        {getImageTypeLabel(
-                          img.ImageType || VehicleImageType.OTHER
-                        )}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.removeBtn}
-                      onPress={() => removeImage(actualIndex)}
-                    >
-                      <Ionicons name="close" size={10} color="#fff" />
-                    </TouchableOpacity>
+            <View style={styles.imageSection}>
+              {form.VehicleImages.find((img: any) => img.ImageType === VehicleImageType.OVERVIEW) ? (
+                <View style={styles.imagePreviewWrapper}>
+                  <Image 
+                    source={{ uri: form.VehicleImages.find((img: any) => img.ImageType === VehicleImageType.OVERVIEW).vehicleImageURL || form.VehicleImages.find((img: any) => img.ImageType === VehicleImageType.OVERVIEW).uri }} 
+                    style={styles.imagePreview} 
+                    resizeMode="cover" 
+                  />
+                  
+                  <TouchableOpacity 
+                    style={styles.changeImageBtn} 
+                    onPress={() => pickImageWithType(VehicleImageType.OVERVIEW)}
+                  >
+                    <MaterialCommunityIcons name="camera-retake-outline" size={20} color="#fff" />
+                    <Text style={styles.changeImageText}>Đổi ảnh</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.removeImageBtn} 
+                    onPress={() => removeImageByType(VehicleImageType.OVERVIEW)}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.uploadPlaceholder} 
+                  onPress={() => pickImageWithType(VehicleImageType.OVERVIEW)}
+                >
+                  <View style={styles.iconCircle}>
+                    <MaterialCommunityIcons name="car-side" size={32} color={COLORS.primary} />
                   </View>
-                );
-              })}
-            </ScrollView>
+                  <Text style={styles.uploadText}>Tải ảnh toàn cảnh</Text>
+                  <Text style={styles.uploadSubText}>Hỗ trợ JPG, PNG</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
             {/* License Plate Images Section */}
             <Text style={[styles.imageSubtitle, { marginTop: 16 }]}>
               🔖 Ảnh Biển số xe *
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.imageList}
-            >
-              <TouchableOpacity
-                style={styles.addImageBtn}
-                onPress={() =>
-                  pickImageWithType(VehicleImageType.LICENSE_PLATE)
-                }
-              >
-                <MaterialCommunityIcons
-                  name="card-text"
-                  size={24}
-                  color={COLORS.primary}
-                />
-                <Text style={styles.addImageText}>Thêm ảnh</Text>
-              </TouchableOpacity>
-
-              {form.VehicleImages.filter(
-                (img: any) => img.ImageType === VehicleImageType.LICENSE_PLATE
-              ).map((img: any, index: number) => {
-                const actualIndex = form.VehicleImages.findIndex(
-                  (i: any) => i === img
-                );
-                return (
-                  <View key={actualIndex} style={styles.imageWrapper}>
-                    <Image
-                      source={{
-                        uri:
-                          img.uri ??
-                          (img.base64
-                            ? `data:image/jpeg;base64,${img.base64}`
-                            : img.vehicleImageURL),
-                      }}
-                      style={styles.thumbnail}
-                    />
-                    <View style={styles.imageTypeBadge}>
-                      <Text style={styles.imageTypeBadgeText}>
-                        {getImageTypeLabel(
-                          img.ImageType || VehicleImageType.OTHER
-                        )}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.removeBtn}
-                      onPress={() => removeImage(actualIndex)}
-                    >
-                      <Ionicons name="close" size={10} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-            </ScrollView>
-
-            {/* Other Images Section (Optional) */}
-            {form.VehicleImages.filter(
-              (img: any) => img.ImageType === VehicleImageType.OTHER
-            ).length > 0 && (
-              <>
-                <Text style={[styles.imageSubtitle, { marginTop: 16 }]}>
-                  📷 Ảnh khác
-                </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.imageList}
+            <View style={styles.imageSection}>
+              {form.VehicleImages.find((img: any) => img.ImageType === VehicleImageType.LICENSE_PLATE) ? (
+                <View style={styles.imagePreviewWrapper}>
+                  <Image 
+                    source={{ uri: form.VehicleImages.find((img: any) => img.ImageType === VehicleImageType.LICENSE_PLATE).vehicleImageURL || form.VehicleImages.find((img: any) => img.ImageType === VehicleImageType.LICENSE_PLATE).uri }} 
+                    style={styles.imagePreview} 
+                    resizeMode="cover" 
+                  />
+                  
+                  <TouchableOpacity 
+                    style={styles.changeImageBtn} 
+                    onPress={() => pickImageWithType(VehicleImageType.LICENSE_PLATE)}
+                  >
+                    <MaterialCommunityIcons name="camera-retake-outline" size={20} color="#fff" />
+                    <Text style={styles.changeImageText}>Đổi ảnh</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.removeImageBtn} 
+                    onPress={() => removeImageByType(VehicleImageType.LICENSE_PLATE)}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.uploadPlaceholder} 
+                  onPress={() => pickImageWithType(VehicleImageType.LICENSE_PLATE)}
                 >
-                  {form.VehicleImages.filter(
-                    (img: any) => img.ImageType === VehicleImageType.OTHER
-                  ).map((img: any, index: number) => {
-                    const actualIndex = form.VehicleImages.findIndex(
-                      (i: any) => i === img
-                    );
-                    return (
-                      <View key={actualIndex} style={styles.imageWrapper}>
-                        <Image
-                          source={{
-                            uri:
-                              img.uri ??
-                              (img.base64
-                                ? `data:image/jpeg;base64,${img.base64}`
-                                : img.vehicleImageURL),
-                          }}
-                          style={styles.thumbnail}
-                        />
-                        <View style={styles.imageTypeBadge}>
-                          <Text style={styles.imageTypeBadgeText}>
-                            {getImageTypeLabel(
-                              img.ImageType || VehicleImageType.OTHER
-                            )}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.removeBtn}
-                          onPress={() => removeImage(actualIndex)}
-                        >
-                          <Ionicons name="close" size={10} color="#fff" />
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-              </>
-            )}
+                  <View style={styles.iconCircle}>
+                    <MaterialCommunityIcons name="card-text" size={32} color={COLORS.primary} />
+                  </View>
+                  <Text style={styles.uploadText}>Tải ảnh biển số</Text>
+                  <Text style={styles.uploadSubText}>Hỗ trợ JPG, PNG</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-            <View style={styles.divider} />
+            {/* <View style={styles.divider} />
             <View
               style={[styles.row, { alignItems: "center", marginBottom: 10 }]}
             >
@@ -672,7 +635,7 @@ const VehicleFormModal: React.FC<Props> = ({ visible, onClose, onCreate }) => {
                   </View>
                 </View>
               </View>
-            ))}
+            ))} */}
           </ScrollView>
 
           <View style={styles.footer}>
@@ -788,6 +751,66 @@ const styles = StyleSheet.create({
   dropdownItemText: { fontSize: 14, color: COLORS.text },
 
   helperText: { fontSize: 12, color: COLORS.textLight, marginBottom: 8 },
+  imageSection: { alignItems: "center", marginBottom: 16 },
+  imagePreviewWrapper: {
+    width: "100%",
+    height: 180,
+    borderRadius: 12,
+    overflow: "hidden",
+    position: "relative",
+    backgroundColor: "#F3F4F6",
+  },
+  imagePreview: { width: "100%", height: "100%" },
+  changeImageBtn: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  changeImageText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  removeImageBtn: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "rgba(239, 68, 68, 0.9)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  uploadPlaceholder: {
+    width: "100%",
+    height: 140,
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    borderStyle: "dashed",
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+  },
+  iconCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#E0F2FE",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  uploadText: { fontSize: 14, fontWeight: "600", color: COLORS.primary },
+  uploadSubText: { fontSize: 12, color: COLORS.textLight, marginTop: 2 },
   imageSubtitle: {
     fontSize: 13,
     fontWeight: "600",

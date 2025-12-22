@@ -5,16 +5,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  ScrollView,
   ActivityIndicator,
   Pressable,
   Alert,
   Dimensions,
-  SafeAreaView,
   StatusBar,
   Modal,
   Platform
 } from 'react-native'
+import { ScrollView } from 'react-native-gesture-handler'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import DateTimePicker from '@react-native-community/datetimepicker'
@@ -733,7 +733,14 @@ const PostFormModal: React.FC<PostFormModalProps> = ({ visible, onClose, onCreat
           
           {/* STEP 1: FORM */}
           {step === 1 && (
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: 220 }]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              nestedScrollEnabled
+              bounces={true}
+            >
               {/* Thông tin chung */}
               <View style={styles.sectionBox}>
                 <Text style={styles.sectionTitle}>📦 Thông tin chung</Text>

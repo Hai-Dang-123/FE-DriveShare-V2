@@ -10,7 +10,7 @@ interface Props {
   visible: boolean
   postId?: string | null
   onClose: () => void
-  onAccept?: (postId: string) => void
+  onAccept?: (postId: string, vehicleId: string) => void
   onRefresh?: () => void
 }
 
@@ -77,30 +77,8 @@ const OwnerPostDetailModal: React.FC<Props> = ({ visible, postId, onClose, onAcc
   const handleAccept = async () => {
     if (!postId || !onAccept) return
     
-    setAccepting(true)
-    try {
-      const res: any = await onAccept(postId)
-      // Nếu callback trả về object với isSuccess false, show message
-      if (res && res.isSuccess === false) {
-        const msg = res.message ?? 'Không thể nhận chuyến.'
-        Alert.alert('Lỗi khi nhận chuyến', msg)
-      } else {
-        // Thành công - refresh và đóng modal
-        Alert.alert('Thành công', 'Đã nhận chuyến thành công!', [
-          { 
-            text: 'OK', 
-            onPress: () => {
-              onRefresh?.()
-              onClose()
-            }
-          }
-        ])
-      }
-    } catch (e: any) {
-      Alert.alert('Lỗi', e?.message ?? 'Có lỗi xảy ra khi nhận chuyến')
-    } finally {
-      setAccepting(false)
-    }
+    // Gọi callback để parent component xử lý (hiển thị modal chọn xe)
+    onAccept(postId, '')
   }
 
   const handleAnalyze = async () => {
@@ -949,6 +927,116 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.danger,
     fontWeight: '600',
+  },
+  
+  // Vehicle Selection Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  vehicleModalContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  vehicleModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vehicleModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  vehicleList: {
+    padding: 16,
+    maxHeight: 400,
+  },
+  vehicleItem: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  vehicleItemSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: COLORS.primary,
+  },
+  vehicleInfo: {
+    flex: 1,
+  },
+  vehicleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  vehiclePlate: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.text,
+  },
+  vehicleModel: {
+    fontSize: 14,
+    color: COLORS.text,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  vehicleSpecs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vehicleSpec: {
+    fontSize: 12,
+    color: COLORS.textLight,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    fontWeight: '600',
+  },
+  vehicleModalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  cancelBtn: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  confirmBtn: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  confirmBtnDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  confirmBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
   },
 })
 

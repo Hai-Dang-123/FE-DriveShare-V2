@@ -132,58 +132,156 @@ export const authService = {
       const res = await api.post("/api/auth/register", payload);
       return res.data;
     } catch (e: any) {
-      console.error("authService.register failed", e);
-      if (e.response) console.error("response", e.response.data);
-      throw e;
+      const statusCode = e?.response?.status || 0;
+      const message =
+        e?.response?.data?.message ||
+        (e?.message === "Network Error"
+          ? "Không thể kết nối đến máy chủ. Kiểm tra EXPO_PUBLIC_API_BASE_URL, mạng Wi‑Fi, và backend đang chạy."
+          : "Đăng ký thất bại. Vui lòng thử lại.");
+
+      // Avoid LogBox red screen in dev by not using console.error
+      console.warn("[authService] register failed", {
+        statusCode,
+        message,
+      });
+
+      return {
+        statusCode,
+        isSuccess: false,
+        message,
+        result: null,
+      };
     }
   },
   registerDriver: async (payload: any) => {
     try {
-      // If payload is FormData (contains file), send multipart request
+      // Backend uses [FromForm], so ALWAYS send as FormData (like itemService)
       if (typeof FormData !== "undefined" && payload instanceof FormData) {
         const res = await api.post("/api/Auth/register-driver", payload, {
-          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 60000,
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
         return res.data;
       }
-      const res = await api.post("/api/Auth/register-driver", payload);
+      // Fallback: wrap plain object into FormData
+      console.warn("[registerDriver] Received plain object, wrapping into FormData");
+      const form = new FormData();
+      Object.keys(payload).forEach(k => {
+        const v = payload[k];
+        if (v !== undefined && v !== null && v !== '') {
+          form.append(k, String(v));
+        }
+      });
+      const res = await api.post("/api/Auth/register-driver", form, {
+        timeout: 60000,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       return res.data;
     } catch (e: any) {
-      console.error("authService.registerDriver failed", e);
-      if (e.response) console.error("response", e.response.data);
-      throw e;
+      const statusCode = e?.response?.status || 0;
+      const message =
+        e?.response?.data?.message ||
+        (e?.message === "Network Error"
+          ? "Không thể kết nối đến máy chủ. Nếu bạn đang test trên điện thoại, đừng dùng localhost; hãy trỏ EXPO_PUBLIC_API_BASE_URL về IP LAN của máy chạy backend."
+          : "Đăng ký tài xế thất bại. Vui lòng thử lại.");
+
+      console.warn("[authService] registerDriver failed", {
+        statusCode,
+        message,
+      });
+
+      return {
+        statusCode,
+        isSuccess: false,
+        message,
+        result: null,
+      };
     }
   },
   registerOwner: async (payload: any) => {
     try {
       if (typeof FormData !== "undefined" && payload instanceof FormData) {
         const res = await api.post("/api/auth/register-owner", payload, {
-          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 60000,
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
         return res.data;
       }
-      const res = await api.post("/api/auth/register-owner", payload);
+      console.warn("[registerOwner] Received plain object, wrapping into FormData");
+      const form = new FormData();
+      Object.keys(payload).forEach(k => {
+        const v = payload[k];
+        if (v !== undefined && v !== null && v !== '') {
+          form.append(k, String(v));
+        }
+      });
+      const res = await api.post("/api/auth/register-owner", form, {
+        timeout: 60000,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       return res.data;
     } catch (e: any) {
-      console.error("authService.registerOwner failed", e);
-      if (e.response) console.error("response", e.response.data);
-      throw e;
+      const statusCode = e?.response?.status || 0;
+      const message =
+        e?.response?.data?.message ||
+        (e?.message === "Network Error"
+          ? "Không thể kết nối đến máy chủ. Kiểm tra EXPO_PUBLIC_API_BASE_URL và backend."
+          : "Đăng ký chủ xe thất bại. Vui lòng thử lại.");
+
+      console.warn("[authService] registerOwner failed", {
+        statusCode,
+        message,
+      });
+
+      return {
+        statusCode,
+        isSuccess: false,
+        message,
+        result: null,
+      };
     }
   },
   registerProvider: async (payload: any) => {
     try {
       if (typeof FormData !== "undefined" && payload instanceof FormData) {
         const res = await api.post("/api/auth/register-provider", payload, {
-          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 60000,
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
         return res.data;
       }
-      const res = await api.post("/api/auth/register-provider", payload);
+      console.warn("[registerProvider] Received plain object, wrapping into FormData");
+      const form = new FormData();
+      Object.keys(payload).forEach(k => {
+        const v = payload[k];
+        if (v !== undefined && v !== null && v !== '') {
+          form.append(k, String(v));
+        }
+      });
+      const res = await api.post("/api/auth/register-provider", form, {
+        timeout: 60000,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       return res.data;
     } catch (e: any) {
-      console.error("authService.registerProvider failed", e);
-      if (e.response) console.error("response", e.response.data);
-      throw e;
+      const statusCode = e?.response?.status || 0;
+      const message =
+        e?.response?.data?.message ||
+        (e?.message === "Network Error"
+          ? "Không thể kết nối đến máy chủ. Kiểm tra EXPO_PUBLIC_API_BASE_URL và backend."
+          : "Đăng ký nhà cung cấp thất bại. Vui lòng thử lại.");
+
+      console.warn("[authService] registerProvider failed", {
+        statusCode,
+        message,
+      });
+
+      return {
+        statusCode,
+        isSuccess: false,
+        message,
+        result: null,
+      };
     }
   },
   verifyEmail: async (

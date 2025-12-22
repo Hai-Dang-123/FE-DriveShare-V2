@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { ekycService, MyDocumentsResponseDTO, DocumentDetailDTO } from '@/services/ekycService';
 
 // --- COLORS & CONSTANTS ---
@@ -50,6 +51,20 @@ const MyDocumentsScreen = () => {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [sendingRequest, setSendingRequest] = useState(false);
 
+  const loadDocuments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await ekycService.getMyDocuments();
+      if (response.isSuccess && response.result) {
+        setDocuments(response.result);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadDocuments();
 
@@ -63,21 +78,13 @@ const MyDocumentsScreen = () => {
     return () => {
       subscription?.remove();
     };
-  }, []);
+  }, [loadDocuments]);
 
-  const loadDocuments = async () => {
-    try {
-      setLoading(true);
-      const response = await ekycService.getMyDocuments();
-      if (response.isSuccess && response.result) {
-        setDocuments(response.result);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useFocusEffect(
+    useCallback(() => {
+      loadDocuments();
+    }, [loadDocuments])
+  );
 
   const handleRequestReview = async () => {
     if (!selectedDocId) return;

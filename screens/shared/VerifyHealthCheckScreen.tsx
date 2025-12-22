@@ -35,6 +35,8 @@ interface CapturedImages {
 
 const { width } = Dimensions.get('window')
 
+const ENABLE_AI_SCAN = false
+
 const VerifyHealthCheckScreen = () => {
   const router = useRouter()
   const [step, setStep] = useState<'instruction' | 'capture' | 'review' | 'processing'>('instruction')
@@ -49,7 +51,9 @@ const VerifyHealthCheckScreen = () => {
 
   useEffect(() => {
     requestPermissions()
-    loadVnptConfig()
+    if (ENABLE_AI_SCAN) {
+      loadVnptConfig()
+    }
   }, [])
 
   const loadVnptConfig = async () => {
@@ -87,15 +91,18 @@ const VerifyHealthCheckScreen = () => {
         allowsEditing: false,
         quality: 0.9,
         cameraType: ImagePicker.CameraType.back,
+        base64: true, // ← Thêm base64 để lấy data
       })
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0]
         const timestamp = Date.now()
+        const dataUrl = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri
+        
         setImages((prev) => ({
           ...prev,
           [type]: {
-            uri: asset.uri,
+            uri: dataUrl, // Lưu dataUrl thay vì local uri
             name: `${type}_${timestamp}.jpg`,
             type: 'image/jpeg',
           },
@@ -142,20 +149,9 @@ const VerifyHealthCheckScreen = () => {
     setUploading(true)
 
     try {
-      let healthCert: any, additional: any = null
-
-      if (Platform.OS === 'web') {
-        const certBlob = await (await fetch(images.healthCertificate.uri)).blob()
-        healthCert = new File([certBlob], images.healthCertificate.name, { type: images.healthCertificate.type })
-        
-        if (images.additionalDoc) {
-          const addBlob = await (await fetch(images.additionalDoc.uri)).blob()
-          additional = new File([addBlob], images.additionalDoc.name, { type: images.additionalDoc.type })
-        }
-      } else {
-        healthCert = images.healthCertificate
-        additional = images.additionalDoc
-      }
+      // Sử dụng trực tiếp images vì đã có base64 dataUrl
+      const healthCert = images.healthCertificate
+      const additional = images.additionalDoc
 
       const response = await ekycService.verifyHealthCheck(healthCert, additional)
       
@@ -165,12 +161,7 @@ const VerifyHealthCheckScreen = () => {
 
       if (response.isSuccess) {
         showAlert('Thành công! 🎉', response.message || 'Giấy khám sức khỏe đã được gửi xác thực', () => {
-          // Navigate to my-documents and reload
-          if (Platform.OS === 'web') {
-            router.replace('/driver/my-documents')
-          } else {
-            router.back()
-          }
+          router.replace('/driver/my-documents')
         })
       } else {
         setStep('capture')
@@ -187,7 +178,7 @@ const VerifyHealthCheckScreen = () => {
         } else {
           Alert.alert(errorTitle, errorReason, [
             { text: 'Chụp lại', onPress: () => setStep('capture'), style: 'default' },
-            { text: 'Hủy', onPress: () => router.back(), style: 'cancel' },
+            { text: 'Hủy', onPress: () => router.replace('/driver/my-documents'), style: 'cancel' },
           ])
         }
       }
@@ -213,7 +204,7 @@ const VerifyHealthCheckScreen = () => {
         } else {
           Alert.alert(errorTitle, errorReason, [
             { text: 'Chụp lại', onPress: () => setStep('capture') },
-            { text: 'Hủy', onPress: () => router.back(), style: 'cancel' },
+            { text: 'Hủy', onPress: () => router.replace('/driver/my-documents'), style: 'cancel' },
           ])
         }
       } else {
@@ -227,7 +218,7 @@ const VerifyHealthCheckScreen = () => {
         } else {
           Alert.alert('Lỗi', 'Không thể kết nối đến máy chủ', [
             { text: 'Thử lại', onPress: () => setStep('capture') },
-            { text: 'Hủy', onPress: () => router.back(), style: 'cancel' },
+            { text: 'Hủy', onPress: () => router.replace('/driver/my-documents'), style: 'cancel' },
           ])
         }
       }
@@ -266,27 +257,12 @@ const VerifyHealthCheckScreen = () => {
         </View>
       </View>
 
-      {useVnptSdk && sdkConfig ? (
-        <View style={{ gap: 12, width: '100%' }}>
-          <TouchableOpacity onPress={startVnptSdkFlow} activeOpacity={0.8}>
-            <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryButton}>
-              <MaterialCommunityIcons name="robot" size={20} color="#FFF" />
-              <Text style={styles.primaryButtonText}>Quét với AI (Khuyến nghị)</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8} style={styles.secondaryBtnAlt}>
-            <Text style={styles.secondaryBtnAltText}>Chụp thủ công</Text>
-            <MaterialCommunityIcons name="arrow-right" size={20} color="#64748B" />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8}>
-          <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Bắt đầu</Text>
-            <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity onPress={() => setStep('capture')} activeOpacity={0.8}>
+        <LinearGradient colors={['#10B981', '#059669']} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Bắt đầu</Text>
+          <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />
+        </LinearGradient>
+      </TouchableOpacity>
     </View>
   )
 

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import {
-  Modal, View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, ScrollView, Alert, Image, Dimensions
+  Modal, View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, ScrollView, Alert, Image, Dimensions, SafeAreaView
 } from 'react-native'
 import { Ionicons, MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons'
 import tripService from '@/services/tripService'
@@ -110,13 +110,22 @@ const ProviderTripDetailModal: React.FC<Props> = ({ visible, tripId, onClose }) 
         {/* --- SECTION 1: MAP & ROUTE --- */}
         <View style={styles.mapSection}>
           {/* Real Map with VietMapUniversal */}
-          <View style={styles.mapPlaceholder}>
+          <View style={styles.mapContainer}>
             <VietMapUniversal
-              coordinates={
-                trip.tripRoute?.routeData 
-                  ? JSON.parse(trip.tripRoute.routeData).geometry?.coordinates || [[106.660172, 10.762622]]
-                  : [[106.660172, 10.762622], [106.670172, 10.772622]]
-              }
+              coordinates={(() => {
+                try {
+                  if (!trip.tripRoute?.routeData) {
+                    return [[106.660172, 10.762622], [106.670172, 10.772622]];
+                  }
+                  const data = typeof trip.tripRoute.routeData === 'string' 
+                    ? JSON.parse(trip.tripRoute.routeData) 
+                    : trip.tripRoute.routeData;
+                  return data?.geometry?.coordinates || [[106.660172, 10.762622], [106.670172, 10.772622]];
+                } catch (e) {
+                  console.warn('Failed to parse routeData:', e);
+                  return [[106.660172, 10.762622], [106.670172, 10.772622]];
+                }
+              })()}
               style={{ height: 200, width: '100%' }}
               showUserLocation={false}
             />
@@ -313,7 +322,7 @@ const ProviderTripDetailModal: React.FC<Props> = ({ visible, tripId, onClose }) 
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
@@ -326,7 +335,7 @@ const ProviderTripDetailModal: React.FC<Props> = ({ visible, tripId, onClose }) 
         </View>
 
         {renderContent()}
-      </View>
+      </SafeAreaView>
     </Modal>
   )
 }
@@ -336,7 +345,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff',
-    borderBottomWidth: 1, borderColor: '#E5E7EB', paddingTop: 50
+    borderBottomWidth: 1, borderColor: '#E5E7EB'
   },
   headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
   backBtn: { padding: 4 },
@@ -347,8 +356,10 @@ const styles = StyleSheet.create({
 
   // --- MAP SECTION ---
   mapSection: { position: 'relative', marginBottom: 80 }, // Margin bottom để chừa chỗ cho card nổi
-  mapPlaceholder: {
-    height: 200, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center'
+  mapContainer: {
+    height: 200, 
+    backgroundColor: '#E2E8F0', 
+    overflow: 'hidden'
   },
   floatingRouteCard: {
     position: 'absolute', top: 120, left: 16, right: 16,

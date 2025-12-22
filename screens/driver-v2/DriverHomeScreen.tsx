@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react'
 import { View, StyleSheet, ScrollView, StatusBar, Text, RefreshControl } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '@/hooks/useAuth'
@@ -141,7 +142,7 @@ const DriverHomeScreen: React.FC = () => {
   }
 
   return (
-    <View style={styles.mainContainer}>
+    <SafeAreaView style={styles.mainContainer} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       
       <ScrollView
@@ -158,7 +159,7 @@ const DriverHomeScreen: React.FC = () => {
 
           {/* 3. Giám sát giờ lái (Theo luật) */}
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>⏱️ Giám sát Giờ Lái</Text>
+            <Text style={styles.sectionTitle}>⏱️ Giám sát Giờ Lái Xe</Text>
             <DrivingHoursCard stats={drivingStats} />
           </View>
 
@@ -169,7 +170,7 @@ const DriverHomeScreen: React.FC = () => {
           <View style={{ height: 100 }} />
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   )
 }
 

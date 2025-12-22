@@ -9,8 +9,8 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import driverWorkSessionService from '@/services/driverWorkSessionService'
@@ -161,7 +161,7 @@ const ImportHistoryScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>

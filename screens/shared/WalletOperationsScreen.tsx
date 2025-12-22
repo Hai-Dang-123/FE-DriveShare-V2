@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react'
 import {
-  SafeAreaView,
   View,
   Text,
   TouchableOpacity,
@@ -14,6 +13,7 @@ import {
   Image,
   Modal
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import walletService from '@/services/walletService'
 import { formatVND } from '@/utils/currency'
@@ -210,7 +210,7 @@ export default function WalletOperationsScreen({ onBack, prefilledAmount = '' }:
   )
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
       {/* Header */}

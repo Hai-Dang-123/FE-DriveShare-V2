@@ -8,6 +8,7 @@ import StatusBadge from './components/StatusBadge';
 import TripDetailModal from './components/TripDetailModal';
 import InlinePostTripSignModal from './components/InlinePostTripSignModal';
 import InlinePostTripPaymentModal from './components/InlinePostTripPaymentModal';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Normalizer riêng cho màn Detail
 const normalizeDetail = (raw: any) => {
@@ -123,7 +124,7 @@ const PostTripDetailScreen: React.FC = () => {
   const showActionButton = status === 'AWAITING_SIGNATURE' || status === 'AWAITING_PAYMENT';
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView  style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header with Back Button */}
       <View style={styles.topHeader}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -255,7 +256,7 @@ const PostTripDetailScreen: React.FC = () => {
         onClose={() => setShowPaymentModal(false)}
         onDone={handlePaymentDone}
       />
-    </View>
+    </SafeAreaView>
   );
 };
 

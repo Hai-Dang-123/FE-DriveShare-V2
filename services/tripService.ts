@@ -383,7 +383,12 @@ const tripService = {
     try {
       const res = await api.post(
         "api/TripVehicleHandoverRecord/report-issue",
-        formData
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
         
       );
       return res.data;

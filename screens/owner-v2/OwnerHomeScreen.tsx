@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { SafeAreaView, View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/authStore'
@@ -93,7 +94,7 @@ const OwnerHomeScreen: React.FC = () => {
   )
 
   return (
-    <View style={styles.mainContainer}>
+    <SafeAreaView style={styles.mainContainer} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
@@ -141,7 +142,7 @@ const OwnerHomeScreen: React.FC = () => {
           <View style={{ height: 40 }} />
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   )
 }
 

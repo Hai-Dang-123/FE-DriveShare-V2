@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
   Modal,
-  SafeAreaView,
   View,
   Text,
   TouchableOpacity,
@@ -12,6 +11,7 @@ import {
   Dimensions,
   StatusBar
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons'
 import { Linking } from 'react-native'
 import postPackageService from '@/services/postPackageService'
@@ -54,7 +54,7 @@ const { width } = Dimensions.get('window')
 
 // --- COMPONENT: STEP INDICATOR ---
 const StepIndicator: React.FC<{ step: number }> = ({ step }) => (
-  <View style={styles.stepContainer}>
+  <SafeAreaView edges={['top', 'left', 'right']} style={styles.stepContainer}>
     <View style={styles.stepWrapper}>
       {/* Line connecting steps */}
       <View style={styles.stepLineBase} />
@@ -76,7 +76,7 @@ const StepIndicator: React.FC<{ step: number }> = ({ step }) => (
         <Text style={[styles.stepText, step >= 2 && styles.stepTextActive]}>Thanh toán</Text>
       </View>
     </View>
-  </View>
+  </SafeAreaView>
 )
 
 const InlinePostSignModal: React.FC<Props> = ({ visible, postId, onClose, onDone }) => {
@@ -181,7 +181,7 @@ const InlinePostSignModal: React.FC<Props> = ({ visible, postId, onClose, onDone
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         
         {/* 1. Header */}

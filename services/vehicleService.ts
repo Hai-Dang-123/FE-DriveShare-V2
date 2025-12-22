@@ -1,6 +1,6 @@
 import api from "@/config/api";
 import { Platform } from "react-native";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 const vehicleService = {
   getMyVehicles: async (params: {
@@ -219,12 +219,22 @@ const vehicleService = {
           uri.startsWith("content://") ||
           uri.startsWith("/")
         ) {
-          // @ts-ignore
-          form.append(`${imgPrefix}.ImageFile`, {
+          // Get MIME type from image object and validate it
+          let mimeType = img.type || "image/jpeg";
+          if (mimeType && !mimeType.includes('/')) {
+            mimeType = `image/${mimeType}`;
+          }
+          
+          const rnFile = {
             uri,
-            name: `vehicle-${Date.now()}-${i}.jpg`,
-            type: "image/jpeg",
-          });
+            name: img.fileName || `vehicle-${Date.now()}-${i}.jpg`,
+            type: mimeType,
+          };
+          
+          console.log(`>>> [vehicleService] APPEND FILE MOBILE:`, JSON.stringify(rnFile));
+          
+          // @ts-ignore
+          form.append(`${imgPrefix}.ImageFile`, rnFile);
         } else {
           try {
             const resp = await fetch(uri);
@@ -313,7 +323,10 @@ const vehicleService = {
         await attachFile(getDocField("BackFile"), "BackFile");
       }
 
-      const res = await api.post("api/vehicle/create", form);
+      const res = await api.post("api/vehicle/create", form, {
+        timeout: 60000,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       return res.data;
     } catch (e: any) {
       console.error("createVehicle failed", e);
@@ -394,9 +407,11 @@ const vehicleService = {
       const attachFile = async (fileObj: any, fieldName: string) => {
         if (!fileObj) return;
 
-        // Ưu tiên base64 nếu có (vì blob: URL không gửi được)
+        // Ưu tiên imageURL (dataURL) trước, sau đó base64, cuối cùng là uri
         let uri: string | undefined;
-        if (fileObj.base64) {
+        if (fileObj.imageURL && fileObj.imageURL.startsWith("data:")) {
+          uri = fileObj.imageURL;
+        } else if (fileObj.base64) {
           uri = fileObj.base64.startsWith("data:")
             ? fileObj.base64
             : `data:image/jpeg;base64,${fileObj.base64}`;
@@ -433,7 +448,7 @@ const vehicleService = {
               // @ts-ignore
               formData.append(fieldName, blob, fileName);
             } else {
-              // === MOBILE: Write to temp file ===
+              // === MOBILE: Write base64 to temp file then use file:// URI ===
               console.log(
                 `>>> [addVehicleDocument] Mobile: Writing base64 to temp file for ${fieldName}`
               );
@@ -441,7 +456,18 @@ const vehicleService = {
               const base64Data = uri.split(",")[1];
               const fileName =
                 fileObj.fileName || `${fieldName}-${Date.now()}.jpg`;
-              const mimeType = fileObj.type || "image/jpeg";
+              
+              // MIME type validation - ensure proper format
+              let mimeType = fileObj.type || "image/jpeg";
+              // If type is just "image" or "jpeg", convert to "image/jpeg"
+              if (mimeType && !mimeType.includes('/')) {
+                // If it's already prefixed with "image", don't add prefix again
+                mimeType = "image/jpeg"; // Default to jpeg
+              } else if (mimeType.startsWith('image/image')) {
+                // Fix double prefix
+                mimeType = "image/jpeg";
+              }
+              console.log(`>>> [addVehicleDocument] MIME type for ${fieldName}: ${mimeType}`);
 
               const baseDir =
                 (FileSystem as any).cacheDirectory ??
@@ -449,9 +475,11 @@ const vehicleService = {
                 "";
               const tempUri = baseDir + fileName;
 
+              console.log(`>>> [addVehicleDocument] Writing to: ${tempUri}`);
               await FileSystem.writeAsStringAsync(tempUri, base64Data, {
                 encoding: (FileSystem as any).EncodingType?.Base64 ?? "base64",
               });
+              console.log(`>>> [addVehicleDocument] Write successful: ${tempUri}`);
 
               const rnFile: any = {
                 uri: tempUri,
@@ -459,6 +487,7 @@ const vehicleService = {
                 type: mimeType,
               };
 
+              console.log(`>>> [addVehicleDocument] Appending file:`, { uri: tempUri, name: fileName, type: mimeType });
               // @ts-ignore
               formData.append(fieldName, rnFile);
             }
@@ -476,7 +505,12 @@ const vehicleService = {
 
             const fileName =
               fileObj.fileName || `${fieldName}-${Date.now()}.jpg`;
-            const mimeType = fileObj.type || "image/jpeg";
+            
+            // MIME type validation
+            let mimeType = fileObj.type || "image/jpeg";
+            if (mimeType && !mimeType.includes('/')) {
+              mimeType = `image/${mimeType}`;
+            }
 
             const rnFile: any = {
               uri: uri,
@@ -533,10 +567,16 @@ const vehicleService = {
         `api/VehicleDocument/add/${vehicleId}`
       );
 
-      // Let axios auto-set Content-Type with boundary
+      // Send FormData with explicit multipart/form-data header
       const res = await api.post(
         `api/VehicleDocument/add/${vehicleId}`,
-        formData
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          timeout: 120000, // 120s for large files
+        }
       );
       return res.data;
     } catch (e: any) {
