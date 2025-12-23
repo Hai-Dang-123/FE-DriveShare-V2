@@ -6612,7 +6612,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
             >
               <Ionicons name="chevron-down" size={24} color="#FFF" />
             </TouchableOpacity>
-            {journeyPhase === "TO_PICKUP" && (
+            {journeyPhase === "TO_PICKUP" && trip.status === "MOVING_TO_PICKUP" && (
               <TouchableOpacity
                 style={[
                   styles.navMainBtn,
@@ -6633,8 +6633,7 @@ const DriverTripDetailScreenV2: React.FC = () => {
               </TouchableOpacity>
             )}
             {journeyPhase === "TO_DELIVERY" &&
-              trip.status !== "RETURNING_VEHICLE" &&
-              trip.status !== "READY_FOR_VEHICLE_RETURN" && (
+              trip.status === "MOVING_TO_DROPOFF" && (
                 <TouchableOpacity
                   style={[
                     styles.navMainBtn,

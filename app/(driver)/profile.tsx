@@ -6,11 +6,14 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import userService, { BaseProfileDTO } from "@/services/userService";
 
 export default function DriverProfileScreen() {
+  const router = useRouter();
   const [profile, setProfile] = useState<BaseProfileDTO | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -164,6 +167,21 @@ export default function DriverProfileScreen() {
             </Text>
           </View>
         </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Giấy tờ</Text>
+          <TouchableOpacity
+            style={[styles.infoRow, styles.linkRow]}
+            onPress={() => router.push("/driver/my-documents" as any)}
+          >
+            <Ionicons name="document-text-outline" size={20} color="#6B7280" />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Tài liệu</Text>
+              <Text style={styles.infoValue}>Giấy tờ của tôi</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );
@@ -251,6 +269,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
+  },
+  linkRow: {
+    borderBottomWidth: 0,
   },
   infoContent: {
     flex: 1,

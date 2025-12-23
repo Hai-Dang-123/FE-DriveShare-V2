@@ -11,8 +11,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import userService, { BaseProfileDTO } from "@/services/userService";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 
 export default function ProviderProfileScreen() {
+  const router = useRouter();
   const [profile, setProfile] = useState<BaseProfileDTO | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -168,6 +170,21 @@ export default function ProviderProfileScreen() {
             </Text>
           </View>
         </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Giấy tờ</Text>
+          <TouchableOpacity
+            style={[styles.infoRow, styles.linkRow]}
+            onPress={() => router.push("/provider-v2/my-documents" as any)}
+          >
+            <Ionicons name="document-text-outline" size={20} color="#6B7280" />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Tài liệu</Text>
+              <Text style={styles.infoValue}>Giấy tờ của tôi</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );
@@ -255,6 +272,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
+  },
+  linkRow: {
+    borderBottomWidth: 0,
   },
   infoContent: {
     flex: 1,
